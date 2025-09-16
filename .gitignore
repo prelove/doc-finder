@@ -1,0 +1,45 @@
+# Maven
+/target/
+/pom.xml.tag
+/pom.xml.releaseBackup
+/pom.xml.versionsBackup
+/release.properties
+
+# Eclipse
+/.project
+/.classpath
+/.settings/
+
+# IntelliJ IDEA
+/.idea/
+/*.iml
+/*.ipr
+/*.iws
+/out/
+
+# VS Code
+/.vscode/
+
+# OS junk
+.DS_Store
+Thumbs.db
+
+# Logs & temp
+*.log
+logs/
+hs_err_pid*
+replay_pid*
+*.swp
+*.swo
+
+# Java
+*.class
+
+# Generated artifacts
+/*.jar
+/*.war
+/*.ear
+
+# Local runtime data (DocFinder)
+# (keep user-local caches outside the repo)
+.docfinder/
