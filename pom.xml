@@ -22,6 +22,19 @@
 	    <artifactId>flatlaf</artifactId>
 	    <version>3.2</version>
 	  </dependency>
+	  <!-- IntelliJ theme pack（包含大量 .theme.json 对应的 LAF 类） -->
+	  <dependency>
+	    <groupId>com.formdev</groupId>
+	    <artifactId>flatlaf-intellij-themes</artifactId>
+	    <version>3.2</version>
+	  </dependency>
+	  <!-- 可选：切换主题时的平滑动画（没有也不影响功能） -->
+	  <dependency>
+	    <groupId>com.formdev</groupId>
+	    <artifactId>flatlaf-extras</artifactId>
+	    <version>3.2</version>
+	    <optional>true</optional>
+	  </dependency>
 	  
 	  <dependency>
 	    <groupId>com.github.kwhat</groupId>
@@ -68,23 +81,59 @@
 	    <artifactId>lucene-analyzers-kuromoji</artifactId>
 	    <version>8.11.2</version>
 	  </dependency>
-
   </dependencies>
 
-
+		
   <build>
-    <plugins>
-	  <!-- 用高版本JDK编译但目标兼容Java 8 -->
-       <plugin>
-        <groupId>org.apache.maven.plugins</groupId>
-        <artifactId>maven-compiler-plugin</artifactId>
-        <version>3.11.0</version>
-        <configuration>
-          <source>1.8</source>
-          <target>1.8</target>
-        </configuration>
-      </plugin> 
-       
-    </plugins>
+	  <plugins>
+	    <!-- Java 8 目标：你已有 -->
+	    <plugin>
+	      <groupId>org.apache.maven.plugins</groupId>
+	      <artifactId>maven-compiler-plugin</artifactId>
+	      <version>3.11.0</version>
+	      <configuration>
+	        <source>1.8</source>
+	        <target>1.8</target>
+	      </configuration>
+	    </plugin>
+	
+	    <!-- 可执行 fat-jar：写入 Main-Class、合并 services，并排除签名文件 -->
+	    <plugin>
+	      <groupId>org.apache.maven.plugins</groupId>
+	      <artifactId>maven-shade-plugin</artifactId>
+	      <version>3.5.0</version>
+	      <executions>
+	        <execution>
+	          <phase>package</phase>
+	          <goals><goal>shade</goal></goals>
+	          <configuration>
+	            <createDependencyReducedPom>false</createDependencyReducedPom>
+	            <transformers>
+	              <transformer implementation="org.apache.maven.plugins.shade.resource.ManifestResourceTransformer">
+	                <mainClass>org.abitware.docfinder.App</mainClass>
+	              </transformer>
+	              <!-- Tika/Lucene 的 SPI 发现需要合并 META-INF/services -->
+	              <transformer implementation="org.apache.maven.plugins.shade.resource.ServicesResourceTransformer"/>
+	            </transformers>
+	
+	            <!-- 关键：去掉所有依赖里的签名/索引文件，避免 SecurityException -->
+	            <filters>
+	              <filter>
+	                <artifact>*:*</artifact>
+	                <excludes>
+	                  <exclude>META-INF/*.SF</exclude>
+	                  <exclude>META-INF/*.DSA</exclude>
+	                  <exclude>META-INF/*.RSA</exclude>
+	                  <exclude>META-INF/*.EC</exclude>
+	                  <exclude>META-INF/INDEX.LIST</exclude>
+	                </excludes>
+	              </filter>
+	            </filters>
+	          </configuration>
+	        </execution>
+	      </executions>
+	    </plugin>
+	  </plugins>
   </build>
+
 </project>

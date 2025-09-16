@@ -23,78 +23,94 @@ import org.abitware.docfinder.search.LuceneSearchService;
 import org.abitware.docfinder.search.SearchService;
 import org.abitware.docfinder.ui.GlobalHotkey;
 import org.abitware.docfinder.ui.MainWindow;
+import org.abitware.docfinder.ui.ThemeUtil;
 
 import com.formdev.flatlaf.FlatLightLaf;
 
 public class App {
-    public static void main(String[] args) {
-        try { UIManager.setLookAndFeel(new FlatLightLaf()); }
-        catch (Exception e) { try { UIManager.setLookAndFeel(UIManager.getSystemLookAndFeelClassName()); } catch (Exception ignore) {} }
+	public static void main(String[] args) {
+//		try {
+//			UIManager.setLookAndFeel(new FlatLightLaf());
+//		} catch (Exception e) {
+//			try {
+//				UIManager.setLookAndFeel(UIManager.getSystemLookAndFeelClassName());
+//			} catch (Exception ignore) {
+//			}
+//		}
+		
+		// ✅ 在任何 Swing 组件创建之前，应用“上次选择的主题”（默认 Flat Light）
+        ThemeUtil.initLafOnStartup();
 
-        SwingUtilities.invokeLater(() -> {
-        	java.nio.file.Path indexDir = new SourceManager().getIndexDir();
-            SearchService searchService = new LuceneSearchService(indexDir);
-            
-            MainWindow win = new MainWindow(searchService);
-            win.setVisible(true);
+		SwingUtilities.invokeLater(() -> {
+			java.nio.file.Path indexDir = new SourceManager().getIndexDir();
+			SearchService searchService = new LuceneSearchService(indexDir);
 
-            // 全局热键：Ctrl + Alt + Space
-            GlobalHotkey ghk = new GlobalHotkey(win);
-            ghk.register();
-            Runtime.getRuntime().addShutdownHook(new Thread(ghk::unregister));
+			MainWindow win = new MainWindow(searchService);
+			win.setVisible(true);
 
-            // 托盘（与第2步相同）
-            if (SystemTray.isSupported()) {
-                try {
-                    SystemTray tray = SystemTray.getSystemTray();
-                    PopupMenu menu = new PopupMenu(); 
-                    MenuItem openItem = new MenuItem("Open");
-                    openItem.addActionListener(e -> {
-                        win.setVisible(true);
-                        win.setExtendedState(JFrame.NORMAL);
-                        win.toFront();
-                        win.requestFocus();
-                    });
-                    menu.add(openItem);
+			// 全局热键：Ctrl + Alt + Space
+			GlobalHotkey ghk = new GlobalHotkey(win);
+			ghk.register();
+			Runtime.getRuntime().addShutdownHook(new Thread(ghk::unregister));
 
-                    MenuItem exitItem = new MenuItem("Exit");
-                    exitItem.addActionListener(e -> {
-                        for (TrayIcon ti : tray.getTrayIcons()) tray.remove(ti);
-                        System.exit(0);
-                    });
-                    menu.add(exitItem);
+			// 托盘（与第2步相同）
+			if (SystemTray.isSupported()) {
+				try {
+					SystemTray tray = SystemTray.getSystemTray();
+					PopupMenu menu = new PopupMenu();
+					MenuItem openItem = new MenuItem("Open");
+					openItem.addActionListener(e -> {
+						win.setVisible(true);
+						win.setExtendedState(JFrame.NORMAL);
+						win.toFront();
+						win.requestFocus();
+					});
+					menu.add(openItem);
 
-                    TrayIcon icon = new TrayIcon(createTrayImage(), "DocFinder", menu);
-                    icon.setImageAutoSize(true);
-                    icon.addMouseListener(new MouseAdapter() {
-                        @Override public void mouseClicked(MouseEvent e) {
-                            if (e.getButton() == MouseEvent.BUTTON1) {
-                                boolean visible = win.isVisible();
-                                win.setVisible(!visible);
-                                if (!visible) {
-                                    win.setExtendedState(JFrame.NORMAL);
-                                    win.toFront();
-                                    win.requestFocus();
-                                }
-                            }
-                        }
-                    });
-                    tray.add(icon);
-                    win.setDefaultCloseOperation(WindowConstants.HIDE_ON_CLOSE);
-                } catch (Exception ex) { ex.printStackTrace(); }
-            }
-        });
-    }
+					MenuItem exitItem = new MenuItem("Exit");
+					exitItem.addActionListener(e -> {
+						for (TrayIcon ti : tray.getTrayIcons())
+							tray.remove(ti);
+						System.exit(0);
+					});
+					menu.add(exitItem);
 
-    public static Image createTrayImage() {
-        int s = 16;
-        BufferedImage img = new BufferedImage(s, s, BufferedImage.TYPE_INT_ARGB);
-        Graphics2D g = img.createGraphics();
-        g.setRenderingHint(RenderingHints.KEY_ANTIALIASING, RenderingHints.VALUE_ANTIALIAS_ON);
-        g.setColor(new Color(0x3B82F6)); g.fillRoundRect(0, 0, s-1, s-1, 4, 4);
-        g.setColor(Color.WHITE); g.setFont(new Font(Font.SANS_SERIF, Font.BOLD, 9));
-        g.drawString("DF", 2, 12);
-        g.dispose();
-        return img;
-    }
+					TrayIcon icon = new TrayIcon(createTrayImage(), "DocFinder", menu);
+					icon.setImageAutoSize(true);
+					icon.addMouseListener(new MouseAdapter() {
+						@Override
+						public void mouseClicked(MouseEvent e) {
+							if (e.getButton() == MouseEvent.BUTTON1) {
+								boolean visible = win.isVisible();
+								win.setVisible(!visible);
+								if (!visible) {
+									win.setExtendedState(JFrame.NORMAL);
+									win.toFront();
+									win.requestFocus();
+								}
+							}
+						}
+					});
+					tray.add(icon);
+					win.setDefaultCloseOperation(WindowConstants.HIDE_ON_CLOSE);
+				} catch (Exception ex) {
+					ex.printStackTrace();
+				}
+			}
+		});
+	}
+
+	public static Image createTrayImage() {
+		int s = 16;
+		BufferedImage img = new BufferedImage(s, s, BufferedImage.TYPE_INT_ARGB);
+		Graphics2D g = img.createGraphics();
+		g.setRenderingHint(RenderingHints.KEY_ANTIALIASING, RenderingHints.VALUE_ANTIALIAS_ON);
+		g.setColor(new Color(0x3B82F6));
+		g.fillRoundRect(0, 0, s - 1, s - 1, 4, 4);
+		g.setColor(Color.WHITE);
+		g.setFont(new Font(Font.SANS_SERIF, Font.BOLD, 9));
+		g.drawString("DF", 2, 12);
+		g.dispose();
+		return img;
+	}
 }

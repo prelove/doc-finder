@@ -163,7 +163,7 @@ mvn clean package
 ### Run
 ```bash
 # Shaded/assembly JAR (depending on your packaging)
-java -Xms256m -Xmx1024m -jar target/docfinder-*-with-dependencies.jar
+java -jar target/docfinder-1.0.0.jar
 ```
 
 > Or launch from IDE. The app uses `~/.docfinder` for its runtime data.
