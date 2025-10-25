@@ -34,6 +34,9 @@ import java.util.concurrent.atomic.AtomicInteger;
  * - 支持：单文件 upsert、删除；单目录/多目录全量索引（支持强制重建）
  */
 public class LuceneIndexer {
+    private static final String KIND_FILE = "file";
+    private static final String KIND_FOLDER = "folder";
+
 
     /** Tika 解析器（自动探测） */
     private final AutoDetectParser tikaParser = new AutoDetectParser();
@@ -74,55 +77,111 @@ public class LuceneIndexer {
      * - 正文抽取为只读+限时，避免修改文件时间或被占用。
      */
     public void upsertFile(Path file) throws IOException {
+
         if (file == null) return;
+
         if (!Files.exists(file)) { deletePath(file); return; }
+
         if (isExcluded(file)) return;
 
+
+
         Files.createDirectories(indexDir);
+
         try (Directory dir = FSDirectory.open(indexDir)) {
+
             IndexWriterConfig cfg = new IndexWriterConfig(perFieldAnalyzer)
+
                     .setOpenMode(IndexWriterConfig.OpenMode.CREATE_OR_APPEND);
+
             try (IndexWriter writer = new IndexWriter(dir, cfg)) {
+
                 BasicFileAttributes attrs = Files.readAttributes(file, BasicFileAttributes.class);
-                if (attrs.isDirectory()) return;
 
-                String name = file.getFileName().toString();
-                String pathStr = Utils.normalizeForIndex(file); // ✅ 统一规范化路径
+                if (attrs.isDirectory()) {
 
-                Document doc = new Document();
-                // — 基础元数据 —
-                doc.add(new StringField("path", pathStr, Field.Store.YES));
-                doc.add(new TextField("name", name, Field.Store.YES));
-                doc.add(new StringField("name_raw", name.toLowerCase(java.util.Locale.ROOT), Field.Store.NO)); // ✅ 供 name:
-                doc.add(new StringField("ext", getExt(name), Field.Store.YES));
-                doc.add(new LongPoint("mtime_l", attrs.lastModifiedTime().toMillis()));
-                doc.add(new StoredField("mtime", attrs.lastModifiedTime().toMillis()));
-                doc.add(new StoredField("size", attrs.size()));
-                doc.add(new StoredField("ctime", attrs.creationTime().toMillis()));
-                doc.add(new StoredField("atime", attrs.lastAccessTime().toMillis()));
+                    indexDirectory(writer, file, attrs);
 
-                // — 正文解析（只读 & 限时） —
-                String mime = null, content = "";
-                try {
-                    if (shouldParseContent(file, name, attrs.size())) {
-                        content = extractTextReadOnly(file);
-                    }
-                    mime = Files.probeContentType(file);
-                } catch (Exception ignore) {}
+                    writer.commit();
 
-                if (mime != null) doc.add(new StringField("mime", mime, Field.Store.YES));
-                if (!content.isEmpty()) {
-                    doc.add(new TextField("content", content, Field.Store.NO));
-                    doc.add(new TextField("content_zh", content, Field.Store.NO));
-                    doc.add(new TextField("content_ja", content, Field.Store.NO));
+                    return;
+
                 }
 
-                // ✅ 一次性更新（替换/插入）；不要在构造未完成前调用 update/delete
+
+
+                String name = file.getFileName().toString();
+
+                String pathStr = Utils.normalizeForIndex(file);
+
+
+
+                Document doc = new Document();
+
+                doc.add(new StringField("path", pathStr, Field.Store.YES));
+
+                doc.add(new TextField("name", name, Field.Store.YES));
+
+                doc.add(new StringField("name_raw", name.toLowerCase(java.util.Locale.ROOT), Field.Store.NO));
+
+                doc.add(new StringField("ext", getExt(name), Field.Store.YES));
+
+                doc.add(new StringField("kind", KIND_FILE, Field.Store.YES));
+
+                doc.add(new LongPoint("mtime_l", attrs.lastModifiedTime().toMillis()));
+
+                doc.add(new StoredField("mtime", attrs.lastModifiedTime().toMillis()));
+
+                doc.add(new StoredField("size", attrs.size()));
+
+                doc.add(new StoredField("ctime", attrs.creationTime().toMillis()));
+
+                doc.add(new StoredField("atime", attrs.lastAccessTime().toMillis()));
+
+
+
+                String mime = null, content = "";
+
+                try {
+
+                    if (shouldParseContent(file, name, attrs.size())) {
+
+                        content = extractTextReadOnly(file);
+
+                    }
+
+                    mime = Files.probeContentType(file);
+
+                } catch (Exception ignore) {}
+
+
+
+                if (mime != null) doc.add(new StringField("mime", mime, Field.Store.YES));
+
+                if (!content.isEmpty()) {
+
+                    doc.add(new TextField("content", content, Field.Store.NO));
+
+                    doc.add(new TextField("content_zh", content, Field.Store.NO));
+
+                    doc.add(new TextField("content_ja", content, Field.Store.NO));
+
+                }
+
+
+
                 writer.updateDocument(new Term("path", pathStr), doc);
+
                 writer.commit();
+
             }
+
         }
+
     }
+
+
+
 
     /**
      * 删除一个绝对路径对应的文档（按规范化 path 匹配）。
@@ -147,64 +206,133 @@ public class LuceneIndexer {
      * - 建议使用 indexFolders(...) 做多根/重建。
      */
     public int indexFolder(Path root) throws IOException {
+
         Files.createDirectories(indexDir);
+
         try (Directory dir = FSDirectory.open(indexDir)) {
+
             IndexWriterConfig cfg = new IndexWriterConfig(perFieldAnalyzer)
+
                     .setOpenMode(IndexWriterConfig.OpenMode.CREATE_OR_APPEND)
+
                     .setRAMBufferSizeMB(256);
 
+
+
             final int[] count = {0};
+
             try (IndexWriter writer = new IndexWriter(dir, cfg)) {
+
                 Files.walkFileTree(root, new SimpleFileVisitor<Path>() {
+
                     @Override
-                    public FileVisitResult preVisitDirectory(Path dir, BasicFileAttributes attrs) {
-                        return isExcluded(dir) ? FileVisitResult.SKIP_SUBTREE : FileVisitResult.CONTINUE;
+
+                    public FileVisitResult preVisitDirectory(Path dir, BasicFileAttributes attrs) throws IOException {
+
+                        if (isExcluded(dir)) return FileVisitResult.SKIP_SUBTREE;
+
+                        indexDirectory(writer, dir, attrs);
+
+                        count[0]++;
+
+                        return FileVisitResult.CONTINUE;
+
                     }
+
                     @Override
+
                     public FileVisitResult visitFile(Path file, BasicFileAttributes attrs) throws IOException {
+
                         if (attrs.isDirectory() || isExcluded(file)) return FileVisitResult.CONTINUE;
 
+
+
                         String name = file.getFileName().toString();
+
                         if (name.endsWith(".exe") || name.endsWith(".dll")) return FileVisitResult.CONTINUE;
 
-                        String pathStr = Utils.normalizeForIndex(file); // ✅ 统一规范化路径
+
+
+                        String pathStr = Utils.normalizeForIndex(file);
+
+
 
                         Document doc = new Document();
+
                         doc.add(new StringField("path", pathStr, Field.Store.YES));
+
                         doc.add(new TextField("name", name, Field.Store.YES));
-                        doc.add(new StringField("name_raw", name.toLowerCase(java.util.Locale.ROOT), Field.Store.NO)); // ✅
+
+                        doc.add(new StringField("name_raw", name.toLowerCase(java.util.Locale.ROOT), Field.Store.NO));
+
                         doc.add(new StringField("ext", getExt(name), Field.Store.YES));
+
+                        doc.add(new StringField("kind", KIND_FILE, Field.Store.YES));
+
                         doc.add(new LongPoint("mtime_l", attrs.lastModifiedTime().toMillis()));
+
                         doc.add(new StoredField("mtime", attrs.lastModifiedTime().toMillis()));
+
                         doc.add(new StoredField("size", attrs.size()));
+
                         doc.add(new StoredField("ctime", attrs.creationTime().toMillis()));
+
                         doc.add(new StoredField("atime", attrs.lastAccessTime().toMillis()));
 
+
+
                         String mime = null, content = "";
+
                         try {
+
                             if (shouldParseContent(file, name, attrs.size())) {
+
                                 content = extractTextReadOnly(file);
+
                             }
+
                             mime = Files.probeContentType(file);
+
                         } catch (Exception ignore) {}
 
+
+
                         if (mime != null) doc.add(new StringField("mime", mime, Field.Store.YES));
+
                         if (!content.isEmpty()) {
+
                             doc.add(new TextField("content", content, Field.Store.NO));
+
                             doc.add(new TextField("content_zh", content, Field.Store.NO));
+
                             doc.add(new TextField("content_ja", content, Field.Store.NO));
+
                         }
 
-                        writer.updateDocument(new Term("path", pathStr), doc); // ✅ 统一用 pathStr
+
+
+                        writer.updateDocument(new Term("path", pathStr), doc);
+
                         count[0]++;
+
                         return FileVisitResult.CONTINUE;
+
                     }
+
                 });
+
                 writer.commit();
+
             }
+
             return count[0];
+
         }
+
     }
+
+
+
 
 
     /* --------------------------- 多目录索引（推荐入口） --------------------------- */
@@ -232,59 +360,120 @@ public class LuceneIndexer {
     }
 
     private void walkOneRoot(IndexWriter writer, Path root,
+
             java.util.concurrent.atomic.AtomicInteger count) throws IOException {
-		Files.walkFileTree(root, new SimpleFileVisitor<Path>() {
-			@Override
-			public FileVisitResult preVisitDirectory(Path dir, BasicFileAttributes attrs) {
-				return isExcluded(dir) ? FileVisitResult.SKIP_SUBTREE : FileVisitResult.CONTINUE;
-			}
 
-			@Override
-			public FileVisitResult visitFile(Path file, BasicFileAttributes attrs) throws IOException {
-				if (attrs.isDirectory() || isExcluded(file))
-					return FileVisitResult.CONTINUE;
+        Files.walkFileTree(root, new SimpleFileVisitor<Path>() {
 
-				String name = file.getFileName().toString();
-				if (name.endsWith(".exe") || name.endsWith(".dll"))
-					return FileVisitResult.CONTINUE;
+            @Override
 
-				String pathStr = org.abitware.docfinder.util.Utils.normalizeForIndex(file); // ✅ 统一路径
+            public FileVisitResult preVisitDirectory(Path dir, BasicFileAttributes attrs) throws IOException {
 
-				org.apache.lucene.document.Document doc = new org.apache.lucene.document.Document();
-				doc.add(new StringField("path", pathStr, Field.Store.YES));
-				doc.add(new TextField("name", name, Field.Store.YES));
-				doc.add(new StringField("name_raw", name.toLowerCase(java.util.Locale.ROOT), Field.Store.NO)); // ✅
-																												// 关键：补上！
-				doc.add(new StringField("ext", getExt(name), Field.Store.YES));
-				doc.add(new LongPoint("mtime_l", attrs.lastModifiedTime().toMillis()));
-				doc.add(new StoredField("mtime", attrs.lastModifiedTime().toMillis()));
-				doc.add(new StoredField("size", attrs.size()));
-				doc.add(new StoredField("ctime", attrs.creationTime().toMillis()));
-				doc.add(new StoredField("atime", attrs.lastAccessTime().toMillis()));
+                if (isExcluded(dir)) return FileVisitResult.SKIP_SUBTREE;
 
-				String mime = null, content = "";
-				try {
-					if (shouldParseContent(file, name, attrs.size())) {
-						content = extractTextReadOnly(file);
-					}
-					mime = java.nio.file.Files.probeContentType(file);
-				} catch (Exception ignore) {
-				}
+                indexDirectory(writer, dir, attrs);
 
-				if (mime != null)
-					doc.add(new StringField("mime", mime, Field.Store.YES));
-				if (!content.isEmpty()) {
-					doc.add(new TextField("content", content, Field.Store.NO));
-					doc.add(new TextField("content_zh", content, Field.Store.NO));
-					doc.add(new TextField("content_ja", content, Field.Store.NO));
-				}
+                count.incrementAndGet();
 
-				writer.updateDocument(new Term("path", pathStr), doc); // ✅ 用规范化后的 pathStr
-				count.incrementAndGet();
-				return FileVisitResult.CONTINUE;
-			}
-		});
-	}
+                return FileVisitResult.CONTINUE;
+
+            }
+
+
+
+            @Override
+
+            public FileVisitResult visitFile(Path file, BasicFileAttributes attrs) throws IOException {
+
+                if (attrs.isDirectory() || isExcluded(file))
+
+                    return FileVisitResult.CONTINUE;
+
+
+
+                String name = file.getFileName().toString();
+
+                if (name.endsWith(".exe") || name.endsWith(".dll"))
+
+                    return FileVisitResult.CONTINUE;
+
+
+
+                String pathStr = org.abitware.docfinder.util.Utils.normalizeForIndex(file);
+
+
+
+                Document doc = new Document();
+
+                doc.add(new StringField("path", pathStr, Field.Store.YES));
+
+                doc.add(new TextField("name", name, Field.Store.YES));
+
+                doc.add(new StringField("name_raw", name.toLowerCase(java.util.Locale.ROOT), Field.Store.NO));
+
+                doc.add(new StringField("ext", getExt(name), Field.Store.YES));
+
+                doc.add(new StringField("kind", KIND_FILE, Field.Store.YES));
+
+                doc.add(new LongPoint("mtime_l", attrs.lastModifiedTime().toMillis()));
+
+                doc.add(new StoredField("mtime", attrs.lastModifiedTime().toMillis()));
+
+                doc.add(new StoredField("size", attrs.size()));
+
+                doc.add(new StoredField("ctime", attrs.creationTime().toMillis()));
+
+                doc.add(new StoredField("atime", attrs.lastAccessTime().toMillis()));
+
+
+
+                String mime = null, content = "";
+
+                try {
+
+                    if (shouldParseContent(file, name, attrs.size())) {
+
+                        content = extractTextReadOnly(file);
+
+                    }
+
+                    mime = java.nio.file.Files.probeContentType(file);
+
+                } catch (Exception ignore) {}
+
+
+
+                if (mime != null)
+
+                    doc.add(new StringField("mime", mime, Field.Store.YES));
+
+                if (!content.isEmpty()) {
+
+                    doc.add(new TextField("content", content, Field.Store.NO));
+
+                    doc.add(new TextField("content_zh", content, Field.Store.NO));
+
+                    doc.add(new TextField("content_ja", content, Field.Store.NO));
+
+                }
+
+
+
+                writer.updateDocument(new Term("path", pathStr), doc);
+
+                count.incrementAndGet();
+
+                return FileVisitResult.CONTINUE;
+
+            }
+
+        });
+
+    }
+
+
+
+
 
     /* --------------------------- 规则/工具 --------------------------- */
 
@@ -362,6 +551,26 @@ public class LuceneIndexer {
         if (isTextMime(file)) return true;
         return looksLikeText(file); // 4KB 嗅探：无 NUL 且可打印 ASCII 比例高
     }
+
+    private void indexDirectory(IndexWriter writer, Path dir, BasicFileAttributes attrs) throws IOException {
+        if (dir == null || attrs == null) return;
+        String pathStr = Utils.normalizeForIndex(dir);
+        String name = dir.getFileName() == null ? dir.toString() : dir.getFileName().toString();
+
+        Document doc = new Document();
+        doc.add(new StringField("path", pathStr, Field.Store.YES));
+        doc.add(new TextField("name", name, Field.Store.YES));
+        doc.add(new StringField("name_raw", name.toLowerCase(java.util.Locale.ROOT), Field.Store.NO));
+        doc.add(new StringField("ext", "", Field.Store.YES));
+        doc.add(new StringField("kind", KIND_FOLDER, Field.Store.YES));
+        doc.add(new LongPoint("mtime_l", attrs.lastModifiedTime().toMillis()));
+        doc.add(new StoredField("mtime", attrs.lastModifiedTime().toMillis()));
+        doc.add(new StoredField("size", 0L));
+        doc.add(new StoredField("ctime", attrs.creationTime().toMillis()));
+        doc.add(new StoredField("atime", attrs.lastAccessTime().toMillis()));
+        writer.updateDocument(new Term("path", pathStr), doc);
+    }
+
 
     /** MIME 探测：text/* 或常见文本型 application/* */
     private boolean isTextMime(Path file) {
