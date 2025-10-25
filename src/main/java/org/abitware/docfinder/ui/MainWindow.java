@@ -42,7 +42,9 @@ import javax.swing.WindowConstants;
 import javax.swing.table.DefaultTableModel;
 
 import org.abitware.docfinder.search.FilterState;
+import org.abitware.docfinder.search.MatchMode;
 import org.abitware.docfinder.search.SearchRequest;
+import org.abitware.docfinder.search.SearchScope;
 import org.abitware.docfinder.search.SearchResult;
 import org.abitware.docfinder.search.SearchService;
 import org.abitware.docfinder.watch.NetPollerService.PollStats;
@@ -59,6 +61,8 @@ public class MainWindow extends JFrame {
 
 	// 顶部：搜索与过滤
 	// 搜索框改为“可编辑下拉”，编辑器仍是 JTextField
+	private final javax.swing.JComboBox<SearchScope> scopeBox = new javax.swing.JComboBox<>(SearchScope.values());
+	private final javax.swing.JComboBox<MatchMode> matchModeBox = new javax.swing.JComboBox<>(MatchMode.values());
 	private final javax.swing.JComboBox<String> queryBox = new javax.swing.JComboBox<>();
 	private javax.swing.JTextField searchField; // 实际的编辑器
 	private final org.abitware.docfinder.search.SearchHistoryManager historyMgr = new org.abitware.docfinder.search.SearchHistoryManager();
@@ -143,14 +147,22 @@ public class MainWindow extends JFrame {
 		JPanel top = new JPanel(new BorderLayout(8, 8));
 		top.setBorder(BorderFactory.createEmptyBorder(8, 8, 0, 8));
 
+		scopeBox.setToolTipText("Search scope");
+		scopeBox.setMaximumRowCount(SearchScope.values().length);
+		scopeBox.setSelectedItem(SearchScope.ALL);
+
+		matchModeBox.setToolTipText("Match mode");
+		matchModeBox.setMaximumRowCount(MatchMode.values().length);
+		matchModeBox.setSelectedItem(MatchMode.FUZZY);
+
 		// 可编辑下拉
 		queryBox.setEditable(true);
 		queryBox.setToolTipText("Tips: name:<term>, content:<term>, phrase with quotes, AND/OR, wildcard *");
 
-		// 取到 editor 的 JTextField 以便设置 placeholder 和监听回车
+		// 取到 editor 的 JTextField 以便设置 placeholder 和监听回调
 		searchField = (javax.swing.JTextField) queryBox.getEditor().getEditorComponent();
 		searchField.putClientProperty("JTextField.placeholderText",
-				"Search…  (e.g. report*, content:\"zero knowledge\", name:\"設計\")");
+				"Search... (e.g. report*, content:\"zero knowledge\", name:\"設計\")");
 		// 回车触发搜索
 		searchField.addActionListener(e -> doSearch());
 
@@ -168,21 +180,40 @@ public class MainWindow extends JFrame {
 		for (String s : hist)
 			queryBox.addItem(s);
 
-		// ✅ 关键：保持编辑器为空，placeholder 才会显示
+		// 关键：保持编辑器为空，placeholder 才会显示
 		queryBox.setSelectedItem(""); // <-- 新增
 		searchField.requestFocusInWindow(); // 可选：把输入焦点放到编辑器
 
 		JButton toggleFilters = new JButton("Filters");
 		toggleFilters.addActionListener(e -> filterBar.setVisible(!filterBar.isVisible()));
 
+		scopeBox.addActionListener(e -> rerunIfQueryPresent());
+		matchModeBox.addActionListener(e -> rerunIfQueryPresent());
+
+		JPanel centerStrip = new JPanel(new BorderLayout(6, 0));
+		centerStrip.add(scopeBox, BorderLayout.WEST);
+		centerStrip.add(queryBox, BorderLayout.CENTER);
+
+		JPanel eastStrip = new JPanel(new FlowLayout(FlowLayout.RIGHT, 6, 0));
+		eastStrip.add(matchModeBox);
+		eastStrip.add(toggleFilters);
+
 		top.add(new JLabel("🔎"), BorderLayout.WEST);
-		top.add(queryBox, BorderLayout.CENTER);
-		top.add(toggleFilters, BorderLayout.EAST);
+		top.add(centerStrip, BorderLayout.CENTER);
+		top.add(eastStrip, BorderLayout.EAST);
 		return top;
 	}
 
+
 	private String getQueryText() {
 		return (searchField == null) ? "" : searchField.getText().trim();
+	}
+
+	private void rerunIfQueryPresent() {
+		String text = getQueryText();
+		if (!text.isEmpty()) {
+			doSearch();
+		}
 	}
 
 	private void setQueryText(String s) {
@@ -678,20 +709,35 @@ public class MainWindow extends JFrame {
 			preview.setText(htmlWrap("No selection."));
 			return;
 		}
-		preview.setText(htmlWrap("Loading preview…"));
+		java.nio.file.Path path;
+		try {
+			path = java.nio.file.Paths.get(s.path);
+		} catch (Exception ex) {
+			preview.setText(htmlWrap("Preview unavailable."));
+			return;
+		}
+		if (java.nio.file.Files.isDirectory(path)) {
+			preview.setText(htmlWrap("Folder preview not available."));
+			return;
+		}
+		if (!java.nio.file.Files.isRegularFile(path)) {
+			preview.setText(htmlWrap("File not found."));
+			return;
+		}
+		preview.setText(htmlWrap("Loading preview..."));
+		final java.nio.file.Path target = path;
 		new javax.swing.SwingWorker<String, Void>() {
 			@Override
 			protected String doInBackground() throws Exception {
-				// 1) 只读打开并抽取前 N 字符
-				final int MAX_CHARS = 60_000; // 预览上限，不保存到索引
-				String text = extractTextHead(java.nio.file.Paths.get(s.path), MAX_CHARS);
-				if (text == null || text.isEmpty())
+				final int MAX_CHARS = 60_000;
+				String text = loadPreviewText(target, MAX_CHARS);
+				if (text == null || text.trim().isEmpty()) {
 					return htmlWrap("(No text content.)");
+				}
 
-				// 2) 根据查询词做一个非常简单的高亮，找第一处命中，取上下文
 				String q = (lastQuery == null) ? "" : lastQuery.trim();
 				String[] terms = tokenizeForHighlight(q);
-				String snippet = makeSnippet(text, terms, 300); // 取约 300 字符上下文
+				String snippet = makeSnippet(text, terms, 300);
 				String html = toHtml(snippet, terms);
 				return htmlWrap(html);
 			}
@@ -708,6 +754,7 @@ public class MainWindow extends JFrame {
 		}.execute();
 	}
 
+
 	// 只读抽取前 N 字符（复用我们已有的 Tika 逻辑，简化为局部方法以免循环依赖）
 	private String extractTextHead(java.nio.file.Path file, int maxChars) {
 		try (java.io.InputStream is = java.nio.file.Files.newInputStream(file, java.nio.file.StandardOpenOption.READ)) {
@@ -721,6 +768,92 @@ public class MainWindow extends JFrame {
 		} catch (Throwable e) {
 			return "";
 		}
+	}
+
+	private String loadPreviewText(java.nio.file.Path file, int maxChars) {
+		if (file == null || maxChars <= 0) {
+			return "";
+		}
+		String viaTika = extractTextHead(file, maxChars);
+		if (viaTika != null && !viaTika.trim().isEmpty()) {
+			return viaTika;
+		}
+		return readTextFallback(file, maxChars);
+	}
+
+	private String readTextFallback(java.nio.file.Path file, int maxChars) {
+		java.util.LinkedHashSet<java.nio.charset.Charset> candidates = new java.util.LinkedHashSet<>();
+		java.nio.charset.Charset bom = detectBomCharset(file);
+		if (bom != null) {
+			candidates.add(bom);
+		}
+		candidates.add(java.nio.charset.StandardCharsets.UTF_8);
+		candidates.add(java.nio.charset.StandardCharsets.UTF_16LE);
+		candidates.add(java.nio.charset.StandardCharsets.UTF_16BE);
+		try {
+			candidates.add(java.nio.charset.Charset.forName("windows-1252"));
+		} catch (Exception ignore) {
+		}
+		for (java.nio.charset.Charset cs : candidates) {
+			if (cs == null) {
+				continue;
+			}
+			try {
+				String text = readTextWithCharset(file, maxChars, cs);
+				if (text != null && !text.trim().isEmpty()) {
+					return text;
+				}
+			} catch (Exception ignore) {
+			}
+		}
+		return "";
+	}
+
+	private String readTextWithCharset(java.nio.file.Path file, int maxChars, java.nio.charset.Charset charset) throws java.io.IOException {
+		if (file == null || charset == null || maxChars <= 0) {
+			return "";
+		}
+		char[] buffer = new char[4096];
+		StringBuilder sb = new StringBuilder(Math.min(maxChars, 65_536));
+		try (java.io.Reader reader = new java.io.BufferedReader(
+				new java.io.InputStreamReader(java.nio.file.Files.newInputStream(file, java.nio.file.StandardOpenOption.READ), charset))) {
+			int remaining = maxChars;
+			while (remaining > 0) {
+				int n = reader.read(buffer, 0, Math.min(buffer.length, remaining));
+				if (n < 0) {
+					break;
+				}
+				sb.append(buffer, 0, n);
+				remaining -= n;
+			}
+		}
+		if (sb.length() > 0 && sb.charAt(0) == '\uFEFF') {
+			sb.deleteCharAt(0);
+		}
+		return sb.toString();
+	}
+
+	private java.nio.charset.Charset detectBomCharset(java.nio.file.Path file) {
+		if (file == null) {
+			return null;
+		}
+		try (java.io.InputStream is = java.nio.file.Files.newInputStream(file, java.nio.file.StandardOpenOption.READ)) {
+			byte[] bom = new byte[3];
+			int n = is.read(bom);
+			if (n >= 3 && bom[0] == (byte) 0xEF && bom[1] == (byte) 0xBB && bom[2] == (byte) 0xBF) {
+				return java.nio.charset.StandardCharsets.UTF_8;
+			}
+			if (n >= 2) {
+				if (bom[0] == (byte) 0xFE && bom[1] == (byte) 0xFF) {
+					return java.nio.charset.StandardCharsets.UTF_16BE;
+				}
+				if (bom[0] == (byte) 0xFF && bom[1] == (byte) 0xFE) {
+					return java.nio.charset.StandardCharsets.UTF_16LE;
+				}
+			}
+		} catch (Exception ignore) {
+		}
+		return null;
 	}
 
 	// 从查询串里提取要高亮的词（非常简化：去掉字段前缀/引号/AND/OR）
@@ -921,6 +1054,16 @@ public class MainWindow extends JFrame {
 		}.execute();
 	}
 
+	private SearchScope getSelectedScope() {
+		Object sel = scopeBox.getSelectedItem();
+		return (sel instanceof SearchScope) ? (SearchScope) sel : SearchScope.ALL;
+	}
+
+	private MatchMode getSelectedMatchMode() {
+		Object sel = matchModeBox.getSelectedItem();
+		return (sel instanceof MatchMode) ? (MatchMode) sel : MatchMode.FUZZY;
+	}
+
 	private void doSearch() {
 
 		if (searchService == null) {
@@ -967,7 +1110,7 @@ public class MainWindow extends JFrame {
 
 		long token = ++searchSequence;
 
-		SearchWorker worker = new SearchWorker(token, q, filters);
+		SearchWorker worker = new SearchWorker(token, q, filters, getSelectedScope(), getSelectedMatchMode());
 
 		activeSearchWorker = worker;
 
@@ -1039,17 +1182,25 @@ public class MainWindow extends JFrame {
 
 		private final FilterState filter;
 
+		private final SearchScope scope;
+
+		private final MatchMode matchMode;
+
 		private final long startedAt = System.currentTimeMillis();
 
 
 
-		SearchWorker(long token, String query, FilterState filter) {
+		SearchWorker(long token, String query, FilterState filter, SearchScope scope, MatchMode matchMode) {
 
 			this.token = token;
 
 			this.query = query;
 
 			this.filter = filter;
+
+			this.scope = (scope == null) ? SearchScope.ALL : scope;
+
+			this.matchMode = (matchMode == null) ? MatchMode.FUZZY : matchMode;
 
 		}
 
@@ -1065,7 +1216,7 @@ public class MainWindow extends JFrame {
 
 			}
 
-			SearchRequest request = new SearchRequest(query, 100, filter);
+			SearchRequest request = new SearchRequest(query, 100, filter, scope, matchMode);
 
 			return searchService.search(request);
 
