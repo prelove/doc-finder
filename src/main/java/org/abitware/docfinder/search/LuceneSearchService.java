@@ -1,29 +1,38 @@
 package org.abitware.docfinder.search;
 
+import java.nio.file.Path;
+import java.util.ArrayList;
+import java.util.HashMap;
+import java.util.List;
+import java.util.Locale;
+import java.util.Map;
+import java.util.regex.Matcher;
+import java.util.regex.Pattern;
+
 import org.apache.lucene.analysis.Analyzer;
 import org.apache.lucene.analysis.cn.smart.SmartChineseAnalyzer;
 import org.apache.lucene.analysis.ja.JapaneseAnalyzer;
 import org.apache.lucene.analysis.miscellaneous.PerFieldAnalyzerWrapper;
 import org.apache.lucene.analysis.standard.StandardAnalyzer;
-import org.apache.lucene.queryparser.classic.MultiFieldQueryParser;
-import java.util.HashMap;
-import java.util.Map;
-import org.apache.lucene.analysis.Analyzer;
-import org.apache.lucene.analysis.standard.StandardAnalyzer;
 import org.apache.lucene.document.Document;
 import org.apache.lucene.document.LongPoint;
 import org.apache.lucene.index.DirectoryReader;
 import org.apache.lucene.index.Term;
-import org.apache.lucene.search.*;
 import org.apache.lucene.queryparser.classic.MultiFieldQueryParser;
+import org.apache.lucene.queryparser.classic.ParseException;
 import org.apache.lucene.queryparser.classic.QueryParser;
+import org.apache.lucene.search.BooleanClause;
+import org.apache.lucene.search.BooleanQuery;
+import org.apache.lucene.search.Explanation;
+import org.apache.lucene.search.IndexSearcher;
+import org.apache.lucene.search.MatchAllDocsQuery;
+import org.apache.lucene.search.PrefixQuery;
+import org.apache.lucene.search.Query;
+import org.apache.lucene.search.ScoreDoc;
+import org.apache.lucene.search.TermQuery;
+import org.apache.lucene.search.TopDocs;
+import org.apache.lucene.search.WildcardQuery;
 import org.apache.lucene.store.FSDirectory;
-
-import java.nio.file.Path;
-import java.util.ArrayList;
-import java.util.HashMap;
-import java.util.List;
-import java.util.Map;
 
 /** 仅按 name 字段搜索（下一步再扩展 content） */
 public class LuceneSearchService implements SearchService {
@@ -31,7 +40,6 @@ public class LuceneSearchService implements SearchService {
     
     private final Analyzer queryAnalyzer;
     
-    private volatile FilterState filter = new FilterState();
 
     public LuceneSearchService(Path indexDir) {
     	this.indexDir = indexDir;
@@ -54,54 +62,55 @@ public class LuceneSearchService implements SearchService {
      * 新增：支持文件名通配（name:*.xlsx / name:report-??.pdf），以及查询串就是通配（*.xlsx）。
      */
     @Override
-    public List<SearchResult> search(String q, int limit) {
+    public List<SearchResult> search(SearchRequest request) {
         List<SearchResult> out = new ArrayList<>();
-        if (q == null || q.trim().isEmpty()) return out;
+        if (request == null) return out;
+
+        String q = (request.query == null) ? "" : request.query.trim();
+        if (q.isEmpty()) return out;
+
+        FilterState filter = (request.filter == null)
+                ? new FilterState()
+                : request.filter;
+        int limit = Math.max(1, Math.min(request.limit, 200));
 
         try (DirectoryReader reader = DirectoryReader.open(FSDirectory.open(indexDir))) {
             IndexSearcher searcher = new IndexSearcher(reader);
 
-            // ---- 0) 解析 name: 通配符，剥离出“剩余查询串” ----
             NamePreprocess np = extractNameWildcards(q);
 
-            // ---- 1) 跨字段基础解析（name/content/...），允许前导通配 ----
             String[] fields = {"name", "content", "content_zh", "content_ja"};
             java.util.Map<String, Float> boosts = new java.util.HashMap<>();
-            boosts.put("name", 2.0f);       // 文件名更高权重
+            boosts.put("name", 2.0f);
             boosts.put("content", 1.2f);
             boosts.put("content_zh", 1.2f);
             boosts.put("content_ja", 1.2f);
 
-            org.apache.lucene.queryparser.classic.MultiFieldQueryParser parser =
-                    new org.apache.lucene.queryparser.classic.MultiFieldQueryParser(fields, queryAnalyzer, boosts);
-            parser.setAllowLeadingWildcard(true); // 支持 *.xlsx 这种前导通配
+            MultiFieldQueryParser parser =
+                    new MultiFieldQueryParser(fields, queryAnalyzer, boosts);
+            parser.setAllowLeadingWildcard(true);
 
-            org.apache.lucene.search.Query userQuery = buildUserQuery(np.qRest, parser);
+            Query userQuery = buildUserQuery(np.qRest, parser);
 
-            // ---- 2) 根查询：用户查询（为空则 MatchAll）+ 文件名通配 MUST ----
-            org.apache.lucene.search.BooleanQuery.Builder root = new org.apache.lucene.search.BooleanQuery.Builder();
+            BooleanQuery.Builder root = new BooleanQuery.Builder();
             if (userQuery == null || userQuery.toString().isEmpty()
-                    || (userQuery instanceof org.apache.lucene.search.BooleanQuery
-                        && ((org.apache.lucene.search.BooleanQuery) userQuery).clauses().isEmpty())) {
-                root.add(new org.apache.lucene.search.MatchAllDocsQuery(),
-                        org.apache.lucene.search.BooleanClause.Occur.MUST);
+                    || (userQuery instanceof BooleanQuery
+                        && ((BooleanQuery) userQuery).clauses().isEmpty())) {
+                root.add(new MatchAllDocsQuery(),
+                        BooleanClause.Occur.MUST);
             } else {
-                root.add(userQuery, org.apache.lucene.search.BooleanClause.Occur.MUST);
+                root.add(userQuery, BooleanClause.Occur.MUST);
             }
 
-            // 将 name:*.xxx 片段转为 MUST 的 WildcardQuery 命中 name_raw，并对 *.ext 追加 ext 过滤以加速
             addNameWildcardMust(root, np.nameWildcards);
 
-            // ---- 3) 应用你的过滤器（扩展名/时间范围） ----
-            addFilters(root);
+            addFilters(root, filter);
 
-            org.apache.lucene.search.Query finalQuery = root.build();
+            Query finalQuery = root.build();
 
-            // ---- 4) 搜索 & 映射结果 ----
-            int max = Math.max(1, Math.min(limit, 200));
-            org.apache.lucene.search.TopDocs top = searcher.search(finalQuery, max);
-            for (org.apache.lucene.search.ScoreDoc sd : top.scoreDocs) {
-                org.apache.lucene.document.Document d = searcher.doc(sd.doc);
+            TopDocs top = searcher.search(finalQuery, limit);
+            for (ScoreDoc sd : top.scoreDocs) {
+                Document d = searcher.doc(sd.doc);
 
                 long ctime = (d.getField("ctime") != null) ? d.getField("ctime").numericValue().longValue() : 0L;
                 long atime = (d.getField("atime") != null) ? d.getField("atime").numericValue().longValue() : 0L;
@@ -159,25 +168,25 @@ public class LuceneSearchService implements SearchService {
      * 构造用户查询：跨字段解析（MUST）+ 文件名前缀加分（SHOULD）。
      * - 只有在“没有字段/空格/尾部通配”的短 token 时才做 name 前缀加分。
      */
-    private org.apache.lucene.search.Query buildUserQuery(String qRest,
-                                                         org.apache.lucene.queryparser.classic.MultiFieldQueryParser parser)
-            throws org.apache.lucene.queryparser.classic.ParseException {
+    private Query buildUserQuery(String qRest,
+                                                         MultiFieldQueryParser parser)
+            throws ParseException {
         if (qRest == null) qRest = "";
-        org.apache.lucene.search.BooleanQuery.Builder b = new org.apache.lucene.search.BooleanQuery.Builder();
+        BooleanQuery.Builder b = new BooleanQuery.Builder();
 
         if (!qRest.isEmpty()) {
-            org.apache.lucene.search.Query parsed = parser.parse(qRest);
-            b.add(parsed, org.apache.lucene.search.BooleanClause.Occur.MUST);
+            Query parsed = parser.parse(qRest);
+            b.add(parsed, BooleanClause.Occur.MUST);
 
             boolean looksAsciiWord = qRest.matches("^[\\p{Alnum}_.\\-]+$");
             boolean hasField = qRest.contains(":");
             boolean hasSpace = qRest.contains(" ");
             boolean hasWildcard = qRest.endsWith("*");
             if (!hasField && !hasSpace && !hasWildcard && looksAsciiWord && qRest.length() >= 2) {
-                org.apache.lucene.search.Query namePrefix =
-                        new org.apache.lucene.search.PrefixQuery(
-                                new org.apache.lucene.index.Term("name", qRest.toLowerCase(java.util.Locale.ROOT)));
-                b.add(namePrefix, org.apache.lucene.search.BooleanClause.Occur.SHOULD);
+                Query namePrefix =
+                        new PrefixQuery(
+                                new Term("name", qRest.toLowerCase(Locale.ROOT)));
+                b.add(namePrefix, BooleanClause.Occur.SHOULD);
             }
         }
         return b.build();
@@ -192,7 +201,7 @@ public class LuceneSearchService implements SearchService {
 
         for (String pat : patterns) {
             if (pat == null) continue;
-            String p = pat.toLowerCase(java.util.Locale.ROOT).trim();
+            String p = pat.toLowerCase(Locale.ROOT).trim();
             if (p.isEmpty()) continue;
 
             boolean hasWildcard = (p.indexOf('*') >= 0) || (p.indexOf('?') >= 0);
@@ -216,7 +225,7 @@ public class LuceneSearchService implements SearchService {
             Query qFallback = null;
             if (!hasWildcard) {
                 try {
-                    QueryParser qp = new org.apache.lucene.queryparser.classic.QueryParser("name", queryAnalyzer);
+                    QueryParser qp = new QueryParser("name", queryAnalyzer);
                     qp.setAllowLeadingWildcard(true);
                     qFallback = qp.parse("\"" + p.replace("\"","\\\"") + "\""); // 尽量精确
                 } catch (Exception ignore) {}
@@ -235,30 +244,30 @@ public class LuceneSearchService implements SearchService {
 
 
     /** 应用扩展名与时间范围过滤（沿用你现有的 FilterState）。 */
-    private void addFilters(org.apache.lucene.search.BooleanQuery.Builder root) {
+    private void addFilters(BooleanQuery.Builder root, FilterState filter) {
         // 扩展名过滤
         if (filter != null && filter.exts != null && !filter.exts.isEmpty()) {
-            org.apache.lucene.search.BooleanQuery.Builder e = new org.apache.lucene.search.BooleanQuery.Builder();
+            BooleanQuery.Builder e = new BooleanQuery.Builder();
             for (String ex : filter.exts) {
                 if (ex == null || ex.isEmpty()) continue;
-                e.add(new org.apache.lucene.search.TermQuery(new org.apache.lucene.index.Term("ext", ex.toLowerCase(java.util.Locale.ROOT))),
-                        org.apache.lucene.search.BooleanClause.Occur.SHOULD);
+                e.add(new TermQuery(new Term("ext", ex.toLowerCase(Locale.ROOT))),
+                        BooleanClause.Occur.SHOULD);
             }
-            root.add(e.build(), org.apache.lucene.search.BooleanClause.Occur.MUST);
+            root.add(e.build(), BooleanClause.Occur.MUST);
         }
         // 时间范围过滤（mtime_l 为 LongPoint）
         if (filter != null && (filter.fromEpochMs != null || filter.toEpochMs != null)) {
             long from = (filter.fromEpochMs == null) ? Long.MIN_VALUE : filter.fromEpochMs;
             long to   = (filter.toEpochMs   == null) ? Long.MAX_VALUE : filter.toEpochMs;
-            root.add(org.apache.lucene.document.LongPoint.newRangeQuery("mtime_l", from, to),
-                    org.apache.lucene.search.BooleanClause.Occur.MUST);
+            root.add(LongPoint.newRangeQuery("mtime_l", from, to),
+                    BooleanClause.Occur.MUST);
         }
     }
 
     
-    private String detectMatchType(IndexSearcher searcher, org.apache.lucene.search.Query q, int docId) {
+    private String detectMatchType(IndexSearcher searcher, Query q, int docId) {
         try {
-            org.apache.lucene.search.Explanation exp = searcher.explain(q, docId);
+            Explanation exp = searcher.explain(q, docId);
             boolean[] flags = new boolean[2]; // [0]=name, [1]=content
             walk(exp, flags);
             if (flags[0] && flags[1]) return "name+content";
@@ -268,13 +277,12 @@ public class LuceneSearchService implements SearchService {
         return "";
     }
     
-    private void walk(org.apache.lucene.search.Explanation e, boolean[] f) {
+    private void walk(Explanation e, boolean[] f) {
         String desc = e.getDescription().toLowerCase();
         // 粗匹配：描述里出现字段名
         if (desc.contains("name:")) f[0] = true;
         if (desc.contains("content:") || desc.contains("content_zh:") || desc.contains("content_ja:")) f[1] = true;
-        for (org.apache.lucene.search.Explanation d : e.getDetails()) walk(d, f);
+        for (Explanation d : e.getDetails()) walk(d, f);
     }
     
-    @Override public void setFilter(FilterState f) { this.filter = (f == null ? new FilterState() : f); }
 }

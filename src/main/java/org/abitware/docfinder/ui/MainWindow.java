@@ -9,6 +9,7 @@ import java.awt.Toolkit;
 import java.awt.TrayIcon;
 import java.awt.event.KeyEvent;
 import java.text.SimpleDateFormat;
+import java.util.Collections;
 import java.util.List;
 
 import javax.swing.AbstractAction;
@@ -40,6 +41,8 @@ import javax.swing.SpinnerNumberModel;
 import javax.swing.WindowConstants;
 import javax.swing.table.DefaultTableModel;
 
+import org.abitware.docfinder.search.FilterState;
+import org.abitware.docfinder.search.SearchRequest;
 import org.abitware.docfinder.search.SearchResult;
 import org.abitware.docfinder.search.SearchService;
 import org.abitware.docfinder.watch.NetPollerService.PollStats;
@@ -88,6 +91,9 @@ public class MainWindow extends JFrame {
 
 	// 预览/搜索上下文
 	private String lastQuery = "";
+
+	private SearchWorker activeSearchWorker;
+	private long searchSequence = 0L;
 
 	// ========= 构造 =========
 	public MainWindow(SearchService searchService) {
@@ -158,7 +164,7 @@ public class MainWindow extends JFrame {
 		});
 
 		// 初次加载历史
-		java.util.List<String> hist = historyMgr.load();
+		List<String> hist = historyMgr.load();
 		for (String s : hist)
 			queryBox.addItem(s);
 
@@ -207,10 +213,7 @@ public class MainWindow extends JFrame {
 		row.add(toField);
 
 		JButton applyBtn = new JButton("Apply");
-		applyBtn.addActionListener(e -> {
-			applyFilters();
-			doSearch();
-		});
+		applyBtn.addActionListener(e -> doSearch());
 		row.add(applyBtn);
 
 		filterBar.add(row, BorderLayout.CENTER);
@@ -508,7 +511,7 @@ public class MainWindow extends JFrame {
 
 		try {
 			// 1) 清空持久化历史
-			historyMgr.save(java.util.Collections.emptyList());
+			historyMgr.save(Collections.emptyList());
 
 			// 2) 清空下拉模型
 			javax.swing.DefaultComboBoxModel<String> m = (javax.swing.DefaultComboBoxModel<String>) queryBox.getModel();
@@ -874,7 +877,7 @@ public class MainWindow extends JFrame {
 			s.maxFileMB = ((Number) maxMb.getValue()).longValue();
 			s.parseTimeoutSec = ((Number) timeout.getValue()).intValue();
 			s.includeExt = new java.util.ArrayList<>(
-					org.abitware.docfinder.search.FilterState.parseExts(include.getText()));
+					FilterState.parseExts(include.getText()));
 			s.excludeGlob = java.util.Arrays.asList(exclude.getText().split(";"));
 			cm.saveIndexSettings(s);
 			statusLabel.setText("Index settings saved.");
@@ -919,40 +922,241 @@ public class MainWindow extends JFrame {
 	}
 
 	private void doSearch() {
-		applyFilters(); // 确保每次搜索前同步当前过滤器
 
-		String q = searchField.getText().trim();
-		lastQuery = q; // 保存本次查询词，用于预览高亮
+		if (searchService == null) {
 
-		long t0 = System.currentTimeMillis();
-		List<SearchResult> list = searchService.search(q, 100);
+			statusLabel.setText("Search service unavailable.");
+
+			return;
+
+		}
+
+
+
+		FilterState filters = buildFilterState();
+
+		String q = (searchField == null) ? "" : searchField.getText().trim();
+
+		lastQuery = q;
+
+
+
+		if (activeSearchWorker != null) {
+
+			activeSearchWorker.cancel(true);
+
+		}
+
+
+
+		if (q.isEmpty()) {
+
+			model.setRowCount(0);
+
+			resultTable.clearSelection();
+
+			preview.setText(htmlWrap("Enter a query to search."));
+
+			statusLabel.setText("Enter a query to search.");
+
+			return;
+
+		}
+
+
+
+		long token = ++searchSequence;
+
+		SearchWorker worker = new SearchWorker(token, q, filters);
+
+		activeSearchWorker = worker;
+
+
+
+		statusLabel.setText("Searching...");
+
+		preview.setText(htmlWrap("Searching..."));
+
+		worker.execute();
+
+	}
+
+
+
+	private void populateResults(String query, List<SearchResult> list, long elapsedMs) {
+
+		if (list == null) {
+
+			list = Collections.emptyList();
+
+		}
+
+
 
 		model.setRowCount(0);
+
 		for (SearchResult r : list) {
-			model.addRow(new Object[] { r.name, r.path, fmtSize(r.sizeBytes), // ✅ 新增 Size 列
-					String.format("%.3f", r.score), fmtTime(r.ctime), fmtTime(r.atime),
-					(r.match == null ? "" : r.match) });
+
+			model.addRow(new Object[] { r.name, r.path, fmtSize(r.sizeBytes),
+
+				String.format("%.3f", r.score), fmtTime(r.ctime), fmtTime(r.atime),
+
+				(r.match == null ? "" : r.match) });
+
 		}
 
-		long ms = System.currentTimeMillis() - t0;
+
+
 		if (list.isEmpty()) {
-			statusLabel.setText(String.format("No results. | %d ms", ms));
-			preview.setText(htmlWrap("No results.")); // 右侧预览区也给个提示
+
+			statusLabel.setText(String.format("No results. | %d ms", elapsedMs));
+
+			resultTable.clearSelection();
+
+			preview.setText(htmlWrap("No results."));
+
 		} else {
-			statusLabel.setText(String.format("Results: %d  |  %d ms", list.size(), ms));
+
+			statusLabel.setText(String.format("Results: %d  |  %d ms", list.size(), elapsedMs));
+
+			resultTable.setRowSelectionInterval(0, 0);
+
 		}
 
-		addToHistory(q);
 
-		statusLabel.setText(String.format("Results: %d  |  %d ms", list.size(), ms));
+
+		addToHistory(query);
+
 	}
+
+
+
+	private class SearchWorker extends javax.swing.SwingWorker<List<SearchResult>, Void> {
+
+		private final long token;
+
+		private final String query;
+
+		private final FilterState filter;
+
+		private final long startedAt = System.currentTimeMillis();
+
+
+
+		SearchWorker(long token, String query, FilterState filter) {
+
+			this.token = token;
+
+			this.query = query;
+
+			this.filter = filter;
+
+		}
+
+
+
+		@Override
+
+		protected List<SearchResult> doInBackground() {
+
+			if (isCancelled() || searchService == null) {
+
+				return Collections.emptyList();
+
+			}
+
+			SearchRequest request = new SearchRequest(query, 100, filter);
+
+			return searchService.search(request);
+
+		}
+
+
+
+		@Override
+
+		protected void done() {
+
+			if (token != searchSequence) {
+
+				return;
+
+			}
+
+
+
+			if (activeSearchWorker == this) {
+
+				activeSearchWorker = null;
+
+			}
+
+
+
+			if (isCancelled()) {
+
+				return;
+
+			}
+
+
+
+			List<SearchResult> list;
+
+			try {
+
+				list = get();
+
+			} catch (java.util.concurrent.CancellationException ex) {
+
+				return;
+
+			} catch (InterruptedException ex) {
+
+				return;
+
+			} catch (java.util.concurrent.ExecutionException ex) {
+
+				Throwable cause = ex.getCause();
+
+				statusLabel.setText("Search failed: " + (cause != null ? cause.getMessage() : ex.getMessage()));
+
+				return;
+
+			} catch (Exception ex) {
+
+				statusLabel.setText("Search failed: " + ex.getMessage());
+
+				return;
+
+			}
+
+
+
+			if (token != searchSequence) {
+
+				return;
+
+			}
+
+
+
+			long elapsed = Math.max(0L, System.currentTimeMillis() - startedAt);
+
+			populateResults(query, list, elapsed);
+
+		}
+
+	}
+
+
 
 	private void addToHistory(String q) {
 		q = (q == null) ? "" : q.trim();
 		if (q.isEmpty())
 			return;
 
-		java.util.List<String> latest = historyMgr.addAndSave(q);
+		List<String> latest = historyMgr.addAndSave(q);
 
 		// 更新下拉模型：去重置顶、最多100
 		javax.swing.DefaultComboBoxModel<String> m = (javax.swing.DefaultComboBoxModel<String>) queryBox.getModel();
@@ -1147,7 +1351,7 @@ public class MainWindow extends JFrame {
 
 			// 表头
 			int cols = model.getColumnCount();
-			java.util.List<String> header = new java.util.ArrayList<>();
+			List<String> header = new java.util.ArrayList<>();
 			for (int c = 0; c < cols; c++)
 				header.add(csvQuote(model.getColumnName(c)));
 			pw.write(String.join(",", header) + sep);
@@ -1155,7 +1359,7 @@ public class MainWindow extends JFrame {
 			// 数据（按当前排序后的视图行导出）
 			int rows = resultTable.getRowCount();
 			for (int r = 0; r < rows; r++) {
-				java.util.List<String> cells = new java.util.ArrayList<>();
+				List<String> cells = new java.util.ArrayList<>();
 				for (int c = 0; c < cols; c++) {
 					Object val = resultTable.getValueAt(r, c);
 					cells.add(csvQuote(val == null ? "" : val.toString()));
@@ -1271,13 +1475,12 @@ public class MainWindow extends JFrame {
 		return new SimpleDateFormat().format(new java.util.Date(epochMs));
 	}
 
-	private void applyFilters() {
-		org.abitware.docfinder.search.FilterState f = new org.abitware.docfinder.search.FilterState();
-		f.exts = org.abitware.docfinder.search.FilterState.parseExts(extField.getText());
+	private FilterState buildFilterState() {
+		FilterState f = new FilterState();
+		f.exts = FilterState.parseExts(extField.getText());
 		f.fromEpochMs = parseDateMs(fromField.getText());
 		f.toEpochMs = parseDateMs(toField.getText());
-		if (searchService != null)
-			searchService.setFilter(f);
+		return f;
 	}
 
 	private Long parseDateMs(String s) {
