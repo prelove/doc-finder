@@ -165,11 +165,38 @@ public class LuceneSearchService implements SearchService {
         Query parsed = parser.parse(qRest);
 
         BooleanQuery.Builder builder = new BooleanQuery.Builder();
-        builder.add(parsed, BooleanClause.Occur.MUST);
+        boolean prefixEligible = includesName(scope) && matchMode == MatchMode.FUZZY;
+        boolean allowPrefix = false;
+        if (prefixEligible) {
+            allowPrefix = shouldAddNamePrefix(qRest);
+            if (!allowPrefix && scope == SearchScope.FOLDER) {
+                allowPrefix = allowFolderPrefix(qRest);
+            }
+        }
 
-        if (includesName(scope) && matchMode == MatchMode.FUZZY && shouldAddNamePrefix(qRest)) {
-            Query namePrefix = new PrefixQuery(new Term(FIELD_NAME, qRest.toLowerCase(Locale.ROOT)));
-            builder.add(namePrefix, BooleanClause.Occur.SHOULD);
+        if (allowPrefix) {
+            String lower = qRest.toLowerCase(Locale.ROOT);
+            Query namePrefixRaw = new PrefixQuery(new Term(FIELD_NAME_RAW, lower));
+            Query namePrefixText = new PrefixQuery(new Term(FIELD_NAME, lower));
+            BooleanQuery.Builder prefixEither = new BooleanQuery.Builder();
+            prefixEither.add(namePrefixRaw, BooleanClause.Occur.SHOULD);
+            prefixEither.add(namePrefixText, BooleanClause.Occur.SHOULD);
+            if (scope == SearchScope.FOLDER) {
+                Query containsRaw = new WildcardQuery(new Term(FIELD_NAME_RAW, "*" + lower + "*"));
+                prefixEither.add(containsRaw, BooleanClause.Occur.SHOULD);
+            }
+            Query namePrefix = prefixEither.build();
+            if (scope == SearchScope.NAME || scope == SearchScope.FOLDER) {
+                BooleanQuery.Builder either = new BooleanQuery.Builder();
+                either.add(parsed, BooleanClause.Occur.SHOULD);
+                either.add(namePrefix, BooleanClause.Occur.SHOULD);
+                builder.add(either.build(), BooleanClause.Occur.MUST);
+            } else {
+                builder.add(parsed, BooleanClause.Occur.MUST);
+                builder.add(namePrefix, BooleanClause.Occur.SHOULD);
+            }
+        } else {
+            builder.add(parsed, BooleanClause.Occur.MUST);
         }
 
         return builder.build();
@@ -222,6 +249,18 @@ public class LuceneSearchService implements SearchService {
             default:
                 return new String[] { FIELD_NAME, CONTENT_FIELDS[0], CONTENT_FIELDS[1], CONTENT_FIELDS[2] };
         }
+    }
+
+    private boolean allowFolderPrefix(String qRest) {
+        if (qRest == null || qRest.isEmpty()) return false;
+        if (qRest.contains(":") || qRest.contains(" ") || qRest.endsWith("*")) return false;
+        for (int i = 0; i < qRest.length(); i++) {
+            char c = qRest.charAt(i);
+            if (!(Character.isLetterOrDigit(c) || c == '_' || c == '.' || c == '-')) {
+                return false;
+            }
+        }
+        return true;
     }
 
     private boolean shouldAddNamePrefix(String qRest) {
