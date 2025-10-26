@@ -31,27 +31,27 @@ public class MainWindow extends JFrame {
 	private javax.swing.JCheckBoxMenuItem netPollToggle;
 	private org.abitware.docfinder.watch.NetPollerService netPoller;
 
-	// ========= 瀛楁 =========
+	// ========= Fields =========
 	private SearchService searchService;
 
-	// 椤堕儴锛氭悳绱笌杩囨护
-	// 鎼滅储妗嗘敼涓衡€滃彲缂栬緫涓嬫媺鈥濓紝缂栬緫鍣ㄤ粛鏄?JTextField
+	// Top bar: search and filters
+	// Search box changed to editable combo box, editor is still JTextField
 	private final javax.swing.JComboBox<SearchScope> scopeBox = new javax.swing.JComboBox<>(SearchScope.values());
 	private final javax.swing.JComboBox<MatchMode> matchModeBox = new javax.swing.JComboBox<>(MatchMode.values());
 	private final javax.swing.JComboBox<String> queryBox = new javax.swing.JComboBox<>();
-	private javax.swing.JTextField searchField; // 瀹為檯鐨勭紪杈戝櫒
+	private javax.swing.JTextField searchField; // Actual editor
 	private final org.abitware.docfinder.search.SearchHistoryManager historyMgr = new org.abitware.docfinder.search.SearchHistoryManager();
 
-	// Popup & 鈥淥pen With鈥?璁板繂椤癸紙渚涘彸閿彍鍗曞拰鍒锋柊浣跨敤锛?
+	// Popup & "Open With" remembered item (for right-click menu and refresh)
 	private JPopupMenu rowPopup;
 	private JMenuItem rememberedOpenWithItem;
 
-	private final JTextField extField = new JTextField(); // 閫楀彿鍒嗛殧鎵╁睍鍚?
+	private final JTextField extField = new JTextField(); // Comma-separated extensions
 	private JFormattedTextField fromField; // yyyy-MM-dd
 	private JFormattedTextField toField; // yyyy-MM-dd
-	private final JPanel filterBar = new JPanel(new BorderLayout(6, 6)); // 鍙姌鍙犺繃婊ゆ潯
+	private final JPanel filterBar = new JPanel(new BorderLayout(6, 6)); // Collapsible filter bar
 
-	// 涓儴锛氱粨鏋?+ 棰勮
+	// Center: results + preview
 	private final DefaultTableModel model = new DefaultTableModel(
 			new Object[] { "Name", "Path", "Size", "Score", "Created", "Accessed", "Match" }, 0) {
 		@Override
@@ -66,16 +66,16 @@ public class MainWindow extends JFrame {
 	private final PropertyChangeListener lafListener;
 	private JSplitPane split;
 
-	// 搴曢儴锛氱姸鎬佹爮
+	// Bottom: status bar
 	private final JLabel statusLabel = new JLabel("Ready");
 
-	// 棰勮/鎼滅储涓婁笅鏂?
+	// Preview/search context
 	private String lastQuery = "";
 
 	private SearchWorker activeSearchWorker;
 	private long searchSequence = 0L;
 
-	// ========= 鏋勯€?=========
+	// ========= Constructor =========
 	public MainWindow(SearchService searchService) {
 		super("DocFinder");
 		this.searchService = searchService;
@@ -85,23 +85,23 @@ public class MainWindow extends JFrame {
 		setLocationRelativeTo(null);
 		getContentPane().setLayout(new BorderLayout());
 
-		// 1) 椤堕儴 North锛氭悳绱㈡潯 + 鍙姌鍙犺繃婊ゆ潯
+		// 1) Top North: search bar + collapsible filter bar
 		JPanel north = new JPanel(new BorderLayout());
 		north.add(buildTopBar(), BorderLayout.NORTH);
-		north.add(buildFilterBar(), BorderLayout.CENTER); // 榛樿闅愯棌
+		north.add(buildFilterBar(), BorderLayout.CENTER); // Hidden by default
 		getContentPane().add(north, BorderLayout.NORTH);
 
-		// 2) 涓儴 Center锛氱粨鏋滆〃 + 鍙充晶棰勮
+		// 2) Center: results table + right preview panel
 		getContentPane().add(buildCenterAndPreview(), BorderLayout.CENTER);
 
-		// 3) 搴曢儴 South锛氱姸鎬佹爮
+		// 3) Bottom South: status bar
 		getContentPane().add(buildStatusBar(), BorderLayout.SOUTH);
 
-		// 4) 鑿滃崟鏍忥紙File / Help锛?
+		// 4) Menu bar (File / Help)
 		setJMenuBar(buildMenuBar());
 
-		// 5) 鍙抽敭鑿滃崟銆佸揩鎹烽敭銆佽閫夋嫨浜嬩欢
-		installTablePopupActions(); // 鍙抽敭锛歄pen / Reveal / Copy
+		// 5) Right-click menu, shortcuts, table selection listener
+		installTablePopupActions(); // Right-click: Open / Reveal / Copy
 		installTableShortcuts(); // Enter / Ctrl+C / Ctrl+Shift+C
 		resultTable.getSelectionModel().addListSelectionListener(e -> {
 			if (!e.getValueIsAdjusting())
@@ -110,7 +110,7 @@ public class MainWindow extends JFrame {
 
 		setIconImages(org.abitware.docfinder.ui.IconUtil.loadAppImages());
 
-		// 杩涗竴姝ワ細璁剧疆 Taskbar/Dock 鍥炬爣锛堟寫鏈€澶х殑閭ｅ紶锛?
+		// Further: set Taskbar/Dock icon (pick the largest one)
 		java.util.List<java.awt.Image> imgs = org.abitware.docfinder.ui.IconUtil.loadAppImages();
 		if (!imgs.isEmpty()) {
 			java.awt.Image best = imgs.get(imgs.size() - 1);
@@ -127,7 +127,7 @@ public class MainWindow extends JFrame {
 
 	}
 
-	/** 椤堕儴鎼滅储鏉★紙鍚?Filters 鎸夐挳锛?*/
+	/** Top search bar (includes Filters button) */
 	private JComponent buildTopBar() {
 		JPanel top = new JPanel(new BorderLayout(8, 8));
 		top.setBorder(BorderFactory.createEmptyBorder(8, 8, 0, 8));
@@ -140,18 +140,18 @@ public class MainWindow extends JFrame {
 		matchModeBox.setMaximumRowCount(MatchMode.values().length);
 		matchModeBox.setSelectedItem(MatchMode.FUZZY);
 
-		// 鍙紪杈戜笅鎷?
+		// Search box tips
 		queryBox.setEditable(true);
 		queryBox.setToolTipText("Tips: name:<term>, content:<term>, phrase with quotes, AND/OR, wildcard *");
 
-		// 鍙栧埌 editor 鐨?JTextField 浠ヤ究璁剧疆 placeholder 鍜岀洃鍚洖璋?
+		// Install placeholder for query box editor (JTextField)
 		searchField = (javax.swing.JTextField) queryBox.getEditor().getEditorComponent();
 		searchField.putClientProperty("JTextField.placeholderText",
 				"Search... (e.g. report*, content:\"zero knowledge\", name:\"瑷▓\")");
-		// 鍥炶溅瑙﹀彂鎼滅储
+		// Immediate search on Enter
 		searchField.addActionListener(e -> doSearch());
 
-		// 涓嬫媺閫夋嫨鏌愭潯鍘嗗彶鏃朵篃瑙﹀彂鎼滅储
+		// History dropdown on query box action
 		queryBox.addActionListener(e -> {
 			Object sel = queryBox.getSelectedItem();
 			if (sel != null && queryBox.isPopupVisible()) {
@@ -160,14 +160,14 @@ public class MainWindow extends JFrame {
 			}
 		});
 
-		// 鍒濇鍔犺浇鍘嗗彶
+		// Load and add history items to query box
 		List<String> hist = historyMgr.load();
 		for (String s : hist)
 			queryBox.addItem(s);
 
-		// 鍏抽敭锛氫繚鎸佺紪杈戝櫒涓虹┖锛宲laceholder 鎵嶄細鏄剧ず
-		queryBox.setSelectedItem(""); // <-- 鏂板
-		searchField.requestFocusInWindow(); // 鍙€夛細鎶婅緭鍏ョ劍鐐规斁鍒扮紪杈戝櫒
+		// Shortcuts: focus search field, clear selection
+		queryBox.setSelectedItem(""); // <-- Clear
+		searchField.requestFocusInWindow(); // Focus search field
 
 		JButton toggleFilters = new JButton("Filters");
 		toggleFilters.addActionListener(e -> filterBar.setVisible(!filterBar.isVisible()));
@@ -183,7 +183,7 @@ public class MainWindow extends JFrame {
 		eastStrip.add(matchModeBox);
 		eastStrip.add(toggleFilters);
 
-		top.add(new JLabel("馃攷"), BorderLayout.WEST);
+		top.add(new JLabel("Scope:"), BorderLayout.WEST);
 		top.add(centerStrip, BorderLayout.CENTER);
 		top.add(eastStrip, BorderLayout.EAST);
 		return top;
@@ -206,9 +206,9 @@ public class MainWindow extends JFrame {
 			searchField.setText(s);
 	}
 
-	/** 杩囨护鏉★紙鎵╁睍鍚?+ 鏃堕棿鑼冨洿锛夛紝榛樿闅愯棌 */
+	/** Filter bar (extension + time range), hidden by default */
 	private JComponent buildFilterBar() {
-		// 鏃ユ湡鏍煎紡鍣?
+		// Date format for from/to fields
 		java.text.SimpleDateFormat sdf = new java.text.SimpleDateFormat("yyyy-MM-dd");
 		fromField = new JFormattedTextField(sdf);
 		fromField.setColumns(10);
@@ -234,20 +234,20 @@ public class MainWindow extends JFrame {
 
 		filterBar.add(row, BorderLayout.CENTER);
 		filterBar.setBorder(BorderFactory.createEmptyBorder(6, 8, 6, 8));
-		filterBar.setVisible(false); // 榛樿鎶樺彔
+		filterBar.setVisible(false); // Hidden by default
 		return filterBar;
 	}
 
-	/** 涓績鍖哄煙锛氱粨鏋滆〃 + 棰勮闈㈡澘锛堝垎鏍忥級 */
+	/** Center area: results table + preview panel (split) */
 	private JComponent buildCenterAndPreview() {
-		// 缁撴灉琛ㄥ熀纭€璁剧疆涓庡垪瀹?
+		// Results table basic settings and column widths
 		resultTable.setFillsViewportHeight(true);
 		resultTable.setRowHeight(22);
 		resultTable.setAutoCreateRowSorter(true);
 
 		resultTable.getColumnModel().getColumn(0).setPreferredWidth(240); // Name
 		resultTable.getColumnModel().getColumn(1).setPreferredWidth(480); // Path
-		resultTable.getColumnModel().getColumn(2).setPreferredWidth(90); // Size 鉁?
+		resultTable.getColumnModel().getColumn(2).setPreferredWidth(90);  // Size ✅
 		resultTable.getColumnModel().getColumn(3).setPreferredWidth(70); // Score
 		resultTable.getColumnModel().getColumn(4).setPreferredWidth(130); // Created
 		resultTable.getColumnModel().getColumn(5).setPreferredWidth(130); // Accessed
@@ -255,17 +255,17 @@ public class MainWindow extends JFrame {
 
 		JScrollPane center = new JScrollPane(resultTable);
 
-		// 棰勮锛氬彧璇?HTML锛屽瓧浣?11px锛堝皬涓€鐐癸級
+		// Preview pane: HTML, non-editable
 		preview.setEditable(false);
 		JScrollPane right = new JScrollPane(preview);
 		right.setPreferredSize(new Dimension(360, 560));
 
 		split = new JSplitPane(JSplitPane.HORIZONTAL_SPLIT, center, right);
-		split.setResizeWeight(0.72); // 宸︿晶涓诲垪琛ㄥ崰姣斿垎閰?
+		split.setResizeWeight(0.72); // Left 72% / Right 28%
 		return split;
 	}
 
-	/** 搴曢儴鐘舵€佹爮 */
+	/** Bottom status bar */
 	private JComponent buildStatusBar() {
 		JPanel bottom = new JPanel(new BorderLayout());
 		bottom.setBorder(BorderFactory.createEmptyBorder(4, 8, 4, 8));
@@ -273,7 +273,7 @@ public class MainWindow extends JFrame {
 		return bottom;
 	}
 
-	/** 鑿滃崟鏍忥紙File / Help锛?*/
+	/** Menu bar (File / Help) */
 	private JMenuBar buildMenuBar() {
 		JMenuBar bar = new JMenuBar();
 
@@ -331,12 +331,12 @@ public class MainWindow extends JFrame {
 		file.addSeparator();
 
 		JMenuItem exitItem = new JMenuItem("Exit");
-		// Java 8锛氫娇鐢?getMenuShortcutKeyMask()锛圵in=Ctrl, macOS=Cmd锛?
+        // Java 8：使用 getMenuShortcutKeyMask()（Win=Ctrl, macOS=Cmd）
 		exitItem.setAccelerator(
 				KeyStroke.getKeyStroke(KeyEvent.VK_Q, Toolkit.getDefaultToolkit().getMenuShortcutKeyMask()));
 
 		exitItem.addActionListener(e -> {
-			// 鍙€夛細浼橀泤鍋滄帀鏈湴鏂囦欢鐩戞帶 & 缃戠粶杞锛堝鏋滃綋鍓嶅紑鍚級
+            // 可选：优雅停掉本地文件监控 & 网络轮询（如果当前开启）// 可选：优雅停掉本地文件监控 & 网络轮询（如果当前开启）
 			try {
 				if (liveWatchToggle != null && liveWatchToggle.isSelected()) {
 					liveWatchToggle.setSelected(false);
@@ -349,7 +349,7 @@ public class MainWindow extends JFrame {
 			} catch (Exception ignore) {
 			}
 
-			// 鍙€夛細绉婚櫎鎵樼洏鍥炬爣
+            // 可选：移除托盘图标
 			try {
 				if (SystemTray.isSupported()) {
 					SystemTray tray = SystemTray.getSystemTray();
@@ -359,7 +359,7 @@ public class MainWindow extends JFrame {
 			} catch (Exception ignore) {
 			}
 
-			// 鍏抽棴绐楀彛骞堕€€鍑猴紙App 閲屾湁 shutdown hook 浼氭敞閿€鍏ㄥ眬鐑敭锛?
+            // 关闭窗口并退出（App 里有 shutdown hook 会注销全局热键）
 			try {
 				dispose();
 			} catch (Exception ignore) {
@@ -489,7 +489,7 @@ public class MainWindow extends JFrame {
 		}
 
 		setCursor(java.awt.Cursor.getPredefinedCursor(java.awt.Cursor.WAIT_CURSOR));
-		statusLabel.setText("Polling network sources鈥?");
+        statusLabel.setText("Polling network sources…");
 
 		new javax.swing.SwingWorker<org.abitware.docfinder.watch.NetPollerService.PollStats, Void>() {
 			@Override
@@ -593,7 +593,7 @@ public class MainWindow extends JFrame {
 		}.execute();
 	}
 
-	/** 娓呯┖鎼滅储鍘嗗彶锛氱‘璁?-> 娓呯┖鎸佷箙鍖栨枃浠跺唴瀹?-> 娓呯┖涓嬫媺鍒楄〃 -> 娓呯┖杈撳叆妗?*/
+	/** Clear search history: confirm -> clear persisted file content -> clear dropdown list -> clear input box */
 	private void clearSearchHistory() {
 		int ret = javax.swing.JOptionPane.showConfirmDialog(this,
 				"This will remove all saved search queries.\nProceed?", "Clear Search History",
@@ -602,19 +602,19 @@ public class MainWindow extends JFrame {
 			return;
 
 		try {
-			// 1) 娓呯┖鎸佷箙鍖栧巻鍙?
+			// 1) Clear persisted history
 			historyMgr.save(Collections.emptyList());
 
-			// 2) 娓呯┖涓嬫媺妯″瀷
+			// 2) Clear dropdown model
 			javax.swing.DefaultComboBoxModel<String> m = (javax.swing.DefaultComboBoxModel<String>) queryBox.getModel();
 			m.removeAllElements();
 
-			// 3) 娓呯┖褰撳墠杈撳叆
+			// 3) Clear current input
 			setQueryText("");
 
-			// 4) 鐘舵€佹彁绀?
+			// 4) Status prompt
 			statusLabel.setText("Search history cleared.");
-			// 棰勮鍖虹粰涓交閲忔彁绀?
+			// Preview area light prompt
 			updatePreviewInner("Search history cleared.");
 		} catch (Exception ex) {
 			javax.swing.JOptionPane.showMessageDialog(this, "Failed to clear history:\n" + ex.getMessage(), "Error",
@@ -622,7 +622,7 @@ public class MainWindow extends JFrame {
 		}
 	}
 
-	/** 缁撴灉琛ㄥ揩鎹烽敭锛欵nter 鎵撳紑銆丆trl+C 澶嶅埗璺緞銆丆trl+Shift+C 澶嶅埗鍚嶇О */
+	/** Result table shortcuts: Enter opens, Ctrl+C copies path, Ctrl+Shift+C copies name */
 	private void installTableShortcuts() {
 		InputMap im = resultTable.getInputMap(JComponent.WHEN_ANCESTOR_OF_FOCUSED_COMPONENT);
 		ActionMap am = resultTable.getActionMap();
@@ -663,10 +663,10 @@ public class MainWindow extends JFrame {
 	}
 
 	private void manageSources() {
-		// 1) 鎵撳紑瀵硅瘽妗嗭紙modal锛岀敤鎴风紪杈?淇濆瓨婧愬垪琛級
+		// 1) Open source manager dialog (modal)
 		new org.abitware.docfinder.ui.ManageSourcesDialog(this).setVisible(true);
 
-		// 2) 璇㈤棶鏄惁閲嶅惎 Live Watch / Poller锛堥伩鍏嶅繀鍗★級
+		// 2) Check if need to restart Live Watch / Poller
 		boolean needRestart = (liveWatchToggle != null && liveWatchToggle.isSelected())
 				|| (netPollToggle != null && netPollToggle.isSelected());
 		if (!needRestart)
@@ -677,21 +677,22 @@ public class MainWindow extends JFrame {
 		if (ans != javax.swing.JOptionPane.OK_OPTION)
 			return;
 
-		// 3) 鍚庡彴閲嶅惎锛堥伩鍏嶉樆濉?UI锛?
+		// 3) Restart watchers/polling if needed
+		// Delay to ensure toggle action is processed
 		setCursor(java.awt.Cursor.getPredefinedCursor(java.awt.Cursor.WAIT_CURSOR));
-		statusLabel.setText("Applying source changes鈥?");
+        statusLabel.setText("Applying source changes…");
 
 		new javax.swing.SwingWorker<Void, Void>() {
 			@Override
 			protected Void doInBackground() {
 				try {
 					if (liveWatchToggle != null && liveWatchToggle.isSelected()) {
-						// 鍋?鍚?
+						// Turn off
 						javax.swing.SwingUtilities.invokeLater(() -> {
 							liveWatchToggle.setSelected(false);
 							toggleLiveWatch();
 						});
-						// 绛夊緟 toggle 瀹屾瘯锛堢畝鍗?sleep锛岄伩鍏嶅湪 EDT 涓樆濉烇級
+						// Delay for toggle to take effect
 						Thread.sleep(200);
 						javax.swing.SwingUtilities.invokeLater(() -> {
 							liveWatchToggle.setSelected(true);
@@ -731,7 +732,7 @@ public class MainWindow extends JFrame {
 		}
 
 		long t0 = System.currentTimeMillis();
-		statusLabel.setText("Indexing all sources鈥?");
+        statusLabel.setText("Indexing all sources…");
 
 		java.nio.file.Path indexDir = sm.getIndexDir();
 
@@ -763,7 +764,7 @@ public class MainWindow extends JFrame {
 		}.execute();
 	}
 
-	// 鐢?Tika 鍙鎶藉彇鐨勮交閲忛瑙堬紙鍦?EDT 涔嬪璺戯級
+    // 用 Tika 只读抽取的轻量预览（在 EDT 之外跑）
 	private void loadPreviewAsync() {
 		RowSel s = getSelectedRow();
 		if (s == null) {
@@ -831,7 +832,7 @@ public class MainWindow extends JFrame {
 	}
 
 
-	// 鍙鎶藉彇鍓?N 瀛楃锛堝鐢ㄦ垜浠凡鏈夌殑 Tika 閫昏緫锛岀畝鍖栦负灞€閮ㄦ柟娉曚互鍏嶅惊鐜緷璧栵級
+    // 只读抽取前 N 字符（复用我们已有的 Tika 逻辑，简化为局部方法以免循环依赖）
 	private String extractTextHead(java.nio.file.Path file, int maxChars) {
 		try (java.io.InputStream is = java.nio.file.Files.newInputStream(file, java.nio.file.StandardOpenOption.READ)) {
 			org.apache.tika.metadata.Metadata md = new org.apache.tika.metadata.Metadata();
@@ -932,7 +933,7 @@ public class MainWindow extends JFrame {
 		return null;
 	}
 
-	// 浠庢煡璇覆閲屾彁鍙栬楂樹寒鐨勮瘝锛堥潪甯哥畝鍖栵細鍘绘帀瀛楁鍓嶇紑/寮曞彿/AND/OR锛?
+    // 从查询串里提取要高亮的词（非常简化：去掉字段前缀/引号/AND/OR）
 	private String[] tokenizeForHighlight(String q) {
 		if (q == null)
 			return new String[0];
@@ -942,7 +943,7 @@ public class MainWindow extends JFrame {
 		q = q.trim();
 		if (q.isEmpty())
 			return new String[0];
-		// 鍒嗚瘝锛氭寜绌虹櫧鍒囷紱涓棩鏂囨儏鍐典笅鐩存帴淇濈暀鏁存璇?
+        // 分词：按空白切；中日文情况下直接保留整段词
 		String[] arr = q.split("\\s+");
 		java.util.LinkedHashSet<String> set = new java.util.LinkedHashSet<>();
 		for (String t : arr) {
@@ -954,7 +955,7 @@ public class MainWindow extends JFrame {
 		return set.toArray(new String[0]);
 	}
 
-	// 鐢熸垚鍖呭惈绗竴涓懡涓殑绠€鐭墖娈碉紙涓婁笅鏂?window锛?
+    // 生成包含第一个命中的简短片段（上下文 window）
 	private String makeSnippet(String text, String[] terms, int window) {
 		if (terms.length == 0)
 			return text.substring(0, Math.min(window, text.length()));
@@ -972,7 +973,7 @@ public class MainWindow extends JFrame {
 		return text.substring(start, end);
 	}
 
-	// 灏嗙墖娈佃浆鎴愮畝鍗?HTML 骞堕珮浜?<mark>
+    // 将片段转成简单 HTML 并高亮 <mark>
 	private String toHtml(String snippet, String[] terms) {
 		String esc = snippet.replace("&", "&amp;").replace("<", "&lt;").replace(">", "&gt;");
 		for (String t : terms) {
@@ -1071,13 +1072,14 @@ public class MainWindow extends JFrame {
 		String linkColor = isDarkColor(bg) ? "#8ab4ff" : "#0645ad";
 		String bgColor = (bg == null) ? null : toCssColor(bg);
 		StringBuilder sb = new StringBuilder();
-		sb.append("<html><body style='font-family:sans-serif;font-size:11px;line-height:1.4;padding:8px;");
+		sb.append("<html><head>");
+		sb.append("<style>body{font-family:sans-serif;font-size:11px;line-height:1.4;padding:8px;");
 		sb.append("color:").append(textColor).append(';');
 		if (bgColor != null) {
 			sb.append("background-color:").append(bgColor).append(';');
 		}
-		sb.append("'>");
-		sb.append("<style>body a{color:").append(linkColor).append(";}</style>");
+		sb.append("}body a{color:").append(linkColor).append(";}</style>");
+		sb.append("</head><body>");
 		sb.append(inner);
 		sb.append("</body></html>");
 		return sb.toString();
@@ -1136,8 +1138,8 @@ public class MainWindow extends JFrame {
 		java.io.File folder = fc.getSelectedFile();
 		statusLabel.setText("Indexing: " + folder.getAbsolutePath() + " ...");
 
-		// 绱㈠紩鐩綍锛氱敤鎴蜂富鐩綍涓?.docfinder/index
-		java.nio.file.Path indexDir = java.nio.file.Paths.get(System.getProperty("user.home"), ".docfinder", "index");
+        // 索引目录：用户主目录下 .docfinder/index
+        java.nio.file.Path indexDir = java.nio.file.Paths.get(System.getProperty("user.home"), ".docfinder", "index");
 
 		new javax.swing.SwingWorker<Integer, Void>() {
 			@Override
@@ -1155,10 +1157,10 @@ public class MainWindow extends JFrame {
 				try {
 					int n = get();
 					statusLabel.setText("Indexed files: " + n + "  |  Index: " + indexDir.toString());
-					// 鍒囨崲鍒?Lucene 鎼滅储鏈嶅姟
+                    // 切换到 Lucene 搜索服务
 					setSearchService(new org.abitware.docfinder.search.LuceneSearchService(indexDir));
-					// 鍙€夛細鑷姩瑙﹀彂涓€娆℃悳绱互楠岃瘉
-					// doSearch();
+                    // 可选：自动触发一次搜索以验证
+                    // doSearch();
 				} catch (Exception ex) {
 					statusLabel.setText("Index failed: " + ex.getMessage());
 				}
@@ -1219,7 +1221,7 @@ public class MainWindow extends JFrame {
 		}
 	}
 
-	/** 寮哄埗鍏ㄩ噺閲嶅缓绱㈠紩锛圕REATE 妯″紡锛?*/
+	/** Rebuild index (full): delete old index, re-index all sources */
 	private void rebuildAllSources() {
 		org.abitware.docfinder.index.SourceManager sm = new org.abitware.docfinder.index.SourceManager();
 		java.util.List<java.nio.file.Path> sources = sm.load();
@@ -1231,7 +1233,7 @@ public class MainWindow extends JFrame {
 		org.abitware.docfinder.index.IndexSettings s = cm.loadIndexSettings();
 
 		java.nio.file.Path indexDir = sm.getIndexDir();
-		statusLabel.setText("Rebuilding index (full)鈥?");
+        statusLabel.setText("Rebuilding index (full)…");
 		long t0 = System.currentTimeMillis();
 
 		new javax.swing.SwingWorker<Integer, Void>() {
@@ -1239,7 +1241,7 @@ public class MainWindow extends JFrame {
 			protected Integer doInBackground() throws Exception {
 				org.abitware.docfinder.index.LuceneIndexer idx = new org.abitware.docfinder.index.LuceneIndexer(
 						indexDir, s);
-				return idx.indexFolders(sources, true); // 鉁?full = true
+				return idx.indexFolders(sources, true); // ✅ full = true
 			}
 
 			@Override
@@ -1511,16 +1513,16 @@ public class MainWindow extends JFrame {
 
 		List<String> latest = historyMgr.addAndSave(q);
 
-		// 鏇存柊涓嬫媺妯″瀷锛氬幓閲嶇疆椤躲€佹渶澶?00
+        // 更新下拉模型：去重reset顶、最多100
 		javax.swing.DefaultComboBoxModel<String> m = (javax.swing.DefaultComboBoxModel<String>) queryBox.getModel();
-		// 绠€鍗曠矖鏆达細娓呯┖閲嶅姞锛?00 椤逛互鍐呮€ц兘鏃犳劅锛?
+        // 简单粗暴：清空重加（100 项以内性能无感）
 		m.removeAllElements();
 		for (String s : latest)
 			m.addElement(s);
 		queryBox.setSelectedItem(q); // 缃《鏄剧ず
 	}
 
-	// 鏂板鏂规硶锛?
+    // 新增方法：
 	private void installTablePopupActions() {
 		rowPopup = new JPopupMenu();
 
@@ -1532,23 +1534,23 @@ public class MainWindow extends JFrame {
 		copyMenu.add(copyName);
 		copyMenu.add(copyPath);
 
-		// --- Open With鈥?瀛愯彍鍗?---
-		JMenu openWith = new JMenu("Open With鈥?");
-		JMenuItem chooseProg = new JMenuItem("Choose Program鈥?");
+        // --- Open With… 子菜单 ---
+        JMenu openWith = new JMenu("Open With…");
+        JMenuItem chooseProg = new JMenuItem("Choose Program…");
 		openWith.add(chooseProg);
 		openWith.addSeparator();
 		rememberedOpenWithItem = new JMenuItem("(remembered)"); // 鐢ㄧ被瀛楁淇濆瓨
 		rememberedOpenWithItem.setVisible(false);
 		openWith.add(rememberedOpenWithItem);
 
-		// 缁勮鑿滃崟
+        // 组装菜单
 		rowPopup.add(openItem);
 		rowPopup.add(openWith);
 		rowPopup.add(revealItem);
 		rowPopup.addSeparator();
 		rowPopup.add(copyMenu);
 
-		// 閫夋嫨绋嬪簭骞惰浣?
+        // 选择程序并记住
 		chooseProg.addActionListener(e -> {
 			RowSel s = getSelectedRow();
 			if (s == null)
@@ -1565,7 +1567,7 @@ public class MainWindow extends JFrame {
 			}
 		});
 
-		// 鍏朵綑鍔ㄤ綔锛圤pen/Reveal/Copy锛変繚鎸佷綘涔嬪墠鐨勫疄鐜?..
+        // 其余动作（Open/Reveal/Copy）保持你之前的实现...
 		openItem.addActionListener(e -> {
 			RowSel s = getSelectedRow();
 			if (s == null)
@@ -1597,7 +1599,7 @@ public class MainWindow extends JFrame {
 				setClipboard(s.path);
 		});
 
-		// 鍙抽敭瑙﹀彂锛氭寜涓?寮硅捣閮藉垽鏂?
+        // 右键触发：按下/弹起都判断
 		resultTable.addMouseListener(new java.awt.event.MouseAdapter() {
 			@Override
 			public void mousePressed(java.awt.event.MouseEvent e) {
@@ -1624,7 +1626,7 @@ public class MainWindow extends JFrame {
 		});
 	}
 
-	/** 鍙抽敭鑿滃崟寮瑰嚭锛屽苟鍔ㄦ€佸埛鏂扳€滆蹇嗙殑绋嬪簭鈥濋」 */
+    /** 右键菜单弹出，并动态刷新“记忆的程序”项 */
 	private void showPopup(java.awt.event.MouseEvent e) {
 		int r = resultTable.rowAtPoint(e.getPoint());
 		if (r >= 0)
@@ -1640,8 +1642,8 @@ public class MainWindow extends JFrame {
 			if (prog != null) {
 				rememberedOpenWithItem.setText(new java.io.File(prog).getName());
 				rememberedOpenWithItem.setVisible(true);
-				// 閲嶆柊缁戝畾鍔ㄤ綔锛堝厛娓呮棫 listener锛?
-				for (java.awt.event.ActionListener al : rememberedOpenWithItem.getActionListeners()) {
+                // 重新绑定动作（先清旧 listener）
+                for (java.awt.event.ActionListener al : rememberedOpenWithItem.getActionListeners()) {
 					rememberedOpenWithItem.removeActionListener(al);
 				}
 				rememberedOpenWithItem.addActionListener(ev -> openWithProgram(prog, s.path));
@@ -1666,7 +1668,7 @@ public class MainWindow extends JFrame {
 				String ext = getExtFromName(s.name);
 				org.abitware.docfinder.index.ConfigManager cm = new org.abitware.docfinder.index.ConfigManager();
 				String prog = cm.getOpenWithProgram(ext);
-				// 鈶?寮瑰嚭鑿滃崟鍓嶅姩鎬佸埛鏂?
+                // ③ 弹出菜单前动态刷新
 				if (prog != null) {
 					rememberedOpenWithItem.setText(new java.io.File(prog).getName());
 					rememberedOpenWithItem.setVisible(true);
@@ -1684,7 +1686,7 @@ public class MainWindow extends JFrame {
 		}
 	}
 
-	/** 瀵煎嚭褰撳墠琛ㄦ牸鍒?CSV锛圲TF-8, 鍚〃澶? 閫楀彿鍒嗛殧, 鑷姩鍔犲紩鍙凤級 */
+	/** Export current table to CSV (UTF-8, with header, comma-separated, auto-quoted) */
 	private void exportResultsToCsv() {
 		if (model.getRowCount() == 0) {
 			javax.swing.JOptionPane.showMessageDialog(this, "No rows to export.");
@@ -1702,14 +1704,14 @@ public class MainWindow extends JFrame {
 		try (java.io.PrintWriter pw = new java.io.PrintWriter(
 				new java.io.OutputStreamWriter(new java.io.FileOutputStream(out), "UTF-8"))) {
 
-			// 琛ㄥご
+			// Header
 			int cols = model.getColumnCount();
 			List<String> header = new java.util.ArrayList<>();
 			for (int c = 0; c < cols; c++)
 				header.add(csvQuote(model.getColumnName(c)));
 			pw.write(String.join(",", header) + sep);
 
-			// 鏁版嵁锛堟寜褰撳墠鎺掑簭鍚庣殑瑙嗗浘琛屽鍑猴級
+			// Data: current filtered results
 			int rows = resultTable.getRowCount();
 			for (int r = 0; r < rows; r++) {
 				List<String> cells = new java.util.ArrayList<>();
@@ -1737,16 +1739,16 @@ public class MainWindow extends JFrame {
 		return (i > 0) ? name.substring(i + 1).toLowerCase() : "";
 	}
 
-	/** 鐢ㄦ寚瀹氱▼搴忔墦寮€鏂囦欢锛堣法骞冲彴澶勭悊锛?*/
+    // --- Open With 映射（openwith.<ext> -> program absolute path） ---
 	private void openWithProgram(String programAbsPath, String fileAbsPath) {
 		try {
-			if (isMac()) {
-				// macOS: open -a <App> <file> (褰?programAbsPath 鏄?.app 鎴栧叾鍐呴儴浜岃繘鍒?
-				new ProcessBuilder("open", "-a", programAbsPath, fileAbsPath).start();
-			} else {
-				// Windows / Linux: 鐩存帴鎵ц 绋嬪簭 + 鏂囦欢
-				new ProcessBuilder(programAbsPath, fileAbsPath).start();
-			}
+            if (isMac()) {
+                // macOS: open -a <App> <file> (当 programAbsPath 是 .app 或其内部二进制)
+                new ProcessBuilder("open", "-a", programAbsPath, fileAbsPath).start();
+            } else {
+                // Windows / Linux: 直接执行 程序 + 文件
+                new ProcessBuilder(programAbsPath, fileAbsPath).start();
+            }
 		} catch (Exception ex) {
 			javax.swing.JOptionPane.showMessageDialog(this, "Open With failed:\n" + ex.getMessage());
 		}
@@ -1766,61 +1768,61 @@ public class MainWindow extends JFrame {
 				.setContents(new java.awt.datatransfer.StringSelection(s), null);
 	}
 
-	/** 璺ㄥ钩鍙扳€滃湪璧勬簮绠＄悊鍣ㄤ腑鏄剧ず鈥?*/
+    /** 跨平台“在资源管理器中显示” */
 	private void revealInExplorer(String path) throws Exception {
 		if (isWindows()) {
 			new ProcessBuilder("explorer.exe", "/select,", path).start();
 		} else if (isMac()) {
 			new ProcessBuilder("open", "-R", path).start();
 		} else {
-			// Linux锛氶€€鑰屾眰鍏舵锛屾墦寮€鎵€鍦ㄧ洰褰?
+            // Linux：退而求其次，打开所在目录
 			java.io.File f = new java.io.File(path);
 			new ProcessBuilder("xdg-open", f.getParentFile().getAbsolutePath()).start();
 		}
 	}
 
-	private void showUsageDialog() {
-		String html = "<html><body style='width:640px;font-family:sans-serif;font-size:12px;line-height:1.5'>"
-				+ "<h2>DocFinder - Usage Guide</h2>" +
+    private void showUsageDialog() {
+        String html = "<html><body style='width:640px;font-family:sans-serif;font-size:12px;line-height:1.5'>"
+                + "<h2>DocFinder - Usage Guide</h2>" +
 
-				"<h3>Overview</h3>" + "<ul>" + "<li>Fast file-name search (prefix boosted).</li>"
-				+ "<li>Content search via Apache Tika (read-only parsing).</li>"
-				+ "<li>Better CJK (Chinese/Japanese) matching with specialized analyzers.</li>" + "</ul>" +
+                "<h3>Overview</h3>" + "<ul>" + "<li>Fast file-name search (prefix boosted).</li>"
+                + "<li>Content search via Apache Tika (read-only parsing).</li>"
+                + "<li>Better CJK (Chinese/Japanese) matching with specialized analyzers.</li>" + "</ul>" +
 
-				"<h3>Quick Start</h3>" + "<ol>" + "<li>Open <b>File 鈫?Index Sources鈥?/b> to add folders.</li>"
-				+ "<li>Run <b>File 鈫?Index All Sources</b> to build/update the index, or <b>Rebuild Index (Full)</b> to recreate it from scratch.</li>"
-				+ "<li>Type your query and press <b>Enter</b>.</li>" + "</ol>" +
+                "<h3>Quick Start</h3>" + "<ol>" + "<li>Open <b>File → Index Sources…</b> to add folders.</li>"
+                + "<li>Run <b>File → Index All Sources</b> to build/update the index, or <b>Rebuild Index (Full)</b> to recreate it from scratch.</li>"
+                + "<li>Type your query and press <b>Enter</b>.</li>" + "</ol>" +
 
-				"<h3>Query Examples</h3>" + "<ul>" + "<li><code>report*</code> 鈥?prefix match on file name</li>"
-				+ "<li><code>\"project plan\"</code> 鈥?phrase match</li>"
-				+ "<li><code>content:kubernetes AND ingress</code> 鈥?content-only query</li>"
-				+ "<li><code>name:\"瑷▓\"</code> / <code>content:\"瑷▓ 浠曟\"</code> 鈥?Japanese examples</li>" + "</ul>" +
+                "<h3>Query Examples</h3>" + "<ul>" + "<li><code>report*</code> — prefix match on file name</li>"
+                + "<li><code>\"project plan\"</code> — phrase match</li>"
+                + "<li><code>content:kubernetes AND ingress</code> — content-only query</li>"
+                + "<li><code>name:\"設計\"</code> / <code>content:\"設計 仕様\"</code> — Japanese examples</li>" + "</ul>" +
 
-				"<h3>Filters</h3>" + "<ul>" + "<li>Click <b>Filters</b> to toggle filter bar.</li>"
-				+ "<li><b>Ext(s)</b>: comma-separated, e.g. <code>pdf,docx,txt</code>.</li>"
-				+ "<li><b>From / To</b>: date range (yyyy-MM-dd) for modified time.</li>" + "</ul>" +
+                "<h3>Filters</h3>" + "<ul>" + "<li>Click <b>Filters</b> to toggle filter bar.</li>"
+                + "<li><b>Ext(s)</b>: comma-separated, e.g. <code>pdf,docx,txt</code>.</li>"
+                + "<li><b>From / To</b>: date range (yyyy-MM-dd) for modified time.</li>" + "</ul>" +
 
-				"<h3>Shortcuts & Actions</h3>" + "<ul>" + "<li><b>Ctrl+Alt+Space</b> 鈥?toggle main window</li>"
-				+ "<li><b>Enter</b> 鈥?run search / open selected file in results</li>"
-				+ "<li><b>Ctrl+C</b> 鈥?copy full path; <b>Ctrl+Shift+C</b> 鈥?copy file name</li>"
-				+ "<li><b>Alt+鈫?/b> 鈥?open query history dropdown</li>"
-				+ "<li><b>Ctrl+Shift+Delete</b> 鈥?Clear Search History鈥?/li>"
-				+ "<li>Right-click a result row: <i>Open / Reveal in Explorer / Copy</i></li>" + "</ul>" +
+                "<h3>Shortcuts & Actions</h3>" + "<ul>" + "<li><b>Ctrl+Alt+Space</b> — toggle main window</li>"
+                + "<li><b>Enter</b> — run search / open selected file in results</li>"
+                + "<li><b>Ctrl+C</b> — copy full path; <b>Ctrl+Shift+C</b> — copy file name</li>"
+                + "<li><b>Alt+↓</b> — open query history dropdown</li>"
+                + "<li><b>Ctrl+Shift+Delete</b> — Clear Search History…</li>"
+                + "<li>Right-click a result row: <i>Open / Reveal in Explorer / Copy</i></li>" + "</ul>" +
 
-				"<h3>Privacy & Safety</h3>" + "<ul>"
-				+ "<li>Indexing opens files in <b>read-only</b> mode. Contents and mtime are never modified by DocFinder.</li>"
-				+ "<li>On some NAS/SMB systems, <i>atime</i> (last access time) may be updated by the server when files are read.</li>"
-				+ "</ul>" +
+                "<h3>Privacy & Safety</h3>" + "<ul>"
+                + "<li>Indexing opens files in <b>read-only</b> mode. Contents and mtime are never modified by DocFinder.</li>"
+                + "<li>On some NAS/SMB systems, <i>atime</i> (last access time) may be updated by the server when files are read.</li>"
+                + "</ul>" +
 
-				"<h3>Notes</h3>" + "<ul>" + "<li>Very large or encrypted files may have empty previews.</li>"
-				+ "<li>OCR for scanned PDFs/images is optional (currently disabled by default).</li>" + "</ul>"
-				+ "</body></html>";
-		JEditorPane ep = new JEditorPane("text/html", html);
-		ep.setEditable(false);
-		JScrollPane sp = new JScrollPane(ep);
-		sp.setPreferredSize(new Dimension(680, 460));
-		JOptionPane.showMessageDialog(this, sp, "Usage Guide", JOptionPane.PLAIN_MESSAGE);
-	}
+                "<h3>Notes</h3>" + "<ul>" + "<li>Very large or encrypted files may have empty previews.</li>"
+                + "<li>OCR for scanned PDFs/images is optional (currently disabled by default).</li>" + "</ul>"
+                + "</body></html>";
+        JEditorPane ep = new JEditorPane("text/html", html);
+        ep.setEditable(false);
+        JScrollPane sp = new JScrollPane(ep);
+        sp.setPreferredSize(new Dimension(680, 460));
+        JOptionPane.showMessageDialog(this, sp, "Usage Guide", JOptionPane.PLAIN_MESSAGE);
+    }
 
 	private static String fmtTime(long epochMs) {
 		if (epochMs <= 0)
@@ -1849,7 +1851,7 @@ public class MainWindow extends JFrame {
 	}
 
 	private static String fmtSize(long b) {
-		// 绠€鏄撲汉绫诲彲璇伙細B / KB / MB / GB
+        // 简易人类可读：B / KB / MB / GB
 		final long KB = 1024, MB = KB * 1024, GB = MB * 1024;
 		if (b < KB)
 			return b + " B";
@@ -1893,5 +1895,4 @@ public class MainWindow extends JFrame {
 	}
 
 }
-
 

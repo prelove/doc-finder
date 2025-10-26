@@ -390,13 +390,14 @@ public class PreviewPanel extends JScrollPane {
         String linkColor = isDarkColor(bg) ? "#8ab4ff" : "#0645ad";
         String bgColor = (bg == null) ? null : toCssColor(bg);
         StringBuilder sb = new StringBuilder();
-        sb.append("<html><body style='font-family:sans-serif;font-size:11px;line-height:1.4;padding:8px;");
+        sb.append("<html><head>");
+        sb.append("<style>body{font-family:sans-serif;font-size:11px;line-height:1.4;padding:8px;");
         sb.append("color:").append(textColor).append(';');
         if (bgColor != null) {
             sb.append("background-color:").append(bgColor).append(';');
         }
-        sb.append("'>");
-        sb.append("<style>body a{color:").append(linkColor).append(";}</style>");
+        sb.append("}body a{color:").append(linkColor).append(";}</style>");
+        sb.append("</head><body>");
         sb.append(inner);
         sb.append("</body></html>");
         return sb.toString();

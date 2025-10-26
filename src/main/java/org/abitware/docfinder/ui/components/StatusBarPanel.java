@@ -1,26 +1,31 @@
 package org.abitware.docfinder.ui.components;
 
 import java.awt.BorderLayout;
-import javax.swing.JLabel;
-import javax.swing.JPanel;
+import javax.swing.*;
 
 /**
- * 状态栏组件，显示应用程序状态信息
+ * Simple status bar panel to display status messages.
  */
 public class StatusBarPanel extends JPanel {
+
     private final JLabel statusLabel = new JLabel("Ready");
-    
+
     public StatusBarPanel() {
         setLayout(new BorderLayout());
-        setBorder(javax.swing.BorderFactory.createEmptyBorder(4, 8, 4, 8));
+        setBorder(BorderFactory.createEmptyBorder(4, 8, 4, 8));
         add(statusLabel, BorderLayout.WEST);
     }
-    
-    public void setStatus(String message) {
-        statusLabel.setText(message);
+
+    public void setText(String text) {
+        statusLabel.setText(text);
     }
-    
-    public JLabel getStatusLabel() {
+
+    public String getText() {
+        return statusLabel.getText();
+    }
+
+    public JLabel getLabel() {
         return statusLabel;
     }
 }
+
