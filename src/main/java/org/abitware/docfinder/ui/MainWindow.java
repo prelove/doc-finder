@@ -74,6 +74,7 @@ public class MainWindow extends JFrame {
 
 	private SearchWorker activeSearchWorker;
 	private long searchSequence = 0L;
+	private volatile boolean isIndexing = false;
 
 	// ========= Constructor =========
 	public MainWindow(SearchService searchService) {
@@ -483,10 +484,8 @@ public class MainWindow extends JFrame {
 		org.abitware.docfinder.index.ConfigManager cm = new org.abitware.docfinder.index.ConfigManager();
 		org.abitware.docfinder.index.IndexSettings s = cm.loadIndexSettings();
 
-		boolean ephemeral = (netPoller == null);
-		if (ephemeral) {
-			netPoller = new org.abitware.docfinder.watch.NetPollerService(sm.getIndexDir(), s, netRoots);
-		}
+		// Always create a new, dedicated poller for this manual run.
+		final org.abitware.docfinder.watch.NetPollerService manualPoller = new org.abitware.docfinder.watch.NetPollerService(sm.getIndexDir(), s, netRoots);
 
 		setCursor(java.awt.Cursor.getPredefinedCursor(java.awt.Cursor.WAIT_CURSOR));
         statusLabel.setText("Polling network sources…");
@@ -494,7 +493,7 @@ public class MainWindow extends JFrame {
 		new javax.swing.SwingWorker<org.abitware.docfinder.watch.NetPollerService.PollStats, Void>() {
 			@Override
 			protected org.abitware.docfinder.watch.NetPollerService.PollStats doInBackground() throws Exception {
-				return netPoller.pollNowAsync().get();
+				return manualPoller.pollNowAsync().get();
 			}
 
 			@Override
@@ -510,10 +509,8 @@ public class MainWindow extends JFrame {
 							JOptionPane.ERROR_MESSAGE);
 				} finally {
 					setCursor(java.awt.Cursor.getDefaultCursor());
-					if (ephemeral) {
-						netPoller.close();
-						netPoller = null;
-					}
+					// Always close the dedicated manual poller.
+					manualPoller.close();
 				}
 			}
 		}.execute();
@@ -664,7 +661,12 @@ public class MainWindow extends JFrame {
 
 	private void manageSources() {
 		// 1) Open source manager dialog (modal)
-		new org.abitware.docfinder.ui.ManageSourcesDialog(this).setVisible(true);
+		org.abitware.docfinder.ui.ManageSourcesDialog dlg = new org.abitware.docfinder.ui.ManageSourcesDialog(this);
+		dlg.setVisible(true);
+
+		if (!dlg.isSourcesChanged()) {
+			return;
+		}
 
 		// 2) Check if need to restart Live Watch / Poller
 		boolean needRestart = (liveWatchToggle != null && liveWatchToggle.isSelected())
@@ -1223,6 +1225,11 @@ public class MainWindow extends JFrame {
 
 	/** Rebuild index (full): delete old index, re-index all sources */
 	private void rebuildAllSources() {
+		if (isIndexing) {
+			JOptionPane.showMessageDialog(this, "An indexing operation is already in progress.");
+			return;
+		}
+
 		org.abitware.docfinder.index.SourceManager sm = new org.abitware.docfinder.index.SourceManager();
 		java.util.List<java.nio.file.Path> sources = sm.load();
 		if (sources.isEmpty()) {
@@ -1233,7 +1240,14 @@ public class MainWindow extends JFrame {
 		org.abitware.docfinder.index.IndexSettings s = cm.loadIndexSettings();
 
 		java.nio.file.Path indexDir = sm.getIndexDir();
-        statusLabel.setText("Rebuilding index (full)…");
+
+		// Disable UI and set indexing flag
+		isIndexing = true;
+		searchField.setEnabled(false);
+		queryBox.setEnabled(false);
+		scopeBox.setEnabled(false);
+		matchModeBox.setEnabled(false);
+        statusLabel.setText("Rebuilding index (full)… Searching is disabled.");
 		long t0 = System.currentTimeMillis();
 
 		new javax.swing.SwingWorker<Integer, Void>() {
@@ -1253,6 +1267,13 @@ public class MainWindow extends JFrame {
 					setSearchService(new org.abitware.docfinder.search.LuceneSearchService(indexDir));
 				} catch (Exception ex) {
 					statusLabel.setText("Rebuild failed: " + ex.getMessage());
+				} finally {
+					// Re-enable UI and clear indexing flag
+					isIndexing = false;
+					searchField.setEnabled(true);
+					queryBox.setEnabled(true);
+					scopeBox.setEnabled(true);
+					matchModeBox.setEnabled(true);
 				}
 			}
 		}.execute();
@@ -1269,6 +1290,10 @@ public class MainWindow extends JFrame {
 	}
 
 	private void doSearch() {
+		if (isIndexing) {
+			statusLabel.setText("Indexing in progress, searching is disabled.");
+			return;
+		}
 
 		if (searchService == null) {
 

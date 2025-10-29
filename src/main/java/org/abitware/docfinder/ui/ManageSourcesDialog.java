@@ -16,6 +16,7 @@ public class ManageSourcesDialog extends JDialog {
         @Override public boolean isCellEditable(int r, int c) { return c == 1; }
     };
     private final JTable table = new JTable(model);
+    private boolean sourcesChanged = false;
 
     public ManageSourcesDialog(Frame owner) {
         super(owner, "Index Sources", true);
@@ -58,8 +59,17 @@ public class ManageSourcesDialog extends JDialog {
         add.addActionListener(e -> onAdd());
         remove.addActionListener(e -> onRemove());
         detect.addActionListener(e -> onDetect());
-        ok.addActionListener(e -> { saveData(); dispose(); });
+        ok.addActionListener(e -> {
+            if (sourcesChanged) {
+                saveData();
+            }
+            dispose();
+        });
         cancel.addActionListener(e -> dispose());
+    }
+
+    public boolean isSourcesChanged() {
+        return sourcesChanged;
     }
 
  // ManageSourcesDialog.java 关键改动
@@ -103,6 +113,7 @@ public class ManageSourcesDialog extends JDialog {
             String p = fc.getSelectedFile().getAbsolutePath();
             boolean net = Utils.isLikelyNetwork(Paths.get(p));
             model.addRow(new Object[]{ p, net ? "Network" : "Local" });
+            this.sourcesChanged = true;
         }
     }
 
@@ -110,6 +121,7 @@ public class ManageSourcesDialog extends JDialog {
         int[] rows = table.getSelectedRows();
         if (rows == null || rows.length == 0) return;
         for (int i = rows.length - 1; i >= 0; i--) model.removeRow(rows[i]);
+        this.sourcesChanged = true;
     }
 
     private void onDetect() {
@@ -118,6 +130,7 @@ public class ManageSourcesDialog extends JDialog {
             boolean net = Utils.isLikelyNetwork(Paths.get(p));
             model.setValueAt(net ? "Network" : "Local", r, 1);
         }
+        this.sourcesChanged = true;
         JOptionPane.showMessageDialog(this, "Detection finished.");
     }
 

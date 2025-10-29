@@ -135,8 +135,9 @@ public class LuceneSearchService implements SearchService {
                     break;
                 }
             }
-        } catch (Exception ignore) {
+        } catch (Exception ex) {
             // TODO: log exception details when logging framework available
+            ex.printStackTrace();
         }
 
         return out;
