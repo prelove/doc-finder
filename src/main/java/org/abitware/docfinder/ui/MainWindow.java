@@ -11,10 +11,27 @@ import java.awt.event.KeyEvent;
 import java.beans.PropertyChangeListener;
 import java.text.SimpleDateFormat;
 import java.util.Collections;
+import java.util.concurrent.ExecutorService;
+import java.util.concurrent.Executors;
 import java.util.List;
+import org.slf4j.Logger;
+import org.slf4j.LoggerFactory;
 
 import javax.swing.*;
 import javax.swing.table.DefaultTableModel;
+
+import org.abitware.docfinder.ui.components.MenuBarPanel;
+import org.apache.tika.parser.AutoDetectParser;
+import org.apache.tika.metadata.Metadata;
+import org.apache.tika.detect.EncodingDetector;
+import org.apache.tika.parser.ParseContext;
+import org.apache.tika.io.TikaInputStream;
+import java.nio.charset.Charset;
+
+import org.apache.tika.parser.txt.CharsetDetector;
+import org.apache.tika.parser.txt.CharsetMatch;
+
+import org.abitware.docfinder.ui.components.MenuBarPanel;
 
 import org.abitware.docfinder.search.FilterState;
 import org.abitware.docfinder.search.MatchMode;
@@ -24,7 +41,12 @@ import org.abitware.docfinder.search.SearchResult;
 import org.abitware.docfinder.search.SearchService;
 import org.abitware.docfinder.watch.NetPollerService.PollStats;
 
-public class MainWindow extends JFrame {
+import org.abitware.docfinder.ui.LogViewer;
+import org.abitware.docfinder.ui.log.JTextAreaAppender;
+
+public class MainWindow extends JFrame implements MenuBarPanel.MenuListener {
+	private static final Logger log = LoggerFactory.getLogger(MainWindow.class);
+	private LogViewer logViewer;
 	private org.abitware.docfinder.watch.LiveIndexService liveService;
 	private javax.swing.JCheckBoxMenuItem liveWatchToggle;
 
@@ -75,11 +97,15 @@ public class MainWindow extends JFrame {
 	private SearchWorker activeSearchWorker;
 	private long searchSequence = 0L;
 	private volatile boolean isIndexing = false;
+	private final ExecutorService searchExecutor = Executors.newSingleThreadExecutor();
 
 	// ========= Constructor =========
 	public MainWindow(SearchService searchService) {
 		super("DocFinder");
 		setSearchService(searchService); // Use the setter to manage lifecycle
+
+		logViewer = new LogViewer(this);
+		JTextAreaAppender.setLogViewer(logViewer);
 
 		setDefaultCloseOperation(WindowConstants.HIDE_ON_CLOSE);
 		setMinimumSize(new Dimension(900, 560));
@@ -99,7 +125,9 @@ public class MainWindow extends JFrame {
 		getContentPane().add(buildStatusBar(), BorderLayout.SOUTH);
 
 		// 4) Menu bar (File / Help)
-		setJMenuBar(buildMenuBar());
+		MenuBarPanel menuBar = buildMenuBar();
+		menuBar.setMenuListener(this);
+		setJMenuBar(menuBar);
 
 		// 5) Right-click menu, shortcuts, table selection listener
 		installTablePopupActions(); // Right-click: Open / Reveal / Copy
@@ -275,120 +303,8 @@ public class MainWindow extends JFrame {
 	}
 
 	/** Menu bar (File / Help) */
-	private JMenuBar buildMenuBar() {
-		JMenuBar bar = new JMenuBar();
-
-		JMenu file = new JMenu("File");
-
-		JMenuItem indexItem = new JMenuItem("Index Folder...");
-		indexItem.addActionListener(e -> chooseAndIndexFolder());
-		file.add(indexItem);
-
-		JMenuItem sourcesItem = new JMenuItem("Index Sources...");
-		sourcesItem.addActionListener(e -> manageSources());
-		file.add(sourcesItem);
-
-		JMenuItem indexAllItem = new JMenuItem("Index All Sources");
-		indexAllItem.addActionListener(e -> indexAllSources());
-		file.add(indexAllItem);
-
-		JMenuItem idxSettings = new JMenuItem("Indexing Settings...");
-		idxSettings.addActionListener(e -> showIndexingSettings());
-		file.add(idxSettings);
-
-		JMenuItem rebuildItem = new JMenuItem("Rebuild Index (Full)");
-		rebuildItem.addActionListener(e -> rebuildAllSources());
-		file.add(rebuildItem);
-
-		file.addSeparator();
-
-		JMenuItem exportCsv = new JMenuItem("Export Results to CSV...");
-		exportCsv.addActionListener(e -> exportResultsToCsv());
-		file.add(exportCsv);
-
-		file.addSeparator();
-
-		JMenuItem clearHist = new JMenuItem("Clear Search History...");
-		clearHist.setToolTipText("Remove all saved queries (keeps the index intact)");
-		// Java 8 鐨勫揩鎹烽敭鍐欐硶锛歁enuShortcutKeyMask() + SHIFT_MASK
-		clearHist.setAccelerator(KeyStroke.getKeyStroke(java.awt.event.KeyEvent.VK_DELETE,
-				java.awt.Toolkit.getDefaultToolkit().getMenuShortcutKeyMask() | java.awt.event.InputEvent.SHIFT_MASK));
-		clearHist.addActionListener(e -> clearSearchHistory());
-		file.add(clearHist);
-
-		file.addSeparator();
-		liveWatchToggle = new JCheckBoxMenuItem("Enable Live Watch (Local)");
-		liveWatchToggle.addActionListener(e -> toggleLiveWatch());
-		file.add(liveWatchToggle);
-
-		netPollToggle = new JCheckBoxMenuItem("Enable Network Polling");
-		netPollToggle.addActionListener(e -> toggleNetPolling());
-		file.add(netPollToggle);
-
-		JMenuItem pollNow = new JMenuItem("Poll Now");
-		pollNow.addActionListener(e -> pollOnceNow());
-		file.add(pollNow);
-
-		file.addSeparator();
-
-		JMenuItem exitItem = new JMenuItem("Exit");
-        // Java 8：使用 getMenuShortcutKeyMask()（Win=Ctrl, macOS=Cmd）
-		exitItem.setAccelerator(
-				KeyStroke.getKeyStroke(KeyEvent.VK_Q, Toolkit.getDefaultToolkit().getMenuShortcutKeyMask()));
-
-		exitItem.addActionListener(e -> {
-            // 可选：优雅停掉本地文件监控 & 网络轮询（如果当前开启）// 可选：优雅停掉本地文件监控 & 网络轮询（如果当前开启）
-			try {
-				if (liveWatchToggle != null && liveWatchToggle.isSelected()) {
-					liveWatchToggle.setSelected(false);
-					toggleLiveWatch();
-				}
-				if (netPollToggle != null && netPollToggle.isSelected()) {
-					netPollToggle.setSelected(false);
-					toggleNetPolling();
-				}
-			} catch (Exception ignore) {
-			}
-
-            // 可选：移除托盘图标
-			try {
-				if (SystemTray.isSupported()) {
-					SystemTray tray = SystemTray.getSystemTray();
-					for (TrayIcon ti : tray.getTrayIcons())
-						tray.remove(ti);
-				}
-			} catch (Exception ignore) {
-			}
-
-            // 关闭窗口并退出（App 里有 shutdown hook 会注销全局热键）
-			try {
-				dispose();
-			} catch (Exception ignore) {
-			}
-			System.exit(0);
-		});
-
-		// add file menus
-		file.add(exitItem);
-
-		bar.add(file);
-
-		// add theme
-		bar.add(org.abitware.docfinder.ui.ThemeUtil.buildThemeMenu());
-
-		// add help
-		JMenu help = new JMenu("Help");
-
-		JMenuItem usage = new JMenuItem("Usage Guide");
-		usage.addActionListener(e -> showUsageDialog());
-		JMenuItem about = new JMenuItem("About DocFinder");
-		about.addActionListener(e -> JOptionPane.showMessageDialog(this,
-				"DocFinder\n\nLocal file name & content search.\n- Read-only indexing\n- Lucene + Tika\n- Java 8+\n",
-				"About", JOptionPane.INFORMATION_MESSAGE));
-		help.add(usage);
-		help.add(about);
-		bar.add(help);
-
+	private MenuBarPanel buildMenuBar() {
+		MenuBarPanel bar = new MenuBarPanel();
 		return bar;
 	}
 
@@ -861,6 +777,26 @@ public class MainWindow extends JFrame {
 	}
 
 	private String readTextFallback(java.nio.file.Path file, int maxChars) {
+		try (java.io.InputStream is = java.nio.file.Files.newInputStream(file, java.nio.file.StandardOpenOption.READ)) {
+			// First, try Tika's CharsetDetector
+			CharsetDetector detector = new CharsetDetector();
+			detector.setText(is);
+			CharsetMatch match = detector.detect();
+			if (match != null && match.getConfidence() > 50) { // Check confidence level
+				try {
+					String text = readTextWithCharset(file, maxChars, Charset.forName(match.getName()));
+					if (text != null && !text.trim().isEmpty()) {
+						return text;
+					}
+				} catch (Exception ignore) {
+					// Fallback to other candidates if Tika's detected charset fails
+				}
+			}
+		} catch (Exception ignore) {
+			// Fallback to other candidates if Tika detection fails
+		}
+
+		// Fallback to existing charset candidates
 		java.util.LinkedHashSet<java.nio.charset.Charset> candidates = new java.util.LinkedHashSet<>();
 		java.nio.charset.Charset bom = detectBomCharset(file);
 		if (bom != null) {
@@ -1268,7 +1204,7 @@ public class MainWindow extends JFrame {
 				try {
 					int n = get();
 					long ms = System.currentTimeMillis() - t0;
-					statusLabel.setText("Rebuilt files: " + n + " | Time: " + ms + " " + "ms | Index: " + indexDir);
+					statusLabel.setText("Rebuilt files: " + n + " | Time: " + ms + " ms | Index: " + indexDir);
 					try {
 						setSearchService(new org.abitware.docfinder.search.LuceneSearchService(indexDir));
 					} catch (java.io.IOException ioEx) {
@@ -1300,6 +1236,7 @@ public class MainWindow extends JFrame {
 	}
 
 	private void doSearch() {
+		log.debug("doSearch() called.");
 		if (isIndexing) {
 			statusLabel.setText("Indexing in progress, searching is disabled.");
 			return;
@@ -1359,7 +1296,7 @@ public class MainWindow extends JFrame {
 
 		updatePreviewInner("Searching...", false);
 
-		worker.execute();
+		searchExecutor.submit(worker);
 
 	}
 
@@ -1430,17 +1367,12 @@ public class MainWindow extends JFrame {
 
 
 		SearchWorker(long token, String query, FilterState filter, SearchScope scope, MatchMode matchMode) {
-
 			this.token = token;
-
 			this.query = query;
-
 			this.filter = filter;
-
 			this.scope = (scope == null) ? SearchScope.ALL : scope;
-
 			this.matchMode = (matchMode == null) ? MatchMode.FUZZY : matchMode;
-
+			log.debug("SearchWorker created for query: {} with token: {}", query, token);
 		}
 
 
@@ -1448,16 +1380,22 @@ public class MainWindow extends JFrame {
 		@Override
 
 		protected List<SearchResult> doInBackground() {
-
-			if (isCancelled() || searchService == null) {
-
+			log.debug("SearchWorker.doInBackground() started for token: {}", token);
+			if (isCancelled()) {
+				log.debug("SearchWorker.doInBackground() for token {} was cancelled before execution.", token);
+				return Collections.emptyList();
+			}
+			if (searchService == null) {
+				log.warn("SearchService is null in SearchWorker.doInBackground() for token: {}", token);
 				return Collections.emptyList();
 
 			}
 
 			SearchRequest request = new SearchRequest(query, 100, filter, scope, matchMode);
-
-			return searchService.search(request);
+			log.debug("Executing search for token: {}", token);
+			List<SearchResult> results = searchService.search(request);
+			log.debug("Search for token {} completed with {} results.", token, results.size());
+			return results;
 
 		}
 
@@ -1466,11 +1404,10 @@ public class MainWindow extends JFrame {
 		@Override
 
 		protected void done() {
-
+			log.debug("SearchWorker.done() called for token: {}. Current searchSequence: {}", token, searchSequence);
 			if (token != searchSequence) {
-
+				log.debug("SearchWorker.done() for token {} is stale, ignoring.", token);
 				return;
-
 			}
 
 
@@ -1859,6 +1796,104 @@ public class MainWindow extends JFrame {
         JOptionPane.showMessageDialog(this, sp, "Usage Guide", JOptionPane.PLAIN_MESSAGE);
     }
 
+    @Override
+    public void onShowLogViewer() {
+        if (logViewer.isVisible()) {
+            logViewer.setVisible(false);
+        } else {
+            logViewer.setVisible(true);
+        }
+    }
+
+    @Override
+    public void onExit() {
+        // Optional: gracefully stop local file watch & network polling (if currently enabled)
+        try {
+            if (liveWatchToggle != null && liveWatchToggle.isSelected()) {
+                liveWatchToggle.setSelected(false);
+                toggleLiveWatch();
+            }
+            if (netPollToggle != null && netPollToggle.isSelected()) {
+                netPollToggle.setSelected(false);
+                toggleNetPolling();
+            }
+        } catch (Exception ignore) {
+        }
+
+        // Optional: remove tray icon
+        try {
+            if (SystemTray.isSupported()) {
+                SystemTray tray = SystemTray.getSystemTray();
+                for (TrayIcon ti : tray.getTrayIcons())
+                    tray.remove(ti);
+            }
+        } catch (Exception ignore) {
+        }
+
+        // Close window and exit (App has shutdown hook to unregister global hotkey)
+        try {
+            dispose();
+        }
+        catch (Exception ignore) {
+        }
+        System.exit(0);
+    }
+
+    @Override
+    public void onIndexFolder() {
+        chooseAndIndexFolder();
+    }
+
+    @Override
+    public void onManageSources() {
+        manageSources();
+    }
+
+    @Override
+    public void onIndexAllSources() {
+        indexAllSources();
+    }
+
+    @Override
+    public void onShowIndexingSettings() {
+        showIndexingSettings();
+    }
+
+    @Override
+    public void onRebuildIndex() {
+        rebuildAllSources();
+    }
+
+    @Override
+    public void onExportResults() {
+        exportResultsToCsv();
+    }
+
+    @Override
+    public void onClearHistory() {
+        clearSearchHistory();
+    }
+
+    @Override
+    public void onToggleLiveWatch() {
+        toggleLiveWatch();
+    }
+
+    @Override
+    public void onToggleNetworkPolling() {
+        toggleNetPolling();
+    }
+
+    @Override
+    public void onPollNow() {
+        pollOnceNow();
+    }
+
+    @Override
+    public void onShowUsage() {
+        showUsageDialog();
+    }
+
 	private static String fmtTime(long epochMs) {
 		if (epochMs <= 0)
 			return "";
@@ -1932,6 +1967,7 @@ public class MainWindow extends JFrame {
 		if (searchService != null) { // Close search service on dispose
 			searchService.close();
 		}
+		searchExecutor.shutdownNow();
 		super.dispose();
 	}
 

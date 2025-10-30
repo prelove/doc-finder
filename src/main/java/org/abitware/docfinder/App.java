@@ -15,9 +15,13 @@ import org.abitware.docfinder.ui.MainWindow;
 import org.abitware.docfinder.ui.ThemeUtil;
 import org.abitware.docfinder.util.SingleInstance;
 
+import org.slf4j.Logger; // ADDED
+import org.slf4j.LoggerFactory; // ADDED
+
 public class App {
-    private static volatile MainWindow MAIN;          // 供 ACTIVATE 回调使用
+    private static volatile MainWindow MAIN;          // 䧛 ACTIVATE 回调使用
     private static final String APP_ID = "org.abitware.docfinder"; // 影响端口计算
+    private static final Logger logger = LoggerFactory.getLogger(App.class); // ADDED LOGGER
 
     public static void main(String[] args) {
         // 1) 主题（必须在任何 Swing 组件创建前）
@@ -33,7 +37,7 @@ public class App {
                 SearchService searchService = new LuceneSearchService(indexDir);
 
                 MainWindow win = new MainWindow(searchService);
-                MAIN = win; // 赋值供回调 bringToFront 使用
+                MAIN = win; // 赋值䧛回调 bringToFront 使用
                 win.setVisible(true);
 
                 // 全局热键：Ctrl + Alt + Space
@@ -57,8 +61,8 @@ public class App {
                             // 退出前清理托盘与单实例
                             try {
                                 for (TrayIcon ti : tray.getTrayIcons()) tray.remove(ti);
-                            } catch (Exception ignore) {}
-                            try { instance.close(); } catch (Exception ignore) {}
+                            } catch (Exception ex) { logger.error("Error removing tray icon", ex); } // MODIFIED
+                            try { instance.close(); } catch (Exception ex) { logger.error("Error closing single instance lock", ex); } // MODIFIED
                             System.exit(0);
                         });
                         menu.add(exitItem);
@@ -73,26 +77,27 @@ public class App {
                         tray.add(icon);
                         win.setDefaultCloseOperation(WindowConstants.HIDE_ON_CLOSE);
                     } catch (Exception ex) {
-                        ex.printStackTrace();
+                        logger.error("Error setting up system tray", ex); // MODIFIED
                     }
                 }
 
                 // JVM 退出时关闭单实例监听
                 Runtime.getRuntime().addShutdownHook(new Thread(() -> {
-                    try { instance.close(); } catch (Exception ignore) {}
+                    try { instance.close(); } catch (Exception ex) { logger.error("Error closing single instance lock on shutdown", ex); } // MODIFIED
                 }));
             } catch (IOException ex) {
+                logger.error("Failed to initialize search service", ex); // MODIFIED
                 JOptionPane.showMessageDialog(null,
                         "Failed to initialize search service: " + ex.getMessage() + "\nApplication will exit.",
                         "Initialization Error",
                         JOptionPane.ERROR_MESSAGE);
                 System.exit(1);
             } catch (Exception ex) {
+                logger.error("An unexpected error occurred during application startup", ex); // MODIFIED
                 JOptionPane.showMessageDialog(null,
                         "An unexpected error occurred during application startup: " + ex.getMessage() + "\nApplication will exit.",
                         "Initialization Error",
                         JOptionPane.ERROR_MESSAGE);
-                ex.printStackTrace();
                 System.exit(1);
             }
         });

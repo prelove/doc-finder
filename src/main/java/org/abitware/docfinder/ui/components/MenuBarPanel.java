@@ -40,6 +40,7 @@ public class MenuBarPanel extends JMenuBar {
         void onShowUsage();
 
         void onExit();
+        void onShowLogViewer();
     }
 
     public MenuBarPanel() {
@@ -147,6 +148,12 @@ public class MenuBarPanel extends JMenuBar {
         usage.addActionListener(e -> {
             if (menuListener != null) menuListener.onShowUsage();
         });
+
+        JMenuItem viewLog = new JMenuItem("View Log");
+        viewLog.addActionListener(e -> {
+            if (menuListener != null) menuListener.onShowLogViewer();
+        });
+        help.add(viewLog);
 
         JMenuItem about = new JMenuItem("About DocFinder");
         about.addActionListener(e -> JOptionPane.showMessageDialog(this,
