@@ -4,6 +4,7 @@ import org.abitware.docfinder.index.ConfigManager;
 import org.abitware.docfinder.index.IndexSettings;
 import org.abitware.docfinder.index.LuceneIndexer;
 
+import java.io.IOException;
 import java.nio.file.*;
 import java.util.*;
 import java.util.concurrent.*;
@@ -17,10 +18,14 @@ public class LiveIndexService implements AutoCloseable {
         Thread t = new Thread(r, "docfinder-liveindex-worker"); t.setDaemon(true); return t;
     });
 
-    public LiveIndexService(Path indexDir, IndexSettings settings, List<Path> roots) {
+    // Added field for LuceneIndexer
+    private final LuceneIndexer luceneIndexer;
+
+    public LiveIndexService(Path indexDir, IndexSettings settings, List<Path> roots) throws IOException { // Constructor now throws IOException
         this.indexDir = indexDir;
         this.settings = settings;
         this.roots = new ArrayList<>(roots);
+        this.luceneIndexer = new LuceneIndexer(indexDir, settings); // Initialize LuceneIndexer here
     }
 
     public void start() throws Exception {
@@ -33,17 +38,19 @@ public class LiveIndexService implements AutoCloseable {
         // 仅处理文件（目录创建我们已用于注册递归）
         worker.submit(() -> {
             try {
-                LuceneIndexer idx = new LuceneIndexer(indexDir, settings);
+                // LuceneIndexer idx = new LuceneIndexer(indexDir, settings); // REMOVED
                 if ("DELETE".equals(type)) {
-                    idx.deletePath(path);
+                    luceneIndexer.deletePath(path);
                 } else {
                     // 等待文件“稳定”：最多 2 秒，尺寸两次一致
                     if (waitStable(path, 2000)) {
-                        idx.upsertFile(path);
+                        luceneIndexer.upsertFile(path);
                     }
                 }
-            } catch (Throwable ignore) {
-                // 可加重试/退避，初版先忽略
+                luceneIndexer.commit(); // Commit changes after each operation
+            } catch (Throwable ex) { // Changed from ignore
+                // TODO: log exception details when logging framework available
+                ex.printStackTrace(); // Print stack trace for now
             }
         });
     }
@@ -60,13 +67,21 @@ public class LiveIndexService implements AutoCloseable {
                 last = size;
                 Thread.sleep(300);
             }
-        } catch (Exception ignore) {}
+        } catch (Exception ignore) {} // TODO: log this exception
         return true; // 超时直接尝试解析
     }
 
     @Override public void close() {
-        try { if (watcher != null) watcher.close(); } catch (Exception ignore) {}
+        try { if (watcher != null) watcher.close(); } catch (Exception ignore) {} // TODO: log this exception
         watcher = null;
         worker.shutdownNow();
+        try {
+            if (luceneIndexer != null) {
+                luceneIndexer.close(); // Close the LuceneIndexer
+            }
+        } catch (IOException e) {
+            // TODO: log this error
+            e.printStackTrace();
+        }
     }
 }

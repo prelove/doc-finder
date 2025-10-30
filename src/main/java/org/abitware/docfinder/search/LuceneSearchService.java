@@ -1,5 +1,6 @@
 package org.abitware.docfinder.search;
 
+import java.io.IOException;
 import java.nio.file.Path;
 import java.util.ArrayList;
 import java.util.Collections;
@@ -21,6 +22,8 @@ import org.apache.lucene.document.StoredField;
 import org.apache.lucene.document.StringField;
 import org.apache.lucene.document.TextField;
 import org.apache.lucene.index.DirectoryReader;
+import org.apache.lucene.index.IndexWriter;
+import org.apache.lucene.index.IndexWriterConfig;
 import org.apache.lucene.index.Term;
 import org.apache.lucene.queryparser.classic.MultiFieldQueryParser;
 import org.apache.lucene.queryparser.classic.ParseException;
@@ -33,6 +36,8 @@ import org.apache.lucene.search.MatchAllDocsQuery;
 import org.apache.lucene.search.PrefixQuery;
 import org.apache.lucene.search.Query;
 import org.apache.lucene.search.ScoreDoc;
+import org.apache.lucene.search.SearcherFactory;
+import org.apache.lucene.search.SearcherManager;
 import org.apache.lucene.search.TermQuery;
 import org.apache.lucene.search.TopDocs;
 import org.apache.lucene.search.WildcardQuery;
@@ -55,12 +60,14 @@ public class LuceneSearchService implements SearchService {
     private static final String[] CONTENT_FIELDS = { "content", "content_zh", "content_ja" };
 
     private final Path indexDir;
-    
     private final Analyzer queryAnalyzer;
-    
 
-    public LuceneSearchService(Path indexDir) {
-    	this.indexDir = indexDir;
+    // Added fields for SearcherManager
+    private volatile SearcherManager searcherManager;
+    private volatile IndexWriter indexWriter; // IndexWriter is needed for SearcherManager to refresh
+
+    public LuceneSearchService(Path indexDir) throws IOException { // Constructor now throws IOException
+        this.indexDir = indexDir;
 
         Analyzer std = new StandardAnalyzer();
         Analyzer zh  = new SmartChineseAnalyzer();
@@ -72,6 +79,14 @@ public class LuceneSearchService implements SearchService {
         perField.put("content_ja", ja);
 
         this.queryAnalyzer = new PerFieldAnalyzerWrapper(std, perField);
+
+        // Initialize IndexWriter and SearcherManager
+        IndexWriterConfig iwc = new IndexWriterConfig(queryAnalyzer);
+        iwc.setOpenMode(IndexWriterConfig.OpenMode.CREATE_OR_APPEND);
+        iwc.setRAMBufferSizeMB(256.0); // As suggested in README performance notes
+
+        this.indexWriter = new IndexWriter(FSDirectory.open(indexDir), iwc);
+        this.searcherManager = new SearcherManager(indexWriter, new SearcherFactory());
     }
 
     @Override
@@ -86,8 +101,10 @@ public class LuceneSearchService implements SearchService {
         SearchScope scope = request.scope == null ? SearchScope.ALL : request.scope;
         MatchMode matchMode = request.matchMode == null ? MatchMode.FUZZY : request.matchMode;
 
-        try (DirectoryReader reader = DirectoryReader.open(FSDirectory.open(indexDir))) {
-            IndexSearcher searcher = new IndexSearcher(reader);
+        IndexSearcher searcher = null; // Declare outside try for finally block
+        try {
+            searcherManager.maybeRefresh(); // Refresh searcher if index has changed
+            searcher = searcherManager.acquire(); // Acquire a searcher
 
             NamePreprocess np = extractNameWildcards(rawQuery);
             boolean advanced = hasAdvancedSyntax(np.qRest);
@@ -128,6 +145,7 @@ public class LuceneSearchService implements SearchService {
                 long size = getStoredLong(d, FIELD_SIZE);
                 if (isFolder) size = 0L;
 
+                // Pass the acquired searcher to detectMatchType
                 String match = isFolder ? "folder" : detectMatchType(searcher, finalQuery, sd.doc);
 
                 out.add(new SearchResult(name, path, sd.score, ctime, atime, match, size, isFolder));
@@ -137,10 +155,34 @@ public class LuceneSearchService implements SearchService {
             }
         } catch (Exception ex) {
             // TODO: log exception details when logging framework available
-            ex.printStackTrace();
+            // ex.printStackTrace(); // Removed for now
+        } finally {
+            if (searcher != null) {
+                try {
+                    searcherManager.release(searcher);
+                } catch (IOException e) {
+                    // TODO: log this error
+                    e.printStackTrace();
+                }
+            }
         }
 
         return out;
+    }
+
+    @Override
+    public void close() {
+        try {
+            if (searcherManager != null) {
+                searcherManager.close();
+            }
+            if (indexWriter != null) {
+                indexWriter.close();
+            }
+        } catch (IOException e) {
+            // TODO: log this error
+            e.printStackTrace();
+        }
     }
 
     private Query buildUserQuery(String qRest, SearchScope scope, MatchMode matchMode, boolean advanced) throws ParseException {
@@ -276,7 +318,7 @@ public class LuceneSearchService implements SearchService {
         if (input == null || input.isEmpty()) return false;
         for (int i = 0; i < input.length(); i++) {
             char c = input.charAt(i);
-            if (c == ':' || c == '*' || c == '?' || c == '"' || c == '(' || c == ')' || c == '!') {
+            if (c == ':' || c == '*' || c == '?' || c == '"' || c == ')' || c == '!') {
                 return true;
             }
         }

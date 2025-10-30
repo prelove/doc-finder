@@ -24,4 +24,9 @@ public class FakeSearchService implements SearchService {
         }
         return out;
     }
+
+    @Override
+    public void close() {
+        // No resources to close for a fake service.
+    }
 }

@@ -9,4 +9,11 @@ public interface SearchService {
     }
 
     List<SearchResult> search(SearchRequest request);
+
+    /**
+     * Releases any resources held by this service, such as the SearcherManager.
+     */
+    default void close() {
+        // Default implementation does nothing.
+    }
 }

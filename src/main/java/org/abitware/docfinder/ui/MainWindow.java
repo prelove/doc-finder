@@ -79,7 +79,7 @@ public class MainWindow extends JFrame {
 	// ========= Constructor =========
 	public MainWindow(SearchService searchService) {
 		super("DocFinder");
-		this.searchService = searchService;
+		setSearchService(searchService); // Use the setter to manage lifecycle
 
 		setDefaultCloseOperation(WindowConstants.HIDE_ON_CLOSE);
 		setMinimumSize(new Dimension(900, 560));
@@ -1160,7 +1160,12 @@ public class MainWindow extends JFrame {
 					int n = get();
 					statusLabel.setText("Indexed files: " + n + "  |  Index: " + indexDir.toString());
                     // 切换到 Lucene 搜索服务
-					setSearchService(new org.abitware.docfinder.search.LuceneSearchService(indexDir));
+					try {
+						setSearchService(new org.abitware.docfinder.search.LuceneSearchService(indexDir));
+					} catch (java.io.IOException ioEx) {
+						statusLabel.setText("Failed to switch search service: " + ioEx.getMessage());
+						ioEx.printStackTrace();
+					}
                     // 可选：自动触发一次搜索以验证
                     // doSearch();
 				} catch (Exception ex) {
@@ -1263,8 +1268,13 @@ public class MainWindow extends JFrame {
 				try {
 					int n = get();
 					long ms = System.currentTimeMillis() - t0;
-					statusLabel.setText("Rebuilt files: " + n + " | Time: " + ms + " ms | Index: " + indexDir);
-					setSearchService(new org.abitware.docfinder.search.LuceneSearchService(indexDir));
+					statusLabel.setText("Rebuilt files: " + n + " | Time: " + ms + " " + "ms | Index: " + indexDir);
+					try {
+						setSearchService(new org.abitware.docfinder.search.LuceneSearchService(indexDir));
+					} catch (java.io.IOException ioEx) {
+						statusLabel.setText("Failed to switch search service after rebuild: " + ioEx.getMessage());
+						ioEx.printStackTrace();
+					}
 				} catch (Exception ex) {
 					statusLabel.setText("Rebuild failed: " + ex.getMessage());
 				} finally {
@@ -1907,14 +1917,20 @@ public class MainWindow extends JFrame {
 		return statusLabel;
 	}
 
-	public void setSearchService(SearchService svc) {
-		this.searchService = svc;
+	public void setSearchService(SearchService newSvc) {
+		if (this.searchService != null) {
+			this.searchService.close(); // Close the old service
+		}
+		this.searchService = newSvc;
 	}
 	@Override
 	public void dispose() {
 		try {
 			UIManager.removePropertyChangeListener(lafListener);
 		} catch (Exception ignore) {
+		}
+		if (searchService != null) { // Close search service on dispose
+			searchService.close();
 		}
 		super.dispose();
 	}
