@@ -17,6 +17,9 @@ import org.apache.tika.parser.AutoDetectParser;
 import org.apache.tika.parser.ParseContext;
 import org.apache.tika.sax.BodyContentHandler;
 
+import org.slf4j.Logger;
+import org.slf4j.LoggerFactory;
+
 import java.io.InputStream;
 import java.io.IOException;
 import java.nio.charset.StandardCharsets;
@@ -34,6 +37,7 @@ import java.util.concurrent.atomic.AtomicInteger;
  * - 支持：单文件 upsert、删除；单目录/多目录全量索引（支持强制重建）
  */
 public class LuceneIndexer implements AutoCloseable { // Implements AutoCloseable
+    private static final Logger logger = LoggerFactory.getLogger(LuceneIndexer.class);
     private static final String KIND_FILE = "file";
     private static final String KIND_FOLDER = "folder";
 
@@ -120,7 +124,9 @@ public class LuceneIndexer implements AutoCloseable { // Implements AutoCloseabl
                 content = extractTextReadOnly(file);
             }
             mime = Files.probeContentType(file);
-        } catch (Exception ignore) {} // TODO: log this exception
+        } catch (Exception e) {
+            logger.error("Failed to parse content or mime type for: {}", file, e);
+        }
 
         if (mime != null) doc.add(new StringField("mime", mime, Field.Store.YES));
         if (!content.isEmpty()) {
@@ -173,51 +179,61 @@ public class LuceneIndexer implements AutoCloseable { // Implements AutoCloseabl
             try (IndexWriter writer = new IndexWriter(dir, cfg)) {
                 Files.walkFileTree(root, new SimpleFileVisitor<Path>() {
                     @Override
-                    public FileVisitResult preVisitDirectory(Path dir, BasicFileAttributes attrs) throws IOException {
-                        if (isExcluded(dir)) return FileVisitResult.SKIP_SUBTREE;
-                        indexDirectory(writer, dir, attrs);
-                        count[0]++;
+                    public FileVisitResult preVisitDirectory(Path dir, BasicFileAttributes attrs) {
+                        try {
+                            if (isExcluded(dir)) return FileVisitResult.SKIP_SUBTREE;
+                            indexDirectory(writer, dir, attrs);
+                            count[0]++;
+                        } catch (Exception e) {
+                            logger.error("Failed to index directory: {}", dir, e);
+                        }
                         return FileVisitResult.CONTINUE;
                     }
 
                     @Override
-                    public FileVisitResult visitFile(Path file, BasicFileAttributes attrs) throws IOException {
-                        if (attrs.isDirectory() || isExcluded(file)) return FileVisitResult.CONTINUE;
-
-                        String name = file.getFileName().toString();
-                        if (name.endsWith(".exe") || name.endsWith(".dll")) return FileVisitResult.CONTINUE;
-
-                        String pathStr = Utils.normalizeForIndex(file);
-
-                        Document doc = new Document();
-                        doc.add(new StringField("path", pathStr, Field.Store.YES));
-                        doc.add(new TextField("name", name, Field.Store.YES));
-                        doc.add(new StringField("name_raw", name.toLowerCase(java.util.Locale.ROOT), Field.Store.NO));
-                        doc.add(new StringField("ext", getExt(name), Field.Store.YES));
-                        doc.add(new StringField("kind", KIND_FILE, Field.Store.YES));
-                        doc.add(new LongPoint("mtime_l", attrs.lastModifiedTime().toMillis()));
-                        doc.add(new StoredField("mtime", attrs.lastModifiedTime().toMillis()));
-                        doc.add(new StoredField("size", attrs.size()));
-                        doc.add(new StoredField("ctime", attrs.creationTime().toMillis()));
-                        doc.add(new StoredField("atime", attrs.lastAccessTime().toMillis()));
-
-                        String mime = null, content = "";
+                    public FileVisitResult visitFile(Path file, BasicFileAttributes attrs) {
                         try {
-                            if (shouldParseContent(file, name, attrs.size())) {
-                                content = extractTextReadOnly(file);
+                            if (attrs.isDirectory() || isExcluded(file)) return FileVisitResult.CONTINUE;
+
+                            String name = file.getFileName().toString();
+                            if (name.endsWith(".exe") || name.endsWith(".dll")) return FileVisitResult.CONTINUE;
+
+                            String pathStr = Utils.normalizeForIndex(file);
+
+                            Document doc = new Document();
+                            doc.add(new StringField("path", pathStr, Field.Store.YES));
+                            doc.add(new TextField("name", name, Field.Store.YES));
+                            doc.add(new StringField("name_raw", name.toLowerCase(java.util.Locale.ROOT), Field.Store.NO));
+                            doc.add(new StringField("ext", getExt(name), Field.Store.YES));
+                            doc.add(new StringField("kind", KIND_FILE, Field.Store.YES));
+                            doc.add(new LongPoint("mtime_l", attrs.lastModifiedTime().toMillis()));
+                            doc.add(new StoredField("mtime", attrs.lastModifiedTime().toMillis()));
+                            doc.add(new StoredField("size", attrs.size()));
+                            doc.add(new StoredField("ctime", attrs.creationTime().toMillis()));
+                            doc.add(new StoredField("atime", attrs.lastAccessTime().toMillis()));
+
+                            String mime = null, content = "";
+                            try {
+                                if (shouldParseContent(file, name, attrs.size())) {
+                                    content = extractTextReadOnly(file);
+                                }
+                                mime = java.nio.file.Files.probeContentType(file);
+                            } catch (Exception e) {
+                                logger.error("Failed to parse content or mime type for: {}", file, e);
                             }
-                            mime = java.nio.file.Files.probeContentType(file);
-                        } catch (Exception ignore) {} // TODO: log this exception
 
-                        if (mime != null) doc.add(new StringField("mime", mime, Field.Store.YES));
-                        if (!content.isEmpty()) {
-                            doc.add(new TextField("content", content, Field.Store.NO));
-                            doc.add(new TextField("content_zh", content, Field.Store.NO));
-                            doc.add(new TextField("content_ja", content, Field.Store.NO));
+                            if (mime != null) doc.add(new StringField("mime", mime, Field.Store.YES));
+                            if (!content.isEmpty()) {
+                                doc.add(new TextField("content", content, Field.Store.NO));
+                                doc.add(new TextField("content_zh", content, Field.Store.NO));
+                                doc.add(new TextField("content_ja", content, Field.Store.NO));
+                            }
+
+                            writer.updateDocument(new Term("path", pathStr), doc);
+                            count[0]++;
+                        } catch (Exception e) {
+                            logger.error("Failed to index file: {}", file, e);
                         }
-
-                        writer.updateDocument(new Term("path", pathStr), doc);
-                        count[0]++;
                         return FileVisitResult.CONTINUE;
                     }
                 });
@@ -256,51 +272,61 @@ public class LuceneIndexer implements AutoCloseable { // Implements AutoCloseabl
             java.util.concurrent.atomic.AtomicInteger count) throws IOException {
         Files.walkFileTree(root, new SimpleFileVisitor<Path>() {
             @Override
-            public FileVisitResult preVisitDirectory(Path dir, BasicFileAttributes attrs) throws IOException {
-                if (isExcluded(dir)) return FileVisitResult.SKIP_SUBTREE;
-                indexDirectory(writer, dir, attrs);
-                count.incrementAndGet();
+            public FileVisitResult preVisitDirectory(Path dir, BasicFileAttributes attrs) {
+                try {
+                    if (isExcluded(dir)) return FileVisitResult.SKIP_SUBTREE;
+                    indexDirectory(writer, dir, attrs);
+                    count.incrementAndGet();
+                } catch (Exception e) {
+                    logger.error("Failed to index directory: {}", dir, e);
+                }
                 return FileVisitResult.CONTINUE;
             }
 
             @Override
-            public FileVisitResult visitFile(Path file, BasicFileAttributes attrs) throws IOException {
-                if (attrs.isDirectory() || isExcluded(file)) return FileVisitResult.CONTINUE;
-
-                String name = file.getFileName().toString();
-                if (name.endsWith(".exe") || name.endsWith(".dll")) return FileVisitResult.CONTINUE;
-
-                String pathStr = org.abitware.docfinder.util.Utils.normalizeForIndex(file);
-
-                Document doc = new Document();
-                doc.add(new StringField("path", pathStr, Field.Store.YES));
-                doc.add(new TextField("name", name, Field.Store.YES));
-                doc.add(new StringField("name_raw", name.toLowerCase(java.util.Locale.ROOT), Field.Store.NO));
-                doc.add(new StringField("ext", getExt(name), Field.Store.YES));
-                doc.add(new StringField("kind", KIND_FILE, Field.Store.YES));
-                doc.add(new LongPoint("mtime_l", attrs.lastModifiedTime().toMillis()));
-                doc.add(new StoredField("mtime", attrs.lastModifiedTime().toMillis()));
-                doc.add(new StoredField("size", attrs.size()));
-                doc.add(new StoredField("ctime", attrs.creationTime().toMillis()));
-                doc.add(new StoredField("atime", attrs.lastAccessTime().toMillis()));
-
-                String mime = null, content = "";
+            public FileVisitResult visitFile(Path file, BasicFileAttributes attrs) {
                 try {
-                    if (shouldParseContent(file, name, attrs.size())) {
-                        content = extractTextReadOnly(file);
+                    if (attrs.isDirectory() || isExcluded(file)) return FileVisitResult.CONTINUE;
+
+                    String name = file.getFileName().toString();
+                    if (name.endsWith(".exe") || name.endsWith(".dll")) return FileVisitResult.CONTINUE;
+
+                    String pathStr = org.abitware.docfinder.util.Utils.normalizeForIndex(file);
+
+                    Document doc = new Document();
+                    doc.add(new StringField("path", pathStr, Field.Store.YES));
+                    doc.add(new TextField("name", name, Field.Store.YES));
+                    doc.add(new StringField("name_raw", name.toLowerCase(java.util.Locale.ROOT), Field.Store.NO));
+                    doc.add(new StringField("ext", getExt(name), Field.Store.YES));
+                    doc.add(new StringField("kind", KIND_FILE, Field.Store.YES));
+                    doc.add(new LongPoint("mtime_l", attrs.lastModifiedTime().toMillis()));
+                    doc.add(new StoredField("mtime", attrs.lastModifiedTime().toMillis()));
+                    doc.add(new StoredField("size", attrs.size()));
+                    doc.add(new StoredField("ctime", attrs.creationTime().toMillis()));
+                    doc.add(new StoredField("atime", attrs.lastAccessTime().toMillis()));
+
+                    String mime = null, content = "";
+                    try {
+                        if (shouldParseContent(file, name, attrs.size())) {
+                            content = extractTextReadOnly(file);
+                        }
+                        mime = java.nio.file.Files.probeContentType(file);
+                    } catch (Exception e) {
+                        logger.error("Failed to parse content or mime type for: {}", file, e);
                     }
-                    mime = java.nio.file.Files.probeContentType(file);
-                } catch (Exception ignore) {} // TODO: log this exception
 
-                if (mime != null) doc.add(new StringField("mime", mime, Field.Store.YES));
-                if (!content.isEmpty()) {
-                    doc.add(new TextField("content", content, Field.Store.NO));
-                    doc.add(new TextField("content_zh", content, Field.Store.NO));
-                    doc.add(new TextField("content_ja", content, Field.Store.NO));
+                    if (mime != null) doc.add(new StringField("mime", mime, Field.Store.YES));
+                    if (!content.isEmpty()) {
+                        doc.add(new TextField("content", content, Field.Store.NO));
+                        doc.add(new TextField("content_zh", content, Field.Store.NO));
+                        doc.add(new TextField("content_ja", content, Field.Store.NO));
+                    }
+
+                    writer.updateDocument(new Term("path", pathStr), doc);
+                    count.incrementAndGet();
+                } catch (Exception e) {
+                    logger.error("Failed to index file: {}", file, e);
                 }
-
-                writer.updateDocument(new Term("path", pathStr), doc);
-                count.incrementAndGet();
                 return FileVisitResult.CONTINUE;
             }
         });
@@ -320,7 +346,9 @@ public class LuceneIndexer implements AutoCloseable { // Implements AutoCloseabl
             try {
                 PathMatcher m = FileSystems.getDefault().getPathMatcher("glob:" + g);
                 if (m.matches(p)) return true;
-            } catch (Exception ignore) { /* getPathMatcher 失败时忽略 */ } // TODO: log this exception
+            } catch (Exception e) {
+                logger.warn("Invalid glob pattern in exclude list: {}", g, e);
+            }
             // 兜底：**/xxx/** 的粗略包含判断
             String hint = g.replace("**/", "").replace("/**", "");
             if (!hint.isEmpty() && unix.contains(hint)) return true;
@@ -351,12 +379,14 @@ public class LuceneIndexer implements AutoCloseable { // Implements AutoCloseabl
                     tikaParser.parse(is, handler, md, ctx);
                     return handler.toString();
                 } catch (Throwable e) {
-                    return ""; // TODO: log this exception
+                    logger.warn("Tika failed to extract text from: {}", file, e);
+                    return "";
                 }
             });
             return fut.get(settings.parseTimeoutSec, java.util.concurrent.TimeUnit.SECONDS);
         } catch (Exception timeoutOrOther) {
-            return ""; // TODO: log this exception
+            logger.warn("Text extraction timed out or failed for: {}", file, timeoutOrOther);
+            return "";
         } finally {
             es.shutdownNow();
         }
@@ -420,7 +450,8 @@ public class LuceneIndexer implements AutoCloseable { // Implements AutoCloseabl
                 || mime.equals("application/x-javascript")
                 || mime.equals("application/x-sh")
                 || mime.equals("application/x-java-source");
-        } catch (Exception ignore) { // TODO: log this exception
+        } catch (IOException e) {
+            logger.warn("Failed to probe content type for: {}", file, e);
             return false;
         }
     }
@@ -440,7 +471,8 @@ public class LuceneIndexer implements AutoCloseable { // Implements AutoCloseabl
             }
             double ratio = printable / (double) n;
             return ratio >= 0.85;
-        } catch (Exception e) { // TODO: log this exception
+        } catch (IOException e) {
+            logger.warn("Failed to read file for text sniffing: {}", file, e);
             return false;
         }
     }
