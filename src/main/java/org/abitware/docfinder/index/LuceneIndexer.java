@@ -1,7 +1,8 @@
 package org.abitware.docfinder.index;
 
 import org.abitware.docfinder.util.Utils;
-
+import org.slf4j.Logger;
+import org.slf4j.LoggerFactory;
 import org.apache.lucene.analysis.Analyzer;
 import org.apache.lucene.analysis.cn.smart.SmartChineseAnalyzer;
 import org.apache.lucene.analysis.ja.JapaneseAnalyzer;
@@ -34,6 +35,7 @@ import java.util.concurrent.atomic.AtomicInteger;
  * - 支持：单文件 upsert、删除；单目录/多目录全量索引（支持强制重建）
  */
 public class LuceneIndexer implements AutoCloseable { // Implements AutoCloseable
+    private static final Logger log = LoggerFactory.getLogger(LuceneIndexer.class);
     private static final String KIND_FILE = "file";
     private static final String KIND_FOLDER = "folder";
 
@@ -120,7 +122,9 @@ public class LuceneIndexer implements AutoCloseable { // Implements AutoCloseabl
                 content = extractTextReadOnly(file);
             }
             mime = Files.probeContentType(file);
-        } catch (Exception ignore) {} // TODO: log this exception
+        } catch (Exception e) {
+            log.warn("Could not extract content/mime for {} [{}], skipping", file, e.getMessage());
+        }
 
         if (mime != null) doc.add(new StringField("mime", mime, Field.Store.YES));
         if (!content.isEmpty()) {
@@ -207,7 +211,9 @@ public class LuceneIndexer implements AutoCloseable { // Implements AutoCloseabl
                                 content = extractTextReadOnly(file);
                             }
                             mime = java.nio.file.Files.probeContentType(file);
-                        } catch (Exception ignore) {} // TODO: log this exception
+                        } catch (Exception e) {
+                            log.warn("Could not extract content/mime for {} [{}], skipping", file, e.getMessage());
+                        }
 
                         if (mime != null) doc.add(new StringField("mime", mime, Field.Store.YES));
                         if (!content.isEmpty()) {
@@ -290,7 +296,9 @@ public class LuceneIndexer implements AutoCloseable { // Implements AutoCloseabl
                         content = extractTextReadOnly(file);
                     }
                     mime = java.nio.file.Files.probeContentType(file);
-                } catch (Exception ignore) {} // TODO: log this exception
+                } catch (Exception e) {
+                    log.warn("Could not extract content/mime for {} [{}], skipping", file, e.getMessage());
+                }
 
                 if (mime != null) doc.add(new StringField("mime", mime, Field.Store.YES));
                 if (!content.isEmpty()) {
@@ -320,7 +328,9 @@ public class LuceneIndexer implements AutoCloseable { // Implements AutoCloseabl
             try {
                 PathMatcher m = FileSystems.getDefault().getPathMatcher("glob:" + g);
                 if (m.matches(p)) return true;
-            } catch (Exception ignore) { /* getPathMatcher 失败时忽略 */ } // TODO: log this exception
+            } catch (Exception e) {
+                log.warn("Invalid glob pattern '{}' in settings, skipping", g);
+            }
             // 兜底：**/xxx/** 的粗略包含判断
             String hint = g.replace("**/", "").replace("/**", "");
             if (!hint.isEmpty() && unix.contains(hint)) return true;
@@ -351,12 +361,14 @@ public class LuceneIndexer implements AutoCloseable { // Implements AutoCloseabl
                     tikaParser.parse(is, handler, md, ctx);
                     return handler.toString();
                 } catch (Throwable e) {
-                    return ""; // TODO: log this exception
+                    log.warn("Tika parse failed for {}: {}", file, e.getMessage());
+                    return "";
                 }
             });
             return fut.get(settings.parseTimeoutSec, java.util.concurrent.TimeUnit.SECONDS);
         } catch (Exception timeoutOrOther) {
-            return ""; // TODO: log this exception
+            log.warn("Content extraction timed out or failed for {}: {}", file, timeoutOrOther.getMessage());
+            return "";
         } finally {
             es.shutdownNow();
         }
@@ -420,7 +432,8 @@ public class LuceneIndexer implements AutoCloseable { // Implements AutoCloseabl
                 || mime.equals("application/x-javascript")
                 || mime.equals("application/x-sh")
                 || mime.equals("application/x-java-source");
-        } catch (Exception ignore) { // TODO: log this exception
+        } catch (IOException e) {
+            log.warn("MIME probe failed for {}: {}", file, e.getMessage());
             return false;
         }
     }
@@ -440,7 +453,8 @@ public class LuceneIndexer implements AutoCloseable { // Implements AutoCloseabl
             }
             double ratio = printable / (double) n;
             return ratio >= 0.85;
-        } catch (Exception e) { // TODO: log this exception
+        } catch (IOException e) {
+            log.warn("Text sniffing failed for {}: {}", file, e.getMessage());
             return false;
         }
     }
