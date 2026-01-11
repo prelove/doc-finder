@@ -16,6 +16,8 @@ import org.apache.tika.metadata.Metadata;
 import org.apache.tika.parser.AutoDetectParser;
 import org.apache.tika.parser.ParseContext;
 import org.apache.tika.sax.BodyContentHandler;
+import org.slf4j.Logger;
+import org.slf4j.LoggerFactory;
 
 import java.io.InputStream;
 import java.io.IOException;
@@ -34,6 +36,7 @@ import java.util.concurrent.atomic.AtomicInteger;
  * - 支持：单文件 upsert、删除；单目录/多目录全量索引（支持强制重建）
  */
 public class LuceneIndexer implements AutoCloseable { // Implements AutoCloseable
+    private static final Logger log = LoggerFactory.getLogger(LuceneIndexer.class);
     private static final String KIND_FILE = "file";
     private static final String KIND_FOLDER = "folder";
 
@@ -120,7 +123,9 @@ public class LuceneIndexer implements AutoCloseable { // Implements AutoCloseabl
                 content = extractTextReadOnly(file);
             }
             mime = Files.probeContentType(file);
-        } catch (Exception ignore) {} // TODO: log this exception
+        } catch (Exception e) {
+            log.warn("Could not extract content/mime for {}: {}", file, e.getMessage());
+        }
 
         if (mime != null) doc.add(new StringField("mime", mime, Field.Store.YES));
         if (!content.isEmpty()) {
@@ -173,18 +178,23 @@ public class LuceneIndexer implements AutoCloseable { // Implements AutoCloseabl
             try (IndexWriter writer = new IndexWriter(dir, cfg)) {
                 Files.walkFileTree(root, new SimpleFileVisitor<Path>() {
                     @Override
-                    public FileVisitResult preVisitDirectory(Path dir, BasicFileAttributes attrs) throws IOException {
-                        if (isExcluded(dir)) return FileVisitResult.SKIP_SUBTREE;
-                        indexDirectory(writer, dir, attrs);
-                        count[0]++;
+                    public FileVisitResult preVisitDirectory(Path dir, BasicFileAttributes attrs) {
+                        try {
+                            if (isExcluded(dir)) return FileVisitResult.SKIP_SUBTREE;
+                            indexDirectory(writer, dir, attrs);
+                            count[0]++;
+                        } catch (Exception e) {
+                            log.error("Error visiting directory {}: {}", dir, e.getMessage());
+                        }
                         return FileVisitResult.CONTINUE;
                     }
 
                     @Override
-                    public FileVisitResult visitFile(Path file, BasicFileAttributes attrs) throws IOException {
-                        if (attrs.isDirectory() || isExcluded(file)) return FileVisitResult.CONTINUE;
+                    public FileVisitResult visitFile(Path file, BasicFileAttributes attrs) {
+                        try {
+                            if (attrs.isDirectory() || isExcluded(file)) return FileVisitResult.CONTINUE;
 
-                        String name = file.getFileName().toString();
+                            String name = file.getFileName().toString();
                         if (name.endsWith(".exe") || name.endsWith(".dll")) return FileVisitResult.CONTINUE;
 
                         String pathStr = Utils.normalizeForIndex(file);
@@ -207,7 +217,9 @@ public class LuceneIndexer implements AutoCloseable { // Implements AutoCloseabl
                                 content = extractTextReadOnly(file);
                             }
                             mime = java.nio.file.Files.probeContentType(file);
-                        } catch (Exception ignore) {} // TODO: log this exception
+                        } catch (Exception e) {
+                            log.warn("Could not extract content/mime for {}: {}", file, e.getMessage());
+                        }
 
                         if (mime != null) doc.add(new StringField("mime", mime, Field.Store.YES));
                         if (!content.isEmpty()) {
@@ -218,6 +230,9 @@ public class LuceneIndexer implements AutoCloseable { // Implements AutoCloseabl
 
                         writer.updateDocument(new Term("path", pathStr), doc);
                         count[0]++;
+                        } catch (Exception e) {
+                            log.error("Error indexing file {}: {}", file, e.getMessage());
+                        }
                         return FileVisitResult.CONTINUE;
                     }
                 });
@@ -256,18 +271,23 @@ public class LuceneIndexer implements AutoCloseable { // Implements AutoCloseabl
             java.util.concurrent.atomic.AtomicInteger count) throws IOException {
         Files.walkFileTree(root, new SimpleFileVisitor<Path>() {
             @Override
-            public FileVisitResult preVisitDirectory(Path dir, BasicFileAttributes attrs) throws IOException {
-                if (isExcluded(dir)) return FileVisitResult.SKIP_SUBTREE;
-                indexDirectory(writer, dir, attrs);
-                count.incrementAndGet();
+            public FileVisitResult preVisitDirectory(Path dir, BasicFileAttributes attrs) {
+                try {
+                    if (isExcluded(dir)) return FileVisitResult.SKIP_SUBTREE;
+                    indexDirectory(writer, dir, attrs);
+                    count.incrementAndGet();
+                } catch (Exception e) {
+                    log.error("Error visiting directory {}: {}", dir, e.getMessage());
+                }
                 return FileVisitResult.CONTINUE;
             }
 
             @Override
-            public FileVisitResult visitFile(Path file, BasicFileAttributes attrs) throws IOException {
-                if (attrs.isDirectory() || isExcluded(file)) return FileVisitResult.CONTINUE;
+            public FileVisitResult visitFile(Path file, BasicFileAttributes attrs) {
+                try {
+                    if (attrs.isDirectory() || isExcluded(file)) return FileVisitResult.CONTINUE;
 
-                String name = file.getFileName().toString();
+                    String name = file.getFileName().toString();
                 if (name.endsWith(".exe") || name.endsWith(".dll")) return FileVisitResult.CONTINUE;
 
                 String pathStr = org.abitware.docfinder.util.Utils.normalizeForIndex(file);
@@ -290,7 +310,9 @@ public class LuceneIndexer implements AutoCloseable { // Implements AutoCloseabl
                         content = extractTextReadOnly(file);
                     }
                     mime = java.nio.file.Files.probeContentType(file);
-                } catch (Exception ignore) {} // TODO: log this exception
+                } catch (Exception e) {
+                    log.warn("Could not extract content/mime for {}: {}", file, e.getMessage());
+                }
 
                 if (mime != null) doc.add(new StringField("mime", mime, Field.Store.YES));
                 if (!content.isEmpty()) {
@@ -301,6 +323,9 @@ public class LuceneIndexer implements AutoCloseable { // Implements AutoCloseabl
 
                 writer.updateDocument(new Term("path", pathStr), doc);
                 count.incrementAndGet();
+                } catch (Exception e) {
+                    log.error("Error indexing file {}: {}", file, e.getMessage());
+                }
                 return FileVisitResult.CONTINUE;
             }
         });
@@ -320,7 +345,9 @@ public class LuceneIndexer implements AutoCloseable { // Implements AutoCloseabl
             try {
                 PathMatcher m = FileSystems.getDefault().getPathMatcher("glob:" + g);
                 if (m.matches(p)) return true;
-            } catch (Exception ignore) { /* getPathMatcher 失败时忽略 */ } // TODO: log this exception
+            } catch (Exception e) {
+                log.warn("Invalid glob pattern '{}' in settings: {}", g, e.getMessage());
+            }
             // 兜底：**/xxx/** 的粗略包含判断
             String hint = g.replace("**/", "").replace("/**", "");
             if (!hint.isEmpty() && unix.contains(hint)) return true;
@@ -351,12 +378,14 @@ public class LuceneIndexer implements AutoCloseable { // Implements AutoCloseabl
                     tikaParser.parse(is, handler, md, ctx);
                     return handler.toString();
                 } catch (Throwable e) {
-                    return ""; // TODO: log this exception
+                    log.warn("Tika parse failed for {}: {}", file, e.getMessage());
+                    return "";
                 }
             });
             return fut.get(settings.parseTimeoutSec, java.util.concurrent.TimeUnit.SECONDS);
         } catch (Exception timeoutOrOther) {
-            return ""; // TODO: log this exception
+            log.warn("Content extraction timed out or failed for {}: {}", file, timeoutOrOther.getMessage());
+            return "";
         } finally {
             es.shutdownNow();
         }
@@ -420,7 +449,8 @@ public class LuceneIndexer implements AutoCloseable { // Implements AutoCloseabl
                 || mime.equals("application/x-javascript")
                 || mime.equals("application/x-sh")
                 || mime.equals("application/x-java-source");
-        } catch (Exception ignore) { // TODO: log this exception
+        } catch (IOException e) {
+            log.warn("Could not probe content type for {}: {}", file, e.getMessage());
             return false;
         }
     }
@@ -440,7 +470,8 @@ public class LuceneIndexer implements AutoCloseable { // Implements AutoCloseabl
             }
             double ratio = printable / (double) n;
             return ratio >= 0.85;
-        } catch (Exception e) { // TODO: log this exception
+        } catch (IOException e) {
+            log.warn("Could not read from {}: {}", file, e.getMessage());
             return false;
         }
     }
