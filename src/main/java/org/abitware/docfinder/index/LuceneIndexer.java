@@ -178,10 +178,14 @@ public class LuceneIndexer implements AutoCloseable { // Implements AutoCloseabl
             try (IndexWriter writer = new IndexWriter(dir, cfg)) {
                 Files.walkFileTree(root, new SimpleFileVisitor<Path>() {
                     @Override
-                    public FileVisitResult preVisitDirectory(Path dir, BasicFileAttributes attrs) throws IOException {
+                    public FileVisitResult preVisitDirectory(Path dir, BasicFileAttributes attrs) {
                         if (isExcluded(dir)) return FileVisitResult.SKIP_SUBTREE;
-                        indexDirectory(writer, dir, attrs);
-                        count[0]++;
+                        try {
+                            indexDirectory(writer, dir, attrs);
+                            count[0]++;
+                        } catch (IOException e) {
+                            log.warn("Visit directory error: {}, exception: {}", dir, e.getMessage());
+                        }
                         return FileVisitResult.CONTINUE;
                     }
 
@@ -227,13 +231,13 @@ public class LuceneIndexer implements AutoCloseable { // Implements AutoCloseabl
                             writer.updateDocument(new Term("path", pathStr), doc);
                             count[0]++;
                         } catch (Exception e) {
-                            log.warn("Visit file error: {}, exception: {}", file, e.getMessage());
+                            log.warn("Error processing file during indexFolder walk: {}, exception: {}", file, e.getMessage());
                         }
                         return FileVisitResult.CONTINUE;
                     }
 
                     @Override
-                    public FileVisitResult visitFileFailed(Path file, IOException exc) throws IOException {
+                    public FileVisitResult visitFileFailed(Path file, IOException exc) {
                         log.warn("Visit file failed: {}, exception: {}", file, exc.getMessage());
                         return FileVisitResult.CONTINUE;
                     }
@@ -273,10 +277,14 @@ public class LuceneIndexer implements AutoCloseable { // Implements AutoCloseabl
             java.util.concurrent.atomic.AtomicInteger count) throws IOException {
         Files.walkFileTree(root, new SimpleFileVisitor<Path>() {
             @Override
-            public FileVisitResult preVisitDirectory(Path dir, BasicFileAttributes attrs) throws IOException {
+            public FileVisitResult preVisitDirectory(Path dir, BasicFileAttributes attrs) {
                 if (isExcluded(dir)) return FileVisitResult.SKIP_SUBTREE;
-                indexDirectory(writer, dir, attrs);
-                count.incrementAndGet();
+                try {
+                    indexDirectory(writer, dir, attrs);
+                    count.incrementAndGet();
+                } catch (IOException e) {
+                    log.warn("Visit directory error: {}, exception: {}", dir, e.getMessage());
+                }
                 return FileVisitResult.CONTINUE;
             }
 
@@ -322,13 +330,13 @@ public class LuceneIndexer implements AutoCloseable { // Implements AutoCloseabl
                     writer.updateDocument(new Term("path", pathStr), doc);
                     count.incrementAndGet();
                 } catch (Exception e) {
-                    log.warn("Visit file error: {}, exception: {}", file, e.getMessage());
+                    log.warn("Error processing file during walkOneRoot: {}, exception: {}", file, e.getMessage());
                 }
                 return FileVisitResult.CONTINUE;
             }
 
                     @Override
-                    public FileVisitResult visitFileFailed(Path file, IOException exc) throws IOException {
+                    public FileVisitResult visitFileFailed(Path file, IOException exc) {
                         log.warn("Visit file failed: {}, exception: {}", file, exc.getMessage());
                         return FileVisitResult.CONTINUE;
                     }
