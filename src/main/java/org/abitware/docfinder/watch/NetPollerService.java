@@ -2,6 +2,8 @@ package org.abitware.docfinder.watch;
 
 import org.abitware.docfinder.index.IndexSettings;
 import org.abitware.docfinder.index.LuceneIndexer;
+import org.slf4j.Logger;
+import org.slf4j.LoggerFactory;
 
 import java.io.IOException;
 import java.nio.file.*;
@@ -10,6 +12,7 @@ import java.util.*;
 import java.util.concurrent.*;
 
 public class NetPollerService implements AutoCloseable {
+    private static final Logger log = LoggerFactory.getLogger(NetPollerService.class);
     private final Path indexDir;
     private final IndexSettings settings;
     private final List<Path> roots;
@@ -66,16 +69,27 @@ public class NetPollerService implements AutoCloseable {
             Map<String, SnapshotStore.Entry> oldSnap = store.load(root);
             Map<String, SnapshotStore.Entry> newSnap = new HashMap<>();
 
-            Files.walkFileTree(root, new SimpleFileVisitor<Path>() {
-                @Override public FileVisitResult visitFile(Path file, BasicFileAttributes attrs) {
-                    if (!attrs.isDirectory()) {
-                        String abs = file.toAbsolutePath().toString();
-                        newSnap.put(abs, new SnapshotStore.Entry(attrs.size(), attrs.lastModifiedTime().toMillis()));
-                        stats.scannedFiles++;
+            try {
+                Files.walkFileTree(root, new SimpleFileVisitor<Path>() {
+                    @Override public FileVisitResult visitFile(Path file, BasicFileAttributes attrs) {
+                        try {
+                            if (!attrs.isDirectory()) {
+                                String abs = file.toAbsolutePath().toString();
+                                newSnap.put(abs, new SnapshotStore.Entry(attrs.size(), attrs.lastModifiedTime().toMillis()));
+                                stats.scannedFiles++;
+                            }
+                        } catch (Throwable t) {
+                            log.warn("Visit file error in net poller: {}, exception: {}", file, t.getMessage());
+                        }
+                        return FileVisitResult.CONTINUE;
                     }
-                    return FileVisitResult.CONTINUE;
-                }
-            });
+                    @Override public FileVisitResult visitFileFailed(Path file, IOException exc) {
+                        return FileVisitResult.CONTINUE;
+                    }
+                });
+            } catch (Throwable t) {
+                log.error("Walk file tree error in net poller for root: {}, exception: {}", root, t.getMessage());
+            }
 
             Set<String> all = new HashSet<>();
             all.addAll(oldSnap.keySet());
@@ -121,15 +135,26 @@ public class NetPollerService implements AutoCloseable {
             Map<String, SnapshotStore.Entry> newSnap = new HashMap<>();
 
             // 2) 扫描当前文件状态（应用排除规则由 LuceneIndexer 负责，这里只做基础过滤）
-            Files.walkFileTree(root, new SimpleFileVisitor<Path>() {
-                @Override public FileVisitResult preVisitDirectory(Path dir, BasicFileAttributes attrs) { return FileVisitResult.CONTINUE; }
-                @Override public FileVisitResult visitFile(Path file, BasicFileAttributes attrs) {
-                    if (attrs.isDirectory()) return FileVisitResult.CONTINUE;
-                    String abs = file.toAbsolutePath().toString();
-                    newSnap.put(abs, new SnapshotStore.Entry(attrs.size(), attrs.lastModifiedTime().toMillis()));
-                    return FileVisitResult.CONTINUE;
-                }
-            });
+            try {
+                Files.walkFileTree(root, new SimpleFileVisitor<Path>() {
+                    @Override public FileVisitResult preVisitDirectory(Path dir, BasicFileAttributes attrs) { return FileVisitResult.CONTINUE; }
+                    @Override public FileVisitResult visitFile(Path file, BasicFileAttributes attrs) {
+                        try {
+                            if (attrs.isDirectory()) return FileVisitResult.CONTINUE;
+                            String abs = file.toAbsolutePath().toString();
+                            newSnap.put(abs, new SnapshotStore.Entry(attrs.size(), attrs.lastModifiedTime().toMillis()));
+                        } catch (Throwable t) {
+                            log.warn("Visit file error in net poller (legacy): {}, exception: {}", file, t.getMessage());
+                        }
+                        return FileVisitResult.CONTINUE;
+                    }
+                    @Override public FileVisitResult visitFileFailed(Path file, IOException exc) {
+                        return FileVisitResult.CONTINUE;
+                    }
+                });
+            } catch (Throwable t) {
+                log.error("Walk file tree error in net poller (legacy) for root: {}, exception: {}", root, t.getMessage());
+            }
 
             // 3) 对比生成变更
             Set<String> all = new HashSet<>();

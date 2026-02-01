@@ -7,7 +7,12 @@ import java.util.*;
 import java.util.concurrent.*;
 import static java.nio.file.StandardWatchEventKinds.*;
 
+import org.slf4j.Logger;
+import org.slf4j.LoggerFactory;
+
 public class LocalRecursiveWatcher implements AutoCloseable {
+    private static final Logger log = LoggerFactory.getLogger(LocalRecursiveWatcher.class);
+
     public interface Listener {
         // type: "CREATE" | "MODIFY" | "DELETE"
         void onChange(String type, Path path);
@@ -38,12 +43,23 @@ public class LocalRecursiveWatcher implements AutoCloseable {
         // 递归注册所有现有子目录
         for (Path root : roots) {
             if (root == null || !Files.exists(root)) continue;
-            Files.walkFileTree(root, new SimpleFileVisitor<Path>() {
-                @Override public FileVisitResult preVisitDirectory(Path dir, BasicFileAttributes attrs) throws IOException {
-                    registerDir(dir);
-                    return FileVisitResult.CONTINUE;
-                }
-            });
+            try {
+                Files.walkFileTree(root, new SimpleFileVisitor<Path>() {
+                    @Override public FileVisitResult preVisitDirectory(Path dir, BasicFileAttributes attrs) {
+                        try {
+                            registerDir(dir);
+                        } catch (Throwable t) {
+                            log.warn("Failed to register directory: {}, exception: {}", dir, t.getMessage());
+                        }
+                        return FileVisitResult.CONTINUE;
+                    }
+                    @Override public FileVisitResult visitFileFailed(Path file, IOException exc) {
+                        return FileVisitResult.CONTINUE;
+                    }
+                });
+            } catch (Throwable t) {
+                log.error("Walk file tree failed for watcher root: {}, exception: {}", root, t.getMessage());
+            }
         }
         loop.submit(this::loopRun);
     }
@@ -90,13 +106,24 @@ public class LocalRecursiveWatcher implements AutoCloseable {
         }, 500, TimeUnit.MILLISECONDS));
     }
 
-    private void registerTree(Path root) throws IOException {
-        Files.walkFileTree(root, new SimpleFileVisitor<Path>() {
-            @Override public FileVisitResult preVisitDirectory(Path dir, BasicFileAttributes attrs) throws IOException {
-                registerDir(dir);
-                return FileVisitResult.CONTINUE;
-            }
-        });
+    private void registerTree(Path root) {
+        try {
+            Files.walkFileTree(root, new SimpleFileVisitor<Path>() {
+                @Override public FileVisitResult preVisitDirectory(Path dir, BasicFileAttributes attrs) {
+                    try {
+                        registerDir(dir);
+                    } catch (Throwable t) {
+                        log.warn("Failed to register directory in tree: {}, exception: {}", dir, t.getMessage());
+                    }
+                    return FileVisitResult.CONTINUE;
+                }
+                @Override public FileVisitResult visitFileFailed(Path file, IOException exc) {
+                    return FileVisitResult.CONTINUE;
+                }
+            });
+        } catch (Throwable t) {
+            log.error("Walk file tree failed for registerTree: {}, exception: {}", root, t.getMessage());
+        }
     }
 
     private void registerDir(Path dir) throws IOException {
