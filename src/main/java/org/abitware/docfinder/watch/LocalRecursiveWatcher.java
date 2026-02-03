@@ -1,5 +1,8 @@
 package org.abitware.docfinder.watch;
 
+import org.slf4j.Logger;
+import org.slf4j.LoggerFactory;
+
 import java.io.IOException;
 import java.nio.file.*;
 import java.nio.file.attribute.BasicFileAttributes;
@@ -8,6 +11,7 @@ import java.util.concurrent.*;
 import static java.nio.file.StandardWatchEventKinds.*;
 
 public class LocalRecursiveWatcher implements AutoCloseable {
+    private static final Logger log = LoggerFactory.getLogger(LocalRecursiveWatcher.class);
     public interface Listener {
         // type: "CREATE" | "MODIFY" | "DELETE"
         void onChange(String type, Path path);
@@ -39,8 +43,16 @@ public class LocalRecursiveWatcher implements AutoCloseable {
         for (Path root : roots) {
             if (root == null || !Files.exists(root)) continue;
             Files.walkFileTree(root, new SimpleFileVisitor<Path>() {
-                @Override public FileVisitResult preVisitDirectory(Path dir, BasicFileAttributes attrs) throws IOException {
-                    registerDir(dir);
+                @Override public FileVisitResult preVisitDirectory(Path dir, BasicFileAttributes attrs) {
+                    try {
+                        registerDir(dir);
+                    } catch (Throwable t) {
+                        log.warn("Watch register dir error: {}, exception: {}", dir, t.getMessage());
+                    }
+                    return FileVisitResult.CONTINUE;
+                }
+                @Override public FileVisitResult visitFileFailed(Path file, IOException exc) {
+                    log.warn("Watch visit failed: {}, exception: {}", file, exc == null ? "null" : exc.getMessage());
                     return FileVisitResult.CONTINUE;
                 }
             });
@@ -92,8 +104,16 @@ public class LocalRecursiveWatcher implements AutoCloseable {
 
     private void registerTree(Path root) throws IOException {
         Files.walkFileTree(root, new SimpleFileVisitor<Path>() {
-            @Override public FileVisitResult preVisitDirectory(Path dir, BasicFileAttributes attrs) throws IOException {
-                registerDir(dir);
+            @Override public FileVisitResult preVisitDirectory(Path dir, BasicFileAttributes attrs) {
+                try {
+                    registerDir(dir);
+                } catch (Throwable t) {
+                    log.warn("Watch register tree dir error: {}, exception: {}", dir, t.getMessage());
+                }
+                return FileVisitResult.CONTINUE;
+            }
+            @Override public FileVisitResult visitFileFailed(Path file, IOException exc) {
+                log.warn("Watch tree visit failed: {}, exception: {}", file, exc == null ? "null" : exc.getMessage());
                 return FileVisitResult.CONTINUE;
             }
         });

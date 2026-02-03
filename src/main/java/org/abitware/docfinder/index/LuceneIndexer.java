@@ -123,8 +123,8 @@ public class LuceneIndexer implements AutoCloseable { // Implements AutoCloseabl
                 content = extractTextReadOnly(file);
             }
             mime = Files.probeContentType(file);
-        } catch (Exception e) {
-            log.warn("Get mime/content error: {}, exception: {}", file, e.getMessage());
+        } catch (Throwable t) {
+            log.warn("Get mime/content error: {}, exception: {}", file, t.getMessage());
         }
 
         if (mime != null) doc.add(new StringField("mime", mime, Field.Store.YES));
@@ -178,10 +178,14 @@ public class LuceneIndexer implements AutoCloseable { // Implements AutoCloseabl
             try (IndexWriter writer = new IndexWriter(dir, cfg)) {
                 Files.walkFileTree(root, new SimpleFileVisitor<Path>() {
                     @Override
-                    public FileVisitResult preVisitDirectory(Path dir, BasicFileAttributes attrs) throws IOException {
-                        if (isExcluded(dir)) return FileVisitResult.SKIP_SUBTREE;
-                        indexDirectory(writer, dir, attrs);
-                        count[0]++;
+                    public FileVisitResult preVisitDirectory(Path dir, BasicFileAttributes attrs) {
+                        try {
+                            if (isExcluded(dir)) return FileVisitResult.SKIP_SUBTREE;
+                            indexDirectory(writer, dir, attrs);
+                            count[0]++;
+                        } catch (Throwable t) {
+                            log.warn("Pre-visit directory error: {}, exception: {}", dir, t.getMessage());
+                        }
                         return FileVisitResult.CONTINUE;
                     }
 
@@ -213,8 +217,8 @@ public class LuceneIndexer implements AutoCloseable { // Implements AutoCloseabl
                                     content = extractTextReadOnly(file);
                                 }
                                 mime = java.nio.file.Files.probeContentType(file);
-                            } catch (Exception e) {
-                                log.warn("Get mime/content error: {}, exception: {}", file, e.getMessage());
+                            } catch (Throwable t) {
+                                log.warn("Get mime/content error: {}, exception: {}", file, t.getMessage());
                             }
 
                             if (mime != null) doc.add(new StringField("mime", mime, Field.Store.YES));
@@ -226,15 +230,15 @@ public class LuceneIndexer implements AutoCloseable { // Implements AutoCloseabl
 
                             writer.updateDocument(new Term("path", pathStr), doc);
                             count[0]++;
-                        } catch (Exception e) {
-                            log.warn("Visit file error: {}, exception: {}", file, e.getMessage());
+                        } catch (Throwable t) {
+                            log.warn("Visit file error: {}, exception: {}", file, t.getMessage());
                         }
                         return FileVisitResult.CONTINUE;
                     }
 
                     @Override
-                    public FileVisitResult visitFileFailed(Path file, IOException exc) throws IOException {
-                        log.warn("Visit file failed: {}, exception: {}", file, exc.getMessage());
+                    public FileVisitResult visitFileFailed(Path file, IOException exc) {
+                        log.warn("Visit file failed: {}, exception: {}", file, exc == null ? "null" : exc.getMessage());
                         return FileVisitResult.CONTINUE;
                     }
                 });
@@ -273,10 +277,14 @@ public class LuceneIndexer implements AutoCloseable { // Implements AutoCloseabl
             java.util.concurrent.atomic.AtomicInteger count) throws IOException {
         Files.walkFileTree(root, new SimpleFileVisitor<Path>() {
             @Override
-            public FileVisitResult preVisitDirectory(Path dir, BasicFileAttributes attrs) throws IOException {
-                if (isExcluded(dir)) return FileVisitResult.SKIP_SUBTREE;
-                indexDirectory(writer, dir, attrs);
-                count.incrementAndGet();
+            public FileVisitResult preVisitDirectory(Path dir, BasicFileAttributes attrs) {
+                try {
+                    if (isExcluded(dir)) return FileVisitResult.SKIP_SUBTREE;
+                    indexDirectory(writer, dir, attrs);
+                    count.incrementAndGet();
+                } catch (Throwable t) {
+                    log.warn("Pre-visit directory error: {}, exception: {}", dir, t.getMessage());
+                }
                 return FileVisitResult.CONTINUE;
             }
 
@@ -308,8 +316,8 @@ public class LuceneIndexer implements AutoCloseable { // Implements AutoCloseabl
                             content = extractTextReadOnly(file);
                         }
                         mime = java.nio.file.Files.probeContentType(file);
-                    } catch (Exception e) {
-                        log.warn("Get mime/content error: {}, exception: {}", file, e.getMessage());
+                    } catch (Throwable t) {
+                        log.warn("Get mime/content error: {}, exception: {}", file, t.getMessage());
                     }
 
                     if (mime != null) doc.add(new StringField("mime", mime, Field.Store.YES));
@@ -321,17 +329,17 @@ public class LuceneIndexer implements AutoCloseable { // Implements AutoCloseabl
 
                     writer.updateDocument(new Term("path", pathStr), doc);
                     count.incrementAndGet();
-                } catch (Exception e) {
-                    log.warn("Visit file error: {}, exception: {}", file, e.getMessage());
+                } catch (Throwable t) {
+                    log.warn("Visit file error: {}, exception: {}", file, t.getMessage());
                 }
                 return FileVisitResult.CONTINUE;
             }
 
-                    @Override
-                    public FileVisitResult visitFileFailed(Path file, IOException exc) throws IOException {
-                        log.warn("Visit file failed: {}, exception: {}", file, exc.getMessage());
-                        return FileVisitResult.CONTINUE;
-                    }
+            @Override
+            public FileVisitResult visitFileFailed(Path file, IOException exc) {
+                log.warn("Visit file failed: {}, exception: {}", file, exc == null ? "null" : exc.getMessage());
+                return FileVisitResult.CONTINUE;
+            }
         });
     }
 

@@ -2,6 +2,8 @@ package org.abitware.docfinder.watch;
 
 import org.abitware.docfinder.index.IndexSettings;
 import org.abitware.docfinder.index.LuceneIndexer;
+import org.slf4j.Logger;
+import org.slf4j.LoggerFactory;
 
 import java.io.IOException;
 import java.nio.file.*;
@@ -10,6 +12,7 @@ import java.util.*;
 import java.util.concurrent.*;
 
 public class NetPollerService implements AutoCloseable {
+    private static final Logger log = LoggerFactory.getLogger(NetPollerService.class);
     private final Path indexDir;
     private final IndexSettings settings;
     private final List<Path> roots;
@@ -68,11 +71,19 @@ public class NetPollerService implements AutoCloseable {
 
             Files.walkFileTree(root, new SimpleFileVisitor<Path>() {
                 @Override public FileVisitResult visitFile(Path file, BasicFileAttributes attrs) {
-                    if (!attrs.isDirectory()) {
-                        String abs = file.toAbsolutePath().toString();
-                        newSnap.put(abs, new SnapshotStore.Entry(attrs.size(), attrs.lastModifiedTime().toMillis()));
-                        stats.scannedFiles++;
+                    try {
+                        if (!attrs.isDirectory()) {
+                            String abs = file.toAbsolutePath().toString();
+                            newSnap.put(abs, new SnapshotStore.Entry(attrs.size(), attrs.lastModifiedTime().toMillis()));
+                            stats.scannedFiles++;
+                        }
+                    } catch (Throwable t) {
+                        log.warn("Poll scan file error: {}, exception: {}", file, t.getMessage());
                     }
+                    return FileVisitResult.CONTINUE;
+                }
+                @Override public FileVisitResult visitFileFailed(Path file, IOException exc) {
+                    log.warn("Poll visit failed: {}, exception: {}", file, exc == null ? "null" : exc.getMessage());
                     return FileVisitResult.CONTINUE;
                 }
             });
@@ -124,9 +135,17 @@ public class NetPollerService implements AutoCloseable {
             Files.walkFileTree(root, new SimpleFileVisitor<Path>() {
                 @Override public FileVisitResult preVisitDirectory(Path dir, BasicFileAttributes attrs) { return FileVisitResult.CONTINUE; }
                 @Override public FileVisitResult visitFile(Path file, BasicFileAttributes attrs) {
-                    if (attrs.isDirectory()) return FileVisitResult.CONTINUE;
-                    String abs = file.toAbsolutePath().toString();
-                    newSnap.put(abs, new SnapshotStore.Entry(attrs.size(), attrs.lastModifiedTime().toMillis()));
+                    try {
+                        if (attrs.isDirectory()) return FileVisitResult.CONTINUE;
+                        String abs = file.toAbsolutePath().toString();
+                        newSnap.put(abs, new SnapshotStore.Entry(attrs.size(), attrs.lastModifiedTime().toMillis()));
+                    } catch (Throwable t) {
+                        log.warn("Poll(v2) scan file error: {}, exception: {}", file, t.getMessage());
+                    }
+                    return FileVisitResult.CONTINUE;
+                }
+                @Override public FileVisitResult visitFileFailed(Path file, IOException exc) {
+                    log.warn("Poll(v2) visit failed: {}, exception: {}", file, exc == null ? "null" : exc.getMessage());
                     return FileVisitResult.CONTINUE;
                 }
             });
