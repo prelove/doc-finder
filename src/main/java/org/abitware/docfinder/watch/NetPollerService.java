@@ -68,11 +68,18 @@ public class NetPollerService implements AutoCloseable {
 
             Files.walkFileTree(root, new SimpleFileVisitor<Path>() {
                 @Override public FileVisitResult visitFile(Path file, BasicFileAttributes attrs) {
-                    if (!attrs.isDirectory()) {
-                        String abs = file.toAbsolutePath().toString();
-                        newSnap.put(abs, new SnapshotStore.Entry(attrs.size(), attrs.lastModifiedTime().toMillis()));
-                        stats.scannedFiles++;
+                    try {
+                        if (!attrs.isDirectory()) {
+                            String abs = file.toAbsolutePath().toString();
+                            newSnap.put(abs, new SnapshotStore.Entry(attrs.size(), attrs.lastModifiedTime().toMillis()));
+                            stats.scannedFiles++;
+                        }
+                    } catch (Throwable t) {
+                        // log error if possible, or just continue
                     }
+                    return FileVisitResult.CONTINUE;
+                }
+                @Override public FileVisitResult visitFileFailed(Path file, IOException exc) {
                     return FileVisitResult.CONTINUE;
                 }
             });
@@ -124,9 +131,16 @@ public class NetPollerService implements AutoCloseable {
             Files.walkFileTree(root, new SimpleFileVisitor<Path>() {
                 @Override public FileVisitResult preVisitDirectory(Path dir, BasicFileAttributes attrs) { return FileVisitResult.CONTINUE; }
                 @Override public FileVisitResult visitFile(Path file, BasicFileAttributes attrs) {
-                    if (attrs.isDirectory()) return FileVisitResult.CONTINUE;
-                    String abs = file.toAbsolutePath().toString();
-                    newSnap.put(abs, new SnapshotStore.Entry(attrs.size(), attrs.lastModifiedTime().toMillis()));
+                    try {
+                        if (attrs.isDirectory()) return FileVisitResult.CONTINUE;
+                        String abs = file.toAbsolutePath().toString();
+                        newSnap.put(abs, new SnapshotStore.Entry(attrs.size(), attrs.lastModifiedTime().toMillis()));
+                    } catch (Throwable t) {
+                        // ignore
+                    }
+                    return FileVisitResult.CONTINUE;
+                }
+                @Override public FileVisitResult visitFileFailed(Path file, IOException exc) {
                     return FileVisitResult.CONTINUE;
                 }
             });
@@ -162,10 +176,10 @@ public class NetPollerService implements AutoCloseable {
     }
 
     private void safeUpsert(LuceneIndexer idx, Path p) {
-        try { idx.upsertFile(p); } catch (Exception ignore) {}
+        try { idx.upsertFile(p); } catch (Throwable ignore) {}
     }
     private void safeDelete(LuceneIndexer idx, Path p) {
-        try { idx.deletePath(p); } catch (Exception ignore) {}
+        try { idx.deletePath(p); } catch (Throwable ignore) {}
     }
 
     @Override public void close() { stop(); }

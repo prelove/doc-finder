@@ -37,13 +37,24 @@ public class LocalRecursiveWatcher implements AutoCloseable {
         running = true;
         // 递归注册所有现有子目录
         for (Path root : roots) {
-            if (root == null || !Files.exists(root)) continue;
-            Files.walkFileTree(root, new SimpleFileVisitor<Path>() {
-                @Override public FileVisitResult preVisitDirectory(Path dir, BasicFileAttributes attrs) throws IOException {
-                    registerDir(dir);
-                    return FileVisitResult.CONTINUE;
-                }
-            });
+            try {
+                if (root == null || !Files.exists(root)) continue;
+                Files.walkFileTree(root, new SimpleFileVisitor<Path>() {
+                    @Override public FileVisitResult preVisitDirectory(Path dir, BasicFileAttributes attrs) throws IOException {
+                        try {
+                            registerDir(dir);
+                        } catch (Throwable t) {
+                            // ignore or log
+                        }
+                        return FileVisitResult.CONTINUE;
+                    }
+                    @Override public FileVisitResult visitFileFailed(Path file, IOException exc) {
+                        return FileVisitResult.CONTINUE;
+                    }
+                });
+            } catch (Throwable t) {
+                // ignore or log
+            }
         }
         loop.submit(this::loopRun);
     }
@@ -91,12 +102,23 @@ public class LocalRecursiveWatcher implements AutoCloseable {
     }
 
     private void registerTree(Path root) throws IOException {
-        Files.walkFileTree(root, new SimpleFileVisitor<Path>() {
-            @Override public FileVisitResult preVisitDirectory(Path dir, BasicFileAttributes attrs) throws IOException {
-                registerDir(dir);
-                return FileVisitResult.CONTINUE;
-            }
-        });
+        try {
+            Files.walkFileTree(root, new SimpleFileVisitor<Path>() {
+                @Override public FileVisitResult preVisitDirectory(Path dir, BasicFileAttributes attrs) throws IOException {
+                    try {
+                        registerDir(dir);
+                    } catch (Throwable t) {
+                        // ignore
+                    }
+                    return FileVisitResult.CONTINUE;
+                }
+                @Override public FileVisitResult visitFileFailed(Path file, IOException exc) {
+                    return FileVisitResult.CONTINUE;
+                }
+            });
+        } catch (Throwable t) {
+            // ignore
+        }
     }
 
     private void registerDir(Path dir) throws IOException {
