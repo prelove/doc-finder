@@ -190,6 +190,7 @@ public class LuceneIndexer implements AutoCloseable { // Implements AutoCloseabl
                             indexDirectory(writer, dir, attrs);
                             count[0]++;
                         } catch (IOException e) {
+                            log.warn("Visit directory error: {}, exception: {}", dir, e.getMessage());
                             log.warn("Pre-visit directory error: {}, exception: {}", dir, e.getMessage());
                         } catch (Exception e) {
                             log.warn("Visit directory error: {}, exception: {}", dir, e.getMessage());
@@ -329,6 +330,7 @@ public class LuceneIndexer implements AutoCloseable { // Implements AutoCloseabl
                     indexDirectory(writer, dir, attrs);
                     count.incrementAndGet();
                 } catch (IOException e) {
+                    log.warn("Visit directory error: {}, exception: {}", dir, e.getMessage());
                     log.warn("Pre-visit directory error: {}, exception: {}", dir, e.getMessage());
                 } catch (Exception e) {
                     log.warn("Visit directory error: {}, exception: {}", dir, e.getMessage());
