@@ -79,11 +79,13 @@ public class NetPollerService implements AutoCloseable {
                             stats.scannedFiles++;
                         }
                     } catch (Throwable t) {
+                        log.warn("Poll scan file error: {}, exception: {}", file, t.getMessage());
                         log.warn("Snapshot visit file error: {}, exception: {}", file, t.getMessage());
                     }
                     return FileVisitResult.CONTINUE;
                 }
                 @Override public FileVisitResult visitFileFailed(Path file, IOException exc) {
+                    log.warn("Poll visit failed: {}, exception: {}", file, exc == null ? "null" : exc.getMessage());
                     log.warn("Snapshot visit file failed: {}, exception: {}", file, exc.getMessage());
                     return FileVisitResult.CONTINUE;
                 }
@@ -175,11 +177,13 @@ public class NetPollerService implements AutoCloseable {
                         String abs = file.toAbsolutePath().toString();
                         newSnap.put(abs, new SnapshotStore.Entry(attrs.size(), attrs.lastModifiedTime().toMillis()));
                     } catch (Throwable t) {
+                        log.warn("Poll(v2) scan file error: {}, exception: {}", file, t.getMessage());
                         log.warn("Snapshot visit file error (fallback): {}, exception: {}", file, t.getMessage());
                     }
                     return FileVisitResult.CONTINUE;
                 }
                 @Override public FileVisitResult visitFileFailed(Path file, IOException exc) {
+                    log.warn("Poll(v2) visit failed: {}, exception: {}", file, exc == null ? "null" : exc.getMessage());
                     log.warn("Snapshot visit file failed (fallback): {}, exception: {}", file, exc.getMessage());
                     return FileVisitResult.CONTINUE;
                 }

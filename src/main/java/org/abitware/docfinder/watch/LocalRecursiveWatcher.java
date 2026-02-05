@@ -51,11 +51,13 @@ public class LocalRecursiveWatcher implements AutoCloseable {
                     try {
                         registerDir(dir);
                     } catch (Throwable t) {
+                        log.warn("Watch register dir error: {}, exception: {}", dir, t.getMessage());
                         log.warn("Register dir failed: {}, exception: {}", dir, t.getMessage());
                     }
                     return FileVisitResult.CONTINUE;
                 }
                 @Override public FileVisitResult visitFileFailed(Path file, IOException exc) {
+                    log.warn("Watch visit failed: {}, exception: {}", file, exc == null ? "null" : exc.getMessage());
                     log.warn("Visit file failed: {}, exception: {}", file, exc.getMessage());
                     return FileVisitResult.CONTINUE;
                 }
@@ -142,11 +144,13 @@ public class LocalRecursiveWatcher implements AutoCloseable {
                 try {
                     registerDir(dir);
                 } catch (Throwable t) {
+                    log.warn("Watch register tree dir error: {}, exception: {}", dir, t.getMessage());
                     log.warn("Register tree dir failed: {}, exception: {}", dir, t.getMessage());
                 }
                 return FileVisitResult.CONTINUE;
             }
             @Override public FileVisitResult visitFileFailed(Path file, IOException exc) {
+                log.warn("Watch tree visit failed: {}, exception: {}", file, exc == null ? "null" : exc.getMessage());
                 log.warn("Register tree visit failed: {}, exception: {}", file, exc.getMessage());
                 return FileVisitResult.CONTINUE;
             }
