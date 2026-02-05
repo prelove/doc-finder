@@ -191,6 +191,11 @@ public class LuceneIndexer implements AutoCloseable { // Implements AutoCloseabl
                             if (isExcluded(dir)) return FileVisitResult.SKIP_SUBTREE;
                             indexDirectory(writer, dir, attrs);
                             count[0]++;
+                            return FileVisitResult.CONTINUE;
+                        } catch (IOException e) {
+                            log.warn("Pre-visit directory error: {}, exception: {}", dir, e.getMessage());
+                            return FileVisitResult.SKIP_SUBTREE;
+                        }
                         } catch (IOException e) {
                             log.warn("Pre-visit directory error: {}, exception: {}", dir, e.getMessage());
                         } catch (Exception e) {
@@ -331,6 +336,11 @@ public class LuceneIndexer implements AutoCloseable { // Implements AutoCloseabl
                     if (isExcluded(dir)) return FileVisitResult.SKIP_SUBTREE;
                     indexDirectory(writer, dir, attrs);
                     count.incrementAndGet();
+                    return FileVisitResult.CONTINUE;
+                } catch (IOException e) {
+                    log.warn("Pre-visit directory error: {}, exception: {}", dir, e.getMessage());
+                    return FileVisitResult.SKIP_SUBTREE;
+                }
                 } catch (IOException e) {
                     log.warn("Pre-visit directory error: {}, exception: {}", dir, e.getMessage());
                 } catch (Exception e) {
