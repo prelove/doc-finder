@@ -10,6 +10,9 @@ import java.util.*;
 import java.util.concurrent.*;
 import static java.nio.file.StandardWatchEventKinds.*;
 
+import org.slf4j.Logger;
+import org.slf4j.LoggerFactory;
+
 public class LocalRecursiveWatcher implements AutoCloseable {
     private static final Logger log = LoggerFactory.getLogger(LocalRecursiveWatcher.class);
 
@@ -57,6 +60,36 @@ public class LocalRecursiveWatcher implements AutoCloseable {
                     return FileVisitResult.CONTINUE;
                 }
             });
+            try {
+                Files.walkFileTree(root, new SimpleFileVisitor<Path>() {
+                    @Override public FileVisitResult preVisitDirectory(Path dir, BasicFileAttributes attrs) {
+                        try {
+                            registerDir(dir);
+                        } catch (Throwable t) {
+                            log.warn("Failed to register directory: {}, exception: {}", dir, t.getMessage());
+                        }
+                        return FileVisitResult.CONTINUE;
+                    }
+                    @Override public FileVisitResult visitFileFailed(Path file, IOException exc) {
+                        return FileVisitResult.CONTINUE;
+                    }
+                });
+            } catch (Throwable t) {
+                log.error("Walk file tree failed for watcher root: {}, exception: {}", root, t.getMessage());
+                        } catch (Exception e) {
+                            // Log or ignore
+                        }
+                        return FileVisitResult.CONTINUE;
+                    }
+
+                    @Override
+                    public FileVisitResult visitFileFailed(Path file, IOException exc) {
+                        return FileVisitResult.CONTINUE;
+                    }
+                });
+            } catch (Exception e) {
+                // Log or ignore
+            }
         }
         loop.submit(this::loopRun);
     }
@@ -118,6 +151,37 @@ public class LocalRecursiveWatcher implements AutoCloseable {
                 return FileVisitResult.CONTINUE;
             }
         });
+    private void registerTree(Path root) {
+        try {
+            Files.walkFileTree(root, new SimpleFileVisitor<Path>() {
+                @Override public FileVisitResult preVisitDirectory(Path dir, BasicFileAttributes attrs) {
+                    try {
+                        registerDir(dir);
+                    } catch (Throwable t) {
+                        log.warn("Failed to register directory in tree: {}, exception: {}", dir, t.getMessage());
+                    }
+                    return FileVisitResult.CONTINUE;
+                }
+                @Override public FileVisitResult visitFileFailed(Path file, IOException exc) {
+                    return FileVisitResult.CONTINUE;
+                }
+            });
+        } catch (Throwable t) {
+            log.error("Walk file tree failed for registerTree: {}, exception: {}", root, t.getMessage());
+                    } catch (Exception e) {
+                        // Ignore
+                    }
+                    return FileVisitResult.CONTINUE;
+                }
+
+                @Override
+                public FileVisitResult visitFileFailed(Path file, IOException exc) {
+                    return FileVisitResult.CONTINUE;
+                }
+            });
+        } catch (Exception e) {
+            // Ignore
+        }
     }
 
     private void registerDir(Path dir) throws IOException {
