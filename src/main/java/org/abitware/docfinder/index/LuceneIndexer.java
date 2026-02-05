@@ -1,7 +1,8 @@
 package org.abitware.docfinder.index;
 
 import org.abitware.docfinder.util.Utils;
-
+import org.slf4j.Logger;
+import org.slf4j.LoggerFactory;
 import org.apache.lucene.analysis.Analyzer;
 import org.apache.lucene.analysis.cn.smart.SmartChineseAnalyzer;
 import org.apache.lucene.analysis.ja.JapaneseAnalyzer;
@@ -124,6 +125,7 @@ public class LuceneIndexer implements AutoCloseable { // Implements AutoCloseabl
             }
             mime = Files.probeContentType(file);
         } catch (Exception e) {
+            log.warn("Could not extract content/mime for {} [{}], skipping", file, e.getMessage());
             log.warn("Get mime/content error: {}, exception: {}", file, e.getMessage());
         }
 
@@ -223,6 +225,16 @@ public class LuceneIndexer implements AutoCloseable { // Implements AutoCloseabl
                                 doc.add(new TextField("content_zh", content, Field.Store.NO));
                                 doc.add(new TextField("content_ja", content, Field.Store.NO));
                             }
+                            mime = java.nio.file.Files.probeContentType(file);
+                        } catch (Exception e) {
+                            log.warn("Could not extract content/mime for {} [{}], skipping", file, e.getMessage());
+                        }
+
+                        if (mime != null) doc.add(new StringField("mime", mime, Field.Store.YES));
+                        if (!content.isEmpty()) {
+                            doc.add(new TextField("content", content, Field.Store.NO));
+                            doc.add(new TextField("content_zh", content, Field.Store.NO));
+                            doc.add(new TextField("content_ja", content, Field.Store.NO));
 
                             writer.updateDocument(new Term("path", pathStr), doc);
                             count[0]++;
@@ -311,6 +323,17 @@ public class LuceneIndexer implements AutoCloseable { // Implements AutoCloseabl
                     } catch (Exception e) {
                         log.warn("Get mime/content error: {}, exception: {}", file, e.getMessage());
                     }
+                    mime = java.nio.file.Files.probeContentType(file);
+                } catch (Exception e) {
+                    log.warn("Could not extract content/mime for {} [{}], skipping", file, e.getMessage());
+                }
+
+                if (mime != null) doc.add(new StringField("mime", mime, Field.Store.YES));
+                if (!content.isEmpty()) {
+                    doc.add(new TextField("content", content, Field.Store.NO));
+                    doc.add(new TextField("content_zh", content, Field.Store.NO));
+                    doc.add(new TextField("content_ja", content, Field.Store.NO));
+                }
 
                     if (mime != null) doc.add(new StringField("mime", mime, Field.Store.YES));
                     if (!content.isEmpty()) {
@@ -350,6 +373,7 @@ public class LuceneIndexer implements AutoCloseable { // Implements AutoCloseabl
                 PathMatcher m = FileSystems.getDefault().getPathMatcher("glob:" + g);
                 if (m.matches(p)) return true;
             } catch (Exception e) {
+                log.warn("Invalid glob pattern '{}' in settings, skipping", g);
                 log.warn("Get path matcher error: glob={}, exception: {}", g, e.getMessage());
             }
             // 兜底：**/xxx/** 的粗略包含判断
@@ -382,11 +406,14 @@ public class LuceneIndexer implements AutoCloseable { // Implements AutoCloseabl
                     tikaParser.parse(is, handler, md, ctx);
                     return handler.toString();
                 } catch (Throwable e) {
+                    log.warn("Tika parse failed for {}: {}", file, e.getMessage());
                     log.warn("Extract text error: {}, exception: {}", file, e.getMessage());
                     return "";
                 }
             });
             return fut.get(settings.parseTimeoutSec, java.util.concurrent.TimeUnit.SECONDS);
+        } catch (Exception timeoutOrOther) {
+            log.warn("Content extraction timed out or failed for {}: {}", file, timeoutOrOther.getMessage());
         } catch (Exception e) {
             log.warn("Extract text timeout or error: {}, exception: {}", file, e.getMessage());
             return "";
@@ -453,6 +480,8 @@ public class LuceneIndexer implements AutoCloseable { // Implements AutoCloseabl
                 || mime.equals("application/x-javascript")
                 || mime.equals("application/x-sh")
                 || mime.equals("application/x-java-source");
+        } catch (IOException e) {
+            log.warn("MIME probe failed for {}: {}", file, e.getMessage());
         } catch (Exception e) {
             log.warn("Probe content type error: {}, exception: {}", file, e.getMessage());
             return false;
@@ -474,6 +503,8 @@ public class LuceneIndexer implements AutoCloseable { // Implements AutoCloseabl
             }
             double ratio = printable / (double) n;
             return ratio >= 0.85;
+        } catch (IOException e) {
+            log.warn("Text sniffing failed for {}: {}", file, e.getMessage());
         } catch (Exception e) {
             log.warn("Looks like text error: {}, exception: {}", file, e.getMessage());
             return false;
