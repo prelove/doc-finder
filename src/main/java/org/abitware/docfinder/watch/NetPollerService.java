@@ -89,6 +89,19 @@ public class NetPollerService implements AutoCloseable {
                 });
             } catch (Throwable t) {
                 log.error("Walk file tree error in net poller for root: {}, exception: {}", root, t.getMessage());
+                        } catch (Exception e) {
+                            // Ignore or log
+                        }
+                        return FileVisitResult.CONTINUE;
+                    }
+
+                    @Override
+                    public FileVisitResult visitFileFailed(Path file, IOException exc) {
+                        return FileVisitResult.CONTINUE;
+                    }
+                });
+            } catch (Exception e) {
+                // Ignore or log
             }
 
             Set<String> all = new HashSet<>();
@@ -154,6 +167,19 @@ public class NetPollerService implements AutoCloseable {
                 });
             } catch (Throwable t) {
                 log.error("Walk file tree error in net poller (legacy) for root: {}, exception: {}", root, t.getMessage());
+                        } catch (Exception e) {
+                            // Ignore
+                        }
+                        return FileVisitResult.CONTINUE;
+                    }
+
+                    @Override
+                    public FileVisitResult visitFileFailed(Path file, IOException exc) {
+                        return FileVisitResult.CONTINUE;
+                    }
+                });
+            } catch (Exception e) {
+                // Ignore
             }
 
             // 3) 对比生成变更

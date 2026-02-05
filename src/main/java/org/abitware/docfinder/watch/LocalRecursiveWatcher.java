@@ -59,6 +59,19 @@ public class LocalRecursiveWatcher implements AutoCloseable {
                 });
             } catch (Throwable t) {
                 log.error("Walk file tree failed for watcher root: {}, exception: {}", root, t.getMessage());
+                        } catch (Exception e) {
+                            // Log or ignore
+                        }
+                        return FileVisitResult.CONTINUE;
+                    }
+
+                    @Override
+                    public FileVisitResult visitFileFailed(Path file, IOException exc) {
+                        return FileVisitResult.CONTINUE;
+                    }
+                });
+            } catch (Exception e) {
+                // Log or ignore
             }
         }
         loop.submit(this::loopRun);
@@ -123,6 +136,19 @@ public class LocalRecursiveWatcher implements AutoCloseable {
             });
         } catch (Throwable t) {
             log.error("Walk file tree failed for registerTree: {}, exception: {}", root, t.getMessage());
+                    } catch (Exception e) {
+                        // Ignore
+                    }
+                    return FileVisitResult.CONTINUE;
+                }
+
+                @Override
+                public FileVisitResult visitFileFailed(Path file, IOException exc) {
+                    return FileVisitResult.CONTINUE;
+                }
+            });
+        } catch (Exception e) {
+            // Ignore
         }
     }
 
