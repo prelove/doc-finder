@@ -185,15 +185,15 @@ public class LuceneIndexer implements AutoCloseable { // Implements AutoCloseabl
                 Files.walkFileTree(root, new SimpleFileVisitor<Path>() {
                     @Override
                     public FileVisitResult preVisitDirectory(Path dir, BasicFileAttributes attrs) {
+                        if (isExcluded(dir)) return FileVisitResult.SKIP_SUBTREE;
+                        try {
                         try {
                             if (isExcluded(dir)) return FileVisitResult.SKIP_SUBTREE;
                             indexDirectory(writer, dir, attrs);
                             count[0]++;
                         } catch (IOException e) {
-                            log.warn("Visit directory error: {}, exception: {}", dir, e.getMessage());
                             log.warn("Pre-visit directory error: {}, exception: {}", dir, e.getMessage());
                         } catch (Exception e) {
-                            log.warn("Visit directory error: {}, exception: {}", dir, e.getMessage());
                             log.error("Error visiting directory {}: {}", dir, e.getMessage());
                         }
                         return FileVisitResult.CONTINUE;
@@ -273,7 +273,7 @@ public class LuceneIndexer implements AutoCloseable { // Implements AutoCloseabl
                             writer.updateDocument(new Term("path", pathStr), doc);
                             count[0]++;
                         } catch (Exception e) {
-                            log.warn("Visit file error: {}, exception: {}", file, e.getMessage());
+                            log.warn("Error processing file during indexFolder walk: {}, exception: {}", file, e.getMessage());
                         }
                         return FileVisitResult.CONTINUE;
                     }
@@ -325,15 +325,15 @@ public class LuceneIndexer implements AutoCloseable { // Implements AutoCloseabl
         Files.walkFileTree(root, new SimpleFileVisitor<Path>() {
             @Override
             public FileVisitResult preVisitDirectory(Path dir, BasicFileAttributes attrs) {
+                if (isExcluded(dir)) return FileVisitResult.SKIP_SUBTREE;
+                try {
                 try {
                     if (isExcluded(dir)) return FileVisitResult.SKIP_SUBTREE;
                     indexDirectory(writer, dir, attrs);
                     count.incrementAndGet();
                 } catch (IOException e) {
-                    log.warn("Visit directory error: {}, exception: {}", dir, e.getMessage());
                     log.warn("Pre-visit directory error: {}, exception: {}", dir, e.getMessage());
                 } catch (Exception e) {
-                    log.warn("Visit directory error: {}, exception: {}", dir, e.getMessage());
                     log.error("Error visiting directory {}: {}", dir, e.getMessage());
                 }
                 return FileVisitResult.CONTINUE;
@@ -436,7 +436,7 @@ public class LuceneIndexer implements AutoCloseable { // Implements AutoCloseabl
                     writer.updateDocument(new Term("path", pathStr), doc);
                     count.incrementAndGet();
                 } catch (Exception e) {
-                    log.warn("Visit file error: {}, exception: {}", file, e.getMessage());
+                    log.warn("Error processing file during walkOneRoot: {}, exception: {}", file, e.getMessage());
                 }
                 return FileVisitResult.CONTINUE;
             }
