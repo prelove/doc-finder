@@ -17,8 +17,6 @@ public class MenuBarPanel extends JMenuBar {
     private MenuListener menuListener;
 
     public interface MenuListener {
-        void onIndexFolder();
-
         void onManageSources();
 
         void onIndexAllSources();
@@ -52,31 +50,28 @@ public class MenuBarPanel extends JMenuBar {
     private void buildFileMenu() {
         JMenu file = new JMenu("File");
 
-        JMenuItem indexItem = new JMenuItem("Index Folder...");
-        indexItem.addActionListener(e -> {
-            if (menuListener != null) menuListener.onIndexFolder();
-        });
-        file.add(indexItem);
-
-        JMenuItem sourcesItem = new JMenuItem("Index Sources...");
+        JMenuItem sourcesItem = new JMenuItem("Manage Sources...");
         sourcesItem.addActionListener(e -> {
             if (menuListener != null) menuListener.onManageSources();
         });
         file.add(sourcesItem);
 
         JMenuItem indexAllItem = new JMenuItem("Index All Sources");
+        indexAllItem.setToolTipText("Build/update the index for all configured sources");
         indexAllItem.addActionListener(e -> {
             if (menuListener != null) menuListener.onIndexAllSources();
         });
         file.add(indexAllItem);
 
         JMenuItem idxSettings = new JMenuItem("Indexing Settings...");
+        idxSettings.setToolTipText("Tweak parsing limits, extensions, and exclude patterns");
         idxSettings.addActionListener(e -> {
             if (menuListener != null) menuListener.onShowIndexingSettings();
         });
         file.add(idxSettings);
 
         JMenuItem rebuildItem = new JMenuItem("Rebuild Index (Full)");
+        rebuildItem.setToolTipText("Delete and rebuild the index from all sources");
         rebuildItem.addActionListener(e -> {
             if (menuListener != null) menuListener.onRebuildIndex();
         });
@@ -116,7 +111,8 @@ public class MenuBarPanel extends JMenuBar {
         });
         file.add(netPollToggle);
 
-        JMenuItem pollNow = new JMenuItem("Poll Now");
+        JMenuItem pollNow = new JMenuItem("Poll Network Sources Now");
+        pollNow.setToolTipText("Run one-time network polling in the background");
         pollNow.addActionListener(e -> {
             if (menuListener != null) menuListener.onPollNow();
         });

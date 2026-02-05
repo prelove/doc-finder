@@ -116,7 +116,7 @@ The project includes 8 development tasks in `tasks/` directory:
 2. **Task 2-8**: Additional development tasks (see individual task files)
 
 ## Troubleshooting Notes
-- **Empty Results**: Run "Force Rebuild" after schema changes
+- **Empty Results**: Run "Rebuild Index (Full)" after schema changes
 - **Network Sources**: Ensure proper network share permissions
 - **Preview Issues**: Check file size limits and timeout settings
 - **Path Issues**: Windows paths normalized internally (handles ¥, UNC, mapped drives)

@@ -50,12 +50,12 @@ DocFinder is a desktop utility that lets you search **file names and file conten
 - **Indexing**
   - **Read‑only** extraction via Apache Tika; timeouts; size limits.
   - Text‑like detection using extension allowlist, MIME probing, and heuristics; large/irrelevant binaries skipped.
-  - **Force Rebuild** menu to clean rebuild when schema changes.
+  - **Rebuild Index (Full)** menu to clean rebuild when schema changes.
 
 - **Sources**
-  - `Index Sources…` dialog with **Local/Network** type per folder, **background** detection.
+  - `Manage Sources…` dialog with **Local/Network** type per folder, **background** detection.
   - **Live Watch** for Local sources (OS WatchService).
-  - **Network Polling** for Network sources (periodic snapshot/diff). **Poll Now** runs in the background.
+  - **Network Polling** for Network sources (periodic snapshot/diff). **Poll Network Sources Now** runs in the background.
 
 - **Platform niceties**
   - Global hotkey (via `jnativehook`) to toggle main window.
@@ -109,7 +109,7 @@ DocFinder is a desktop utility that lets you search **file names and file conten
 - **Prefix boost**: when user typed a short ASCII token without field/space/wildcard, we add a `PrefixQuery(name, token)` as a SHOULD to boost filename starts‑with matches.
 - **Filters**: extension OR‑set and modified‑time range are added as MUST clauses.
 
-> If upgrading from older indexes, run **Force Rebuild** once so all docs have `name_raw`.
+> If upgrading from older indexes, run **Rebuild Index (Full)** once so all docs have `name_raw`.
 
 ---
 
@@ -131,7 +131,7 @@ DocFinder is a desktop utility that lets you search **file names and file conten
 - **Storage**: `~/.docfinder/sources.txt` with lines of `path|0/1` (`1 = Network`). Old single‑column files are auto‑upgraded.
 - **Detection** (Windows): tries PowerShell `Get-PSDrive`, `net use`, `wmic`, with caching; falls back to `FileStore` type and UNC prefixes. Mapped drives (`J:\`, `M:\`) are treated as Network when resolved to remote targets.
 - **Live Watch**: enabled only for **Local** sources (uses NIO `WatchService`).
-- **Network Polling**: enabled only for **Network** sources; background snapshots + diffs; `Poll Now` is async and updates the status bar when done.
+- **Network Polling**: enabled only for **Network** sources; background snapshots + diffs; `Poll Network Sources Now` is async and updates the status bar when done.
 
 ---
 
@@ -139,9 +139,8 @@ DocFinder is a desktop utility that lets you search **file names and file conten
 - **Search field** with placeholder hint (`Search…  (e.g. report*, content:"zero knowledge", name:"設計")`) and query history (100 recent, persisted).
 - **Results table** with sortable columns; **preview** pane on the right.
 - **Menu**
-  - `File → Index Folder…` (single folder quick index)
-  - `File → Index Sources…` (manage sources with Local/Network type)
-  - `File → Index All Sources` and `File → Force Rebuild`
+  - `File → Manage Sources…` (manage sources with Local/Network type)
+  - `File → Index All Sources` and `File → Rebuild Index (Full)`
   - `File → Indexing Settings…`
   - `Help → Usage Guide`, `Help → About DocFinder`
 - **Tray icon** with context menu; **Global hotkey** toggles window.
@@ -242,9 +241,9 @@ java -jar target/docfinder-1.0.0.jar
 ---
 
 ## Troubleshooting
-- **`name:チェックリスト_07.xlsx` returns nothing** → reindex with **Force Rebuild** to ensure all docs have `name_raw`.
-- **“Index Sources…” seems slow** → detection runs in background; upgrade to latest build if you still see blocking.
-- **“Poll Now” shows no changes** → verify the folder is marked **Network** and reachable; NAS may reflect updates with delay.
+- **`name:チェックリスト_07.xlsx` returns nothing** → reindex with **Rebuild Index (Full)** to ensure all docs have `name_raw`.
+- **“Manage Sources…” seems slow** → detection runs in background; upgrade to latest build if you still see blocking.
+- **“Poll Network Sources Now” shows no changes** → verify the folder is marked **Network** and reachable; NAS may reflect updates with delay.
 - **Preview empty** → file too large/timeout/unsupported; increase timeout or extend allowlist.
 - **Windows yen sign (¥)** → internal normalization handles it; opening uses Explorer‑friendly paths.
 
