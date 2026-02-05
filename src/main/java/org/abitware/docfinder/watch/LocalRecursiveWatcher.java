@@ -45,6 +45,14 @@ public class LocalRecursiveWatcher implements AutoCloseable {
         running = true;
         // 递归注册所有现有子目录
         for (Path root : roots) {
+            try {
+                if (root == null || !Files.exists(root)) continue;
+                Files.walkFileTree(root, new SimpleFileVisitor<Path>() {
+                    @Override public FileVisitResult preVisitDirectory(Path dir, BasicFileAttributes attrs) throws IOException {
+                        try {
+                            registerDir(dir);
+                        } catch (Throwable t) {
+                            // ignore or log
             if (root == null || !Files.exists(root)) continue;
             Files.walkFileTree(root, new SimpleFileVisitor<Path>() {
                 @Override public FileVisitResult preVisitDirectory(Path dir, BasicFileAttributes attrs) {
@@ -77,6 +85,7 @@ public class LocalRecursiveWatcher implements AutoCloseable {
                     }
                 });
             } catch (Throwable t) {
+                // ignore or log
                 log.error("Walk file tree failed for watcher root: {}, exception: {}", root, t.getMessage());
                         } catch (Exception e) {
                             // Log or ignore
@@ -139,6 +148,13 @@ public class LocalRecursiveWatcher implements AutoCloseable {
     }
 
     private void registerTree(Path root) throws IOException {
+        try {
+            Files.walkFileTree(root, new SimpleFileVisitor<Path>() {
+                @Override public FileVisitResult preVisitDirectory(Path dir, BasicFileAttributes attrs) throws IOException {
+                    try {
+                        registerDir(dir);
+                    } catch (Throwable t) {
+                        // ignore
         Files.walkFileTree(root, new SimpleFileVisitor<Path>() {
             @Override public FileVisitResult preVisitDirectory(Path dir, BasicFileAttributes attrs) {
                 try {
@@ -171,6 +187,7 @@ public class LocalRecursiveWatcher implements AutoCloseable {
                 }
             });
         } catch (Throwable t) {
+            // ignore
             log.error("Walk file tree failed for registerTree: {}, exception: {}", root, t.getMessage());
                     } catch (Exception e) {
                         // Ignore
