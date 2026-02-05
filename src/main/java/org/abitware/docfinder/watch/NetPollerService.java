@@ -66,16 +66,29 @@ public class NetPollerService implements AutoCloseable {
             Map<String, SnapshotStore.Entry> oldSnap = store.load(root);
             Map<String, SnapshotStore.Entry> newSnap = new HashMap<>();
 
-            Files.walkFileTree(root, new SimpleFileVisitor<Path>() {
-                @Override public FileVisitResult visitFile(Path file, BasicFileAttributes attrs) {
-                    if (!attrs.isDirectory()) {
-                        String abs = file.toAbsolutePath().toString();
-                        newSnap.put(abs, new SnapshotStore.Entry(attrs.size(), attrs.lastModifiedTime().toMillis()));
-                        stats.scannedFiles++;
+            try {
+                Files.walkFileTree(root, new SimpleFileVisitor<Path>() {
+                    @Override public FileVisitResult visitFile(Path file, BasicFileAttributes attrs) {
+                        try {
+                            if (!attrs.isDirectory()) {
+                                String abs = file.toAbsolutePath().toString();
+                                newSnap.put(abs, new SnapshotStore.Entry(attrs.size(), attrs.lastModifiedTime().toMillis()));
+                                stats.scannedFiles++;
+                            }
+                        } catch (Exception e) {
+                            // Ignore or log
+                        }
+                        return FileVisitResult.CONTINUE;
                     }
-                    return FileVisitResult.CONTINUE;
-                }
-            });
+
+                    @Override
+                    public FileVisitResult visitFileFailed(Path file, IOException exc) {
+                        return FileVisitResult.CONTINUE;
+                    }
+                });
+            } catch (Exception e) {
+                // Ignore or log
+            }
 
             Set<String> all = new HashSet<>();
             all.addAll(oldSnap.keySet());
@@ -121,15 +134,28 @@ public class NetPollerService implements AutoCloseable {
             Map<String, SnapshotStore.Entry> newSnap = new HashMap<>();
 
             // 2) 扫描当前文件状态（应用排除规则由 LuceneIndexer 负责，这里只做基础过滤）
-            Files.walkFileTree(root, new SimpleFileVisitor<Path>() {
-                @Override public FileVisitResult preVisitDirectory(Path dir, BasicFileAttributes attrs) { return FileVisitResult.CONTINUE; }
-                @Override public FileVisitResult visitFile(Path file, BasicFileAttributes attrs) {
-                    if (attrs.isDirectory()) return FileVisitResult.CONTINUE;
-                    String abs = file.toAbsolutePath().toString();
-                    newSnap.put(abs, new SnapshotStore.Entry(attrs.size(), attrs.lastModifiedTime().toMillis()));
-                    return FileVisitResult.CONTINUE;
-                }
-            });
+            try {
+                Files.walkFileTree(root, new SimpleFileVisitor<Path>() {
+                    @Override public FileVisitResult preVisitDirectory(Path dir, BasicFileAttributes attrs) { return FileVisitResult.CONTINUE; }
+                    @Override public FileVisitResult visitFile(Path file, BasicFileAttributes attrs) {
+                        try {
+                            if (attrs.isDirectory()) return FileVisitResult.CONTINUE;
+                            String abs = file.toAbsolutePath().toString();
+                            newSnap.put(abs, new SnapshotStore.Entry(attrs.size(), attrs.lastModifiedTime().toMillis()));
+                        } catch (Exception e) {
+                            // Ignore
+                        }
+                        return FileVisitResult.CONTINUE;
+                    }
+
+                    @Override
+                    public FileVisitResult visitFileFailed(Path file, IOException exc) {
+                        return FileVisitResult.CONTINUE;
+                    }
+                });
+            } catch (Exception e) {
+                // Ignore
+            }
 
             // 3) 对比生成变更
             Set<String> all = new HashSet<>();
