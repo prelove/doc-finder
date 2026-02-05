@@ -281,7 +281,7 @@ public class LuceneIndexer implements AutoCloseable { // Implements AutoCloseabl
                             log.error("Error indexing file {}: {}", file, e.getMessage());
                         }
                     @Override
-                    public FileVisitResult visitFileFailed(Path file, IOException exc) throws IOException {
+                    public FileVisitResult visitFileFailed(Path file, IOException exc) {
                         log.warn("Visit file failed: {}, exception: {}", file, exc.getMessage());
                         return FileVisitResult.CONTINUE;
                     }
@@ -436,7 +436,7 @@ public class LuceneIndexer implements AutoCloseable { // Implements AutoCloseabl
             }
 
                     @Override
-                    public FileVisitResult visitFileFailed(Path file, IOException exc) throws IOException {
+                    public FileVisitResult visitFileFailed(Path file, IOException exc) {
                         log.warn("Visit file failed: {}, exception: {}", file, exc.getMessage());
                         return FileVisitResult.CONTINUE;
                     }
