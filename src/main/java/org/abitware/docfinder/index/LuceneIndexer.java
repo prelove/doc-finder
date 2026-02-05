@@ -190,6 +190,7 @@ public class LuceneIndexer implements AutoCloseable { // Implements AutoCloseabl
                             indexDirectory(writer, dir, attrs);
                             count[0]++;
                         } catch (Exception e) {
+                            log.warn("Visit directory error: {}, exception: {}", dir, e.getMessage());
                             log.error("Error visiting directory {}: {}", dir, e.getMessage());
                         }
                         return FileVisitResult.CONTINUE;
@@ -326,6 +327,7 @@ public class LuceneIndexer implements AutoCloseable { // Implements AutoCloseabl
                     indexDirectory(writer, dir, attrs);
                     count.incrementAndGet();
                 } catch (Exception e) {
+                    log.warn("Visit directory error: {}, exception: {}", dir, e.getMessage());
                     log.error("Error visiting directory {}: {}", dir, e.getMessage());
                 }
                 return FileVisitResult.CONTINUE;
