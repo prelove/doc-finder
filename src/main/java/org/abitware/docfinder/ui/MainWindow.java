@@ -295,6 +295,19 @@ public class MainWindow extends JFrame implements MenuBarPanel.MenuListener {
 		return bottom;
 	}
 
+	private void setIndexingUiEnabled(boolean enabled) {
+		searchField.setEnabled(enabled);
+		queryBox.setEnabled(enabled);
+		scopeBox.setEnabled(enabled);
+		matchModeBox.setEnabled(enabled);
+	}
+
+	private JLabel buildHintLabel(String text) {
+		JLabel label = new JLabel("<html><span style='color:#666666;'>" + text + "</span></html>");
+		label.setFont(label.getFont().deriveFont(11f));
+		return label;
+	}
+
 	/** Menu bar (File / Help) */
 	private MenuBarPanel buildMenuBar() {
 		MenuBarPanel bar = new MenuBarPanel();
@@ -449,7 +462,7 @@ public class MainWindow extends JFrame implements MenuBarPanel.MenuListener {
 					}
 					if (enable) {
 						if (localRoots.isEmpty()) {
-							message = "No local sources. Use 'Index Sources...' first.";
+							message = "No local sources. Use 'Manage Sources...' first.";
 							messageType = javax.swing.JOptionPane.INFORMATION_MESSAGE;
 							return null;
 						}
@@ -635,10 +648,15 @@ public class MainWindow extends JFrame implements MenuBarPanel.MenuListener {
 	}
 
 	private void indexAllSources() {
+		if (isIndexing) {
+			JOptionPane.showMessageDialog(this, "An indexing operation is already in progress.");
+			return;
+		}
+
 		org.abitware.docfinder.index.SourceManager sm = new org.abitware.docfinder.index.SourceManager();
 		java.util.List<java.nio.file.Path> sources = sm.load();
 		if (sources.isEmpty()) {
-			JOptionPane.showMessageDialog(this, "No sources configured. Use 'Index Sources...' first.");
+			JOptionPane.showMessageDialog(this, "No sources configured. Use 'Manage Sources...' first.");
 			return;
 		}
 
@@ -646,6 +664,8 @@ public class MainWindow extends JFrame implements MenuBarPanel.MenuListener {
         statusLabel.setText("Indexing all sources…");
 
 		java.nio.file.Path indexDir = sm.getIndexDir();
+		isIndexing = true;
+		setIndexingUiEnabled(false);
 
 		new javax.swing.SwingWorker<Integer, Void>() {
 			@Override
@@ -670,6 +690,9 @@ public class MainWindow extends JFrame implements MenuBarPanel.MenuListener {
 					statusLabel.setText("Indexed files: " + n + " | Time: " + ms + " ms | Index: " + indexDir);
 				} catch (Exception ex) {
 					statusLabel.setText("Index failed: " + ex.getMessage());
+				} finally {
+					isIndexing = false;
+					setIndexingUiEnabled(true);
 				}
 			}
 		}.execute();
@@ -770,51 +793,27 @@ public class MainWindow extends JFrame implements MenuBarPanel.MenuListener {
 	}
 
 	private String readTextFallback(java.nio.file.Path file, int maxChars) {
-		try (java.io.InputStream is = java.nio.file.Files.newInputStream(file, java.nio.file.StandardOpenOption.READ)) {
-			// First, try Tika's CharsetDetector
-			CharsetDetector detector = new CharsetDetector();
-			detector.setText(is);
-			CharsetMatch match = detector.detect();
-			if (match != null && match.getConfidence() > 50) { // Check confidence level
-				try {
-					String text = readTextWithCharset(file, maxChars, Charset.forName(match.getName()));
-					if (text != null && !text.trim().isEmpty()) {
-						return text;
-					}
-				} catch (Exception ignore) {
-					// Fallback to other candidates if Tika's detected charset fails
-				}
-			}
-		} catch (Exception ignore) {
-			// Fallback to other candidates if Tika detection fails
-		}
-
-		// Fallback to existing charset candidates
-		java.util.LinkedHashSet<java.nio.charset.Charset> candidates = new java.util.LinkedHashSet<>();
-		java.nio.charset.Charset bom = detectBomCharset(file);
-		if (bom != null) {
-			candidates.add(bom);
-		}
-		candidates.add(java.nio.charset.StandardCharsets.UTF_8);
-		candidates.add(java.nio.charset.StandardCharsets.UTF_16LE);
-		candidates.add(java.nio.charset.StandardCharsets.UTF_16BE);
-		try {
-			candidates.add(java.nio.charset.Charset.forName("windows-1252"));
-		} catch (Exception ignore) {
-		}
+		java.util.List<java.nio.charset.Charset> candidates = detectCandidateCharsets(file);
+		String bestText = "";
+		double bestScore = -1d;
 		for (java.nio.charset.Charset cs : candidates) {
 			if (cs == null) {
 				continue;
 			}
 			try {
 				String text = readTextWithCharset(file, maxChars, cs);
-				if (text != null && !text.trim().isEmpty()) {
-					return text;
+				if (text == null || text.trim().isEmpty()) {
+					continue;
+				}
+				double score = scorePreviewText(text);
+				if (score > bestScore) {
+					bestScore = score;
+					bestText = text;
 				}
 			} catch (Exception ignore) {
 			}
 		}
-		return "";
+		return bestText;
 	}
 
 	private String readTextWithCharset(java.nio.file.Path file, int maxChars, java.nio.charset.Charset charset) throws java.io.IOException {
@@ -839,6 +838,76 @@ public class MainWindow extends JFrame implements MenuBarPanel.MenuListener {
 			sb.deleteCharAt(0);
 		}
 		return sb.toString();
+	}
+
+	private java.util.List<java.nio.charset.Charset> detectCandidateCharsets(java.nio.file.Path file) {
+		java.util.LinkedHashSet<java.nio.charset.Charset> candidates = new java.util.LinkedHashSet<>();
+		java.nio.charset.Charset bom = detectBomCharset(file);
+		if (bom != null) {
+			candidates.add(bom);
+		}
+		try (java.io.InputStream is = java.nio.file.Files.newInputStream(file, java.nio.file.StandardOpenOption.READ)) {
+			CharsetDetector detector = new CharsetDetector();
+			detector.setText(is);
+			CharsetMatch[] matches = detector.detectAll();
+			if (matches != null) {
+				for (CharsetMatch match : matches) {
+					if (match == null || match.getConfidence() < 30) {
+						continue;
+					}
+					try {
+						candidates.add(java.nio.charset.Charset.forName(match.getName()));
+					} catch (Exception ignore) {
+					}
+				}
+			}
+		} catch (Exception ignore) {
+		}
+
+		candidates.add(java.nio.charset.StandardCharsets.UTF_8);
+		candidates.add(java.nio.charset.StandardCharsets.UTF_16LE);
+		candidates.add(java.nio.charset.StandardCharsets.UTF_16BE);
+		addCharsetIfSupported(candidates, "windows-1252");
+		addCharsetIfSupported(candidates, "Shift_JIS");
+		addCharsetIfSupported(candidates, "Windows-31J");
+		addCharsetIfSupported(candidates, "EUC-JP");
+		addCharsetIfSupported(candidates, "GBK");
+		addCharsetIfSupported(candidates, "Big5");
+		addCharsetIfSupported(candidates, "EUC-KR");
+		return new java.util.ArrayList<>(candidates);
+	}
+
+	private void addCharsetIfSupported(java.util.Set<java.nio.charset.Charset> candidates, String name) {
+		try {
+			candidates.add(java.nio.charset.Charset.forName(name));
+		} catch (Exception ignore) {
+		}
+	}
+
+	private double scorePreviewText(String text) {
+		if (text == null || text.isEmpty()) {
+			return 0d;
+		}
+		int length = text.length();
+		int replacement = 0;
+		int printable = 0;
+		for (int i = 0; i < length; i++) {
+			char ch = text.charAt(i);
+			if (ch == '\uFFFD') {
+				replacement++;
+				continue;
+			}
+			if (ch == '\n' || ch == '\r' || ch == '\t') {
+				printable++;
+				continue;
+			}
+			if (ch >= 0x20) {
+				printable++;
+			}
+		}
+		double replacementRatio = replacement / (double) length;
+		double printableRatio = printable / (double) length;
+		return (1d - replacementRatio) * 0.7d + printableRatio * 0.3d;
 	}
 
 	private java.nio.charset.Charset detectBomCharset(java.nio.file.Path file) {
@@ -1060,6 +1129,11 @@ public class MainWindow extends JFrame implements MenuBarPanel.MenuListener {
 	}
 
 	private void chooseAndIndexFolder() {
+		if (isIndexing) {
+			JOptionPane.showMessageDialog(this, "An indexing operation is already in progress.");
+			return;
+		}
+
 		JFileChooser fc = new JFileChooser();
 		fc.setDialogTitle("Choose a folder to index");
 		fc.setFileSelectionMode(JFileChooser.DIRECTORIES_ONLY);
@@ -1113,6 +1187,13 @@ public class MainWindow extends JFrame implements MenuBarPanel.MenuListener {
 		JTextField include = new JTextField(String.join(",", s.includeExt));
 		JTextArea exclude = new JTextArea(String.join(";", s.excludeGlob));
 		exclude.setRows(3);
+		include.setToolTipText("Example: pdf,docx,xlsx,txt");
+		exclude.setToolTipText("Example: **/node_modules/**;**/$RECYCLE.BIN/**;**/System Volume Information/**");
+
+		JLabel maxHint = buildHintLabel("Files larger than this are skipped for content parsing.");
+		JLabel timeoutHint = buildHintLabel("Per-file parsing timeout (seconds).");
+		JLabel includeHint = buildHintLabel("Comma-separated list of extensions to parse with full content extraction.");
+		JLabel excludeHint = buildHintLabel("Semicolon-separated glob patterns to skip during indexing.");
 
 		JPanel p = new JPanel(new java.awt.GridBagLayout());
 		java.awt.GridBagConstraints c = new java.awt.GridBagConstraints();
@@ -1128,10 +1209,22 @@ public class MainWindow extends JFrame implements MenuBarPanel.MenuListener {
 		r++;
 		c.gridx = 0;
 		c.gridy = r;
+		c.gridwidth = 2;
+		p.add(maxHint, c);
+		r++;
+		c.gridwidth = 1;
+		c.gridx = 0;
+		c.gridy = r;
 		p.add(new JLabel("Parse timeout (sec):"), c);
 		c.gridx = 1;
 		p.add(timeout, c);
 		r++;
+		c.gridx = 0;
+		c.gridy = r;
+		c.gridwidth = 2;
+		p.add(timeoutHint, c);
+		r++;
+		c.gridwidth = 1;
 		c.gridx = 0;
 		c.gridy = r;
 		p.add(new JLabel("Include extensions (comma):"), c);
@@ -1140,9 +1233,21 @@ public class MainWindow extends JFrame implements MenuBarPanel.MenuListener {
 		r++;
 		c.gridx = 0;
 		c.gridy = r;
+		c.gridwidth = 2;
+		p.add(includeHint, c);
+		r++;
+		c.gridwidth = 1;
+		c.gridx = 0;
+		c.gridy = r;
 		p.add(new JLabel("Exclude globs (semicolon):"), c);
 		c.gridx = 1;
 		p.add(new JScrollPane(exclude), c);
+		r++;
+		c.gridx = 0;
+		c.gridy = r;
+		c.gridwidth = 2;
+		p.add(excludeHint, c);
+		c.gridwidth = 1;
 
 		int ret = JOptionPane.showConfirmDialog(this, p, "Indexing Settings", JOptionPane.OK_CANCEL_OPTION,
 				JOptionPane.PLAIN_MESSAGE);
@@ -1167,7 +1272,7 @@ public class MainWindow extends JFrame implements MenuBarPanel.MenuListener {
 		org.abitware.docfinder.index.SourceManager sm = new org.abitware.docfinder.index.SourceManager();
 		java.util.List<java.nio.file.Path> sources = sm.load();
 		if (sources.isEmpty()) {
-			JOptionPane.showMessageDialog(this, "No sources configured. Use 'Index Sources...' first.");
+			JOptionPane.showMessageDialog(this, "No sources configured. Use 'Manage Sources...' first.");
 			return;
 		}
 		org.abitware.docfinder.index.ConfigManager cm = new org.abitware.docfinder.index.ConfigManager();
@@ -1177,10 +1282,7 @@ public class MainWindow extends JFrame implements MenuBarPanel.MenuListener {
 
 		// Disable UI and set indexing flag
 		isIndexing = true;
-		searchField.setEnabled(false);
-		queryBox.setEnabled(false);
-		scopeBox.setEnabled(false);
-		matchModeBox.setEnabled(false);
+		setIndexingUiEnabled(false);
         statusLabel.setText("Rebuilding index (full)… Searching is disabled.");
 		long t0 = System.currentTimeMillis();
 
@@ -1209,10 +1311,7 @@ public class MainWindow extends JFrame implements MenuBarPanel.MenuListener {
 				} finally {
 					// Re-enable UI and clear indexing flag
 					isIndexing = false;
-					searchField.setEnabled(true);
-					queryBox.setEnabled(true);
-					scopeBox.setEnabled(true);
-					matchModeBox.setEnabled(true);
+					setIndexingUiEnabled(true);
 				}
 			}
 		}.execute();
@@ -1754,9 +1853,14 @@ public class MainWindow extends JFrame implements MenuBarPanel.MenuListener {
                 + "<li>Content search via Apache Tika (read-only parsing).</li>"
                 + "<li>Better CJK (Chinese/Japanese) matching with specialized analyzers.</li>" + "</ul>" +
 
-                "<h3>Quick Start</h3>" + "<ol>" + "<li>Open <b>File → Index Sources…</b> to add folders.</li>"
+                "<h3>Quick Start</h3>" + "<ol>" + "<li>Open <b>File → Manage Sources…</b> to add folders.</li>"
                 + "<li>Run <b>File → Index All Sources</b> to build/update the index, or <b>Rebuild Index (Full)</b> to recreate it from scratch.</li>"
                 + "<li>Type your query and press <b>Enter</b>.</li>" + "</ol>" +
+
+                "<h3>Indexing Tips</h3>" + "<ul>"
+                + "<li>Use <b>File → Indexing Settings…</b> to adjust max size, timeout, and include/exclude patterns.</li>"
+                + "<li><b>Poll Network Sources Now</b> runs a one-time network sync without blocking the UI.</li>"
+                + "</ul>" +
 
                 "<h3>Query Examples</h3>" + "<ul>" + "<li><code>report*</code> — prefix match on file name</li>"
                 + "<li><code>\"project plan\"</code> — phrase match</li>"
@@ -1780,6 +1884,7 @@ public class MainWindow extends JFrame implements MenuBarPanel.MenuListener {
                 + "</ul>" +
 
                 "<h3>Notes</h3>" + "<ul>" + "<li>Very large or encrypted files may have empty previews.</li>"
+                + "<li>Previews auto-detect common encodings (UTF-8/UTF-16, Shift-JIS, GBK, Big5, EUC-KR) when possible.</li>"
                 + "<li>OCR for scanned PDFs/images is optional (currently disabled by default).</li>" + "</ul>"
                 + "</body></html>";
         JEditorPane ep = new JEditorPane("text/html", html);
@@ -1826,11 +1931,6 @@ public class MainWindow extends JFrame implements MenuBarPanel.MenuListener {
         catch (Exception ignore) {
         }
         System.exit(0);
-    }
-
-    @Override
-    public void onIndexFolder() {
-        chooseAndIndexFolder();
     }
 
     @Override
@@ -1961,4 +2061,3 @@ public class MainWindow extends JFrame implements MenuBarPanel.MenuListener {
 	}
 
 }
-

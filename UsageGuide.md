@@ -8,8 +8,8 @@ _Local file name & content search. Fast, read‑only, and multilingual._
 
 ## 1) Quick Start
 
-1. **Add folders**: `File → Index Sources…` → **Add…**. The **Type** column shows **Local** / **Network** (自动检测，可手动改)。
-2. **Build index**: `File → Index All Sources`（或 `Force Rebuild` 做一次全量重建）。
+1. **Add folders**: `File → Manage Sources…` → **Add…**. The **Type** column shows **Local** / **Network** (自动检测，可手动改)。
+2. **Build index**: `File → Index All Sources`（或 `Rebuild Index (Full)` 做一次全量重建）。
 3. **Search**: 在顶部搜索框输入关键词或语法（见下文）。
 4. **Open files**: 双击或按 **Enter**。右键可打开菜单；右侧**预览面板**显示文本内容（只读）。
 
@@ -30,7 +30,7 @@ _Local file name & content search. Fast, read‑only, and multilingual._
 - 允许 **前导通配**（`*.xlsx`），也可直接输入 `*.xlsx`（无字段时默认当作文件名通配）。
 - 多语言支持：英文（Standard）、中文（SmartChinese）、日文（Kuromoji）。
 
-> 精确匹配通过不分词字段 **`name_raw`** 实现；若升级后首次使用 `name:` 搜不到，请执行一次 **Force Rebuild** 以重建索引。
+> 精确匹配通过不分词字段 **`name_raw`** 实现；若升级后首次使用 `name:` 搜不到，请执行一次 **Rebuild Index (Full)** 以重建索引。
 
 ---
 
@@ -45,6 +45,7 @@ _Local file name & content search. Fast, read‑only, and multilingual._
 
 - 表格列：**Name**, **Path**, **Score**, **Created**, **Last Accessed**, **Size**, **Match**（`name` / `content` / `name + content`）。
 - 预览窗（右侧）：只读文本，字体略小。
+- 编码提示：预览会自动检测常见编码（UTF-8/UTF-16、Shift-JIS、GBK、Big5、EUC-KR 等），多语言混排文件也尽量兼容。
 - 右键菜单：**Open**, **Open With…**（记住上次选择）, **Reveal in Explorer/Finder**, **Copy Path**, **Copy Name** 等。
 - 快捷键：
   - **Enter**：Open
@@ -53,9 +54,9 @@ _Local file name & content search. Fast, read‑only, and multilingual._
 
 ---
 
-## 5) Index Sources（数据源）
+## 5) Manage Sources（数据源）
 
-- `File → Index Sources…`：
+- `File → Manage Sources…`：
   - **Add…**：选择文件夹。
   - **Type**：Local / Network（自动检测，后台异步刷新；可手动修改）。
   - **Re-detect Type**：重新检测所有行。
@@ -68,7 +69,8 @@ _Local file name & content search. Fast, read‑only, and multilingual._
 ## 6) Building / Updating Index（建立与更新索引）
 
 - **Index All Sources**：对所有源进行索引/更新。
-- **Force Rebuild**：清空并重建（字段结构变更后建议执行一次）。
+- **Rebuild Index (Full)**：清空并重建（字段结构变更后建议执行一次）。
+- **Indexing Settings…**：调整解析上限、超时和 include/exclude 规则。
 - **Read‑only parsing**（只读解析）：使用 Apache Tika，带超时与大小上限；文本类文件通过扩展名、MIME 与启发式判定。
 
 > 文本判定：首 4KB 无 NUL 且可打印 ASCII 比例高（≥0.85）。
@@ -79,7 +81,7 @@ _Local file name & content search. Fast, read‑only, and multilingual._
 
 - **Live Watch（本地）**：对 **Local** 源使用 OS `WatchService` 增量更新。
 - **Network Polling（网络）**：对 **Network** 源按间隔轮询；
-  - **Poll Now**：立即轮询，**后台**执行，不会阻塞 UI；完成后状态栏显示统计（scanned/created/modified/deleted）。
+  - **Poll Network Sources Now**：立即轮询，**后台**执行，不会阻塞 UI；完成后状态栏显示统计（scanned/created/modified/deleted）。
 
 > 配置轮询间隔见设置；Live Watch 与 Polling 可独立开关。
 
@@ -104,10 +106,10 @@ _Local file name & content search. Fast, read‑only, and multilingual._
 ## 10) Troubleshooting（排障）
 
 - `name:チェックリスト_07.xlsx` 无结果：
-  - 确认索引包含 `name_raw` 字段；执行 **Force Rebuild**。
-- “Index Sources…” 打开慢：
+  - 确认索引包含 `name_raw` 字段；执行 **Rebuild Index (Full)**。
+- “Manage Sources…” 打开慢：
   - 新版已后台检测 Local/Network；若仍卡顿，请确认已更新到最新构建。
-- “Poll Now” 无变化：
+- “Poll Network Sources Now” 无变化：
   - 确认该源被标记为 **Network**，并具备访问权限；网络设备可能存在索引延迟。
 - 内容预览为空：
   - 可能超时/文件过大/格式不受支持；可提升超时或加入扩展名白名单。
@@ -145,4 +147,3 @@ _Local file name & content search. Fast, read‑only, and multilingual._
 ---
 
 _Enjoy lightning‑fast local search!_
-

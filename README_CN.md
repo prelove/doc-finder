@@ -56,7 +56,7 @@ DocFinder 是一款桌面实用程序，提供类似 Everything 风格的响应�
 ### 数据源管理
 - **索引源对话框**：每个文件夹的**本地/网络**类型，**后台**检测
 - **实时监控**：本地源使用操作系统 WatchService
-- **网络轮询**：网络源使用定期快照/差异；**立即轮询**在后台运行
+- **网络轮询**：网络源使用定期快照/差异；**立即轮询（网络源）**在后台运行
 
 ### 平台特性
 - **全局热键**（通过 `jnativehook`）切换主窗口
@@ -143,7 +143,7 @@ DocFinder 是一款桌面实用程序，提供类似 Everything 风格的响应�
 仅对**本地**源启用（使用 NIO `WatchService`）。
 
 ### 网络轮询
-仅对**网络**源启用；后台快照 + 差异；**立即轮询**是异步的，完成时更新状态栏。
+仅对**网络**源启用；后台快照 + 差异；**立即轮询（网络源）**是异步的，完成时更新状态栏。
 
 --- 
 
@@ -156,9 +156,8 @@ DocFinder 是一款桌面实用程序，提供类似 Everything 风格的响应�
 可排序列格；右侧**预览**面板。
 
 ### 菜单
-- `File → Index Folder…`（单个文件夹快速索引）
-- `File → Index Sources…`（管理本地/网络类型的源）
-- `File → Index All Sources` 和 `File → Force Rebuild`
+- `File → Manage Sources…`（管理本地/网络类型的源）
+- `File → Index All Sources` 和 `File → Rebuild Index (Full)`
 - `File → Indexing Settings…`
 - `Help → Usage Guide`、`Help → About DocFinder`
 
@@ -276,8 +275,8 @@ java -jar target/docfinder-1.0.0.jar
 
 ## 故障排除
 - **`name:检查清单_07.xlsx` 无结果** → 使用**强制重建**重新索引以确保所有文档都有 `name_raw`
-- **"Index Sources…" 似乎很慢** → 检测在后台运行；如果仍然阻塞，请升级到最新构建
-- **"Poll Now" 显示无变化** → 确认文件夹标记为**网络**且可访问；NAS 可能反映更新延迟
+- **"Manage Sources…" 似乎很慢** → 检测在后台运行；如果仍然阻塞，请升级到最新构建
+- **"立即轮询（网络源）" 显示无变化** → 确认文件夹标记为**网络**且可访问；NAS 可能反映更新延迟
 - **预览为空** → 文件过大/超时/不支持；增加超时或扩展白名单
 - **Windows 日元符号（¥）** → 内部规范化处理；打开使用资源管理器友好路径
 
@@ -314,8 +313,8 @@ _待定_（MIT/Apache‑2.0/专有 — 选择一个并添加许可证文件）
 
 ## 快速入门
 
-1. **添加文件夹**：`File → Index Sources…` → **Add…**。**Type** 列显示 **Local** / **Network**（自动检测，可手动修改）
-2. **构建索引**：`File → Index All Sources`（或 `Force Rebuild` 执行一次全量重建）
+1. **添加文件夹**：`File → Manage Sources…` → **Add…**。**Type** 列显示 **Local** / **Network**（自动检测，可手动修改）
+2. **构建索引**：`File → Index All Sources`（或 `Rebuild Index (Full)` 执行一次全量重建）
 3. **搜索**：在顶部搜索框输入关键词或语法（见下文）
 4. **打开文件**：双击或按 **Enter**。右键可打开菜单；右侧**预览面板**显示文本内容（只读）
 

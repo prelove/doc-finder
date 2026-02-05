@@ -19,7 +19,7 @@ public class ManageSourcesDialog extends JDialog {
     private boolean sourcesChanged = false;
 
     public ManageSourcesDialog(Frame owner) {
-        super(owner, "Index Sources", true);
+        super(owner, "Manage Sources", true);
         setMinimumSize(new Dimension(720, 420));
         setLocationRelativeTo(owner);
 
