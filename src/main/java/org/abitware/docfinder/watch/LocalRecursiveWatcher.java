@@ -1,5 +1,8 @@
 package org.abitware.docfinder.watch;
 
+import org.slf4j.Logger;
+import org.slf4j.LoggerFactory;
+
 import java.io.IOException;
 import java.nio.file.*;
 import java.nio.file.attribute.BasicFileAttributes;
@@ -43,6 +46,20 @@ public class LocalRecursiveWatcher implements AutoCloseable {
         // 递归注册所有现有子目录
         for (Path root : roots) {
             if (root == null || !Files.exists(root)) continue;
+            Files.walkFileTree(root, new SimpleFileVisitor<Path>() {
+                @Override public FileVisitResult preVisitDirectory(Path dir, BasicFileAttributes attrs) {
+                    try {
+                        registerDir(dir);
+                    } catch (Throwable t) {
+                        log.warn("Register dir failed: {}, exception: {}", dir, t.getMessage());
+                    }
+                    return FileVisitResult.CONTINUE;
+                }
+                @Override public FileVisitResult visitFileFailed(Path file, IOException exc) {
+                    log.warn("Visit file failed: {}, exception: {}", file, exc.getMessage());
+                    return FileVisitResult.CONTINUE;
+                }
+            });
             try {
                 Files.walkFileTree(root, new SimpleFileVisitor<Path>() {
                     @Override public FileVisitResult preVisitDirectory(Path dir, BasicFileAttributes attrs) {
@@ -119,6 +136,21 @@ public class LocalRecursiveWatcher implements AutoCloseable {
         }, 500, TimeUnit.MILLISECONDS));
     }
 
+    private void registerTree(Path root) throws IOException {
+        Files.walkFileTree(root, new SimpleFileVisitor<Path>() {
+            @Override public FileVisitResult preVisitDirectory(Path dir, BasicFileAttributes attrs) {
+                try {
+                    registerDir(dir);
+                } catch (Throwable t) {
+                    log.warn("Register tree dir failed: {}, exception: {}", dir, t.getMessage());
+                }
+                return FileVisitResult.CONTINUE;
+            }
+            @Override public FileVisitResult visitFileFailed(Path file, IOException exc) {
+                log.warn("Register tree visit failed: {}, exception: {}", file, exc.getMessage());
+                return FileVisitResult.CONTINUE;
+            }
+        });
     private void registerTree(Path root) {
         try {
             Files.walkFileTree(root, new SimpleFileVisitor<Path>() {
