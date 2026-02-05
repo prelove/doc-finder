@@ -180,15 +180,40 @@ public class LuceneIndexer implements AutoCloseable { // Implements AutoCloseabl
             try (IndexWriter writer = new IndexWriter(dir, cfg)) {
                 Files.walkFileTree(root, new SimpleFileVisitor<Path>() {
                     @Override
-                    public FileVisitResult preVisitDirectory(Path dir, BasicFileAttributes attrs) throws IOException {
-                        if (isExcluded(dir)) return FileVisitResult.SKIP_SUBTREE;
-                        indexDirectory(writer, dir, attrs);
-                        count[0]++;
+                    public FileVisitResult preVisitDirectory(Path dir, BasicFileAttributes attrs) {
+                        try {
+                            if (isExcluded(dir)) return FileVisitResult.SKIP_SUBTREE;
+                            indexDirectory(writer, dir, attrs);
+                            count[0]++;
+                        } catch (Exception e) {
+                            log.error("Error visiting directory {}: {}", dir, e.getMessage());
+                        }
                         return FileVisitResult.CONTINUE;
                     }
 
                     @Override
                     public FileVisitResult visitFile(Path file, BasicFileAttributes attrs) {
+                        try {
+                            if (attrs.isDirectory() || isExcluded(file)) return FileVisitResult.CONTINUE;
+
+                            String name = file.getFileName().toString();
+                        if (name.endsWith(".exe") || name.endsWith(".dll")) return FileVisitResult.CONTINUE;
+
+                        String pathStr = Utils.normalizeForIndex(file);
+
+                        Document doc = new Document();
+                        doc.add(new StringField("path", pathStr, Field.Store.YES));
+                        doc.add(new TextField("name", name, Field.Store.YES));
+                        doc.add(new StringField("name_raw", name.toLowerCase(java.util.Locale.ROOT), Field.Store.NO));
+                        doc.add(new StringField("ext", getExt(name), Field.Store.YES));
+                        doc.add(new StringField("kind", KIND_FILE, Field.Store.YES));
+                        doc.add(new LongPoint("mtime_l", attrs.lastModifiedTime().toMillis()));
+                        doc.add(new StoredField("mtime", attrs.lastModifiedTime().toMillis()));
+                        doc.add(new StoredField("size", attrs.size()));
+                        doc.add(new StoredField("ctime", attrs.creationTime().toMillis()));
+                        doc.add(new StoredField("atime", attrs.lastAccessTime().toMillis()));
+
+                        String mime = null, content = "";
                         try {
                             if (attrs.isDirectory() || isExcluded(file)) return FileVisitResult.CONTINUE;
 
@@ -244,6 +269,11 @@ public class LuceneIndexer implements AutoCloseable { // Implements AutoCloseabl
                         return FileVisitResult.CONTINUE;
                     }
 
+                        writer.updateDocument(new Term("path", pathStr), doc);
+                        count[0]++;
+                        } catch (Exception e) {
+                            log.error("Error indexing file {}: {}", file, e.getMessage());
+                        }
                     @Override
                     public FileVisitResult visitFileFailed(Path file, IOException exc) throws IOException {
                         log.warn("Visit file failed: {}, exception: {}", file, exc.getMessage());
@@ -285,15 +315,40 @@ public class LuceneIndexer implements AutoCloseable { // Implements AutoCloseabl
             java.util.concurrent.atomic.AtomicInteger count) throws IOException {
         Files.walkFileTree(root, new SimpleFileVisitor<Path>() {
             @Override
-            public FileVisitResult preVisitDirectory(Path dir, BasicFileAttributes attrs) throws IOException {
-                if (isExcluded(dir)) return FileVisitResult.SKIP_SUBTREE;
-                indexDirectory(writer, dir, attrs);
-                count.incrementAndGet();
+            public FileVisitResult preVisitDirectory(Path dir, BasicFileAttributes attrs) {
+                try {
+                    if (isExcluded(dir)) return FileVisitResult.SKIP_SUBTREE;
+                    indexDirectory(writer, dir, attrs);
+                    count.incrementAndGet();
+                } catch (Exception e) {
+                    log.error("Error visiting directory {}: {}", dir, e.getMessage());
+                }
                 return FileVisitResult.CONTINUE;
             }
 
             @Override
             public FileVisitResult visitFile(Path file, BasicFileAttributes attrs) {
+                try {
+                    if (attrs.isDirectory() || isExcluded(file)) return FileVisitResult.CONTINUE;
+
+                    String name = file.getFileName().toString();
+                if (name.endsWith(".exe") || name.endsWith(".dll")) return FileVisitResult.CONTINUE;
+
+                String pathStr = org.abitware.docfinder.util.Utils.normalizeForIndex(file);
+
+                Document doc = new Document();
+                doc.add(new StringField("path", pathStr, Field.Store.YES));
+                doc.add(new TextField("name", name, Field.Store.YES));
+                doc.add(new StringField("name_raw", name.toLowerCase(java.util.Locale.ROOT), Field.Store.NO));
+                doc.add(new StringField("ext", getExt(name), Field.Store.YES));
+                doc.add(new StringField("kind", KIND_FILE, Field.Store.YES));
+                doc.add(new LongPoint("mtime_l", attrs.lastModifiedTime().toMillis()));
+                doc.add(new StoredField("mtime", attrs.lastModifiedTime().toMillis()));
+                doc.add(new StoredField("size", attrs.size()));
+                doc.add(new StoredField("ctime", attrs.creationTime().toMillis()));
+                doc.add(new StoredField("atime", attrs.lastAccessTime().toMillis()));
+
+                String mime = null, content = "";
                 try {
                     if (attrs.isDirectory() || isExcluded(file)) return FileVisitResult.CONTINUE;
 
@@ -335,6 +390,10 @@ public class LuceneIndexer implements AutoCloseable { // Implements AutoCloseabl
                     doc.add(new TextField("content_ja", content, Field.Store.NO));
                 }
 
+                writer.updateDocument(new Term("path", pathStr), doc);
+                count.incrementAndGet();
+                } catch (Exception e) {
+                    log.error("Error indexing file {}: {}", file, e.getMessage());
                     if (mime != null) doc.add(new StringField("mime", mime, Field.Store.YES));
                     if (!content.isEmpty()) {
                         doc.add(new TextField("content", content, Field.Store.NO));
@@ -373,7 +432,7 @@ public class LuceneIndexer implements AutoCloseable { // Implements AutoCloseabl
                 PathMatcher m = FileSystems.getDefault().getPathMatcher("glob:" + g);
                 if (m.matches(p)) return true;
             } catch (Exception e) {
-                log.warn("Invalid glob pattern '{}' in settings, skipping", g);
+                log.warn("Invalid glob pattern '{}' in settings: {}", g, e.getMessage());
                 log.warn("Get path matcher error: glob={}, exception: {}", g, e.getMessage());
             }
             // 兜底：**/xxx/** 的粗略包含判断
@@ -481,6 +540,7 @@ public class LuceneIndexer implements AutoCloseable { // Implements AutoCloseabl
                 || mime.equals("application/x-sh")
                 || mime.equals("application/x-java-source");
         } catch (IOException e) {
+            log.warn("Could not probe content type for {}: {}", file, e.getMessage());
             log.warn("MIME probe failed for {}: {}", file, e.getMessage());
         } catch (Exception e) {
             log.warn("Probe content type error: {}, exception: {}", file, e.getMessage());
@@ -504,6 +564,7 @@ public class LuceneIndexer implements AutoCloseable { // Implements AutoCloseabl
             double ratio = printable / (double) n;
             return ratio >= 0.85;
         } catch (IOException e) {
+            log.warn("Could not read from {}: {}", file, e.getMessage());
             log.warn("Text sniffing failed for {}: {}", file, e.getMessage());
         } catch (Exception e) {
             log.warn("Looks like text error: {}, exception: {}", file, e.getMessage());
