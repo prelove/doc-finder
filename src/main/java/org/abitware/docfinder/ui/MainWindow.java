@@ -41,12 +41,8 @@ import org.abitware.docfinder.search.SearchResult;
 import org.abitware.docfinder.search.SearchService;
 import org.abitware.docfinder.watch.NetPollerService.PollStats;
 
-import org.abitware.docfinder.ui.LogViewer;
-import org.abitware.docfinder.ui.log.JTextAreaAppender;
-
 public class MainWindow extends JFrame implements MenuBarPanel.MenuListener {
 	private static final Logger log = LoggerFactory.getLogger(MainWindow.class);
-	private LogViewer logViewer;
 	private org.abitware.docfinder.watch.LiveIndexService liveService;
 	private javax.swing.JCheckBoxMenuItem liveWatchToggle;
 
@@ -103,9 +99,6 @@ public class MainWindow extends JFrame implements MenuBarPanel.MenuListener {
 	public MainWindow(SearchService searchService) {
 		super("DocFinder");
 		setSearchService(searchService); // Use the setter to manage lifecycle
-
-		logViewer = new LogViewer(this);
-		JTextAreaAppender.setLogViewer(logViewer);
 
 		setDefaultCloseOperation(WindowConstants.HIDE_ON_CLOSE);
 		setMinimumSize(new Dimension(900, 560));
@@ -1798,11 +1791,7 @@ public class MainWindow extends JFrame implements MenuBarPanel.MenuListener {
 
     @Override
     public void onShowLogViewer() {
-        if (logViewer.isVisible()) {
-            logViewer.setVisible(false);
-        } else {
-            logViewer.setVisible(true);
-        }
+        // TODO: Implement log viewer functionality
     }
 
     @Override
