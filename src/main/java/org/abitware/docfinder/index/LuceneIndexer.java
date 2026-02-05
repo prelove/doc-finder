@@ -104,7 +104,11 @@ public class LuceneIndexer implements AutoCloseable { // Implements AutoCloseabl
             indexDirectory(this.writer, file, attrs);
             return;
         }
+        indexFile(this.writer, file, attrs);
+    }
 
+    private void indexFile(IndexWriter writer, Path file, BasicFileAttributes attrs) throws IOException {
+        String name = file.getFileName() == null ? file.toString() : file.getFileName().toString();
         indexFile(this.writer, file, attrs);
     }
 
@@ -187,6 +191,9 @@ public class LuceneIndexer implements AutoCloseable { // Implements AutoCloseabl
             final int[] count = {0};
             try (IndexWriter writer = new IndexWriter(dir, cfg)) {
                 try {
+                    Files.walkFileTree(root, new SimpleFileVisitor<Path>() {
+                        @Override
+                        public FileVisitResult preVisitDirectory(Path dir, BasicFileAttributes attrs) {
                 Files.walkFileTree(root, new SimpleFileVisitor<Path>() {
                     @Override
                     public FileVisitResult preVisitDirectory(Path dir, BasicFileAttributes attrs) {
@@ -208,6 +215,13 @@ public class LuceneIndexer implements AutoCloseable { // Implements AutoCloseabl
                     public FileVisitResult visitFile(Path file, BasicFileAttributes attrs) {
                         try {
                             if (attrs.isDirectory() || isExcluded(file)) return FileVisitResult.CONTINUE;
+                            String name = file.getFileName() == null ? "" : file.getFileName().toString();
+                            if (name.endsWith(".exe") || name.endsWith(".dll")) return FileVisitResult.CONTINUE;
+
+                            indexFile(writer, file, attrs);
+                            count[0]++;
+                        } catch (Throwable t) {
+                            log.warn("Visit file error: {}, exception: {}", file, t.getMessage());
                             indexFile(writer, file, attrs);
 
                             String name = file.getFileName().toString();
@@ -291,6 +305,20 @@ public class LuceneIndexer implements AutoCloseable { // Implements AutoCloseabl
                         }
                     @Override
                     public FileVisitResult visitFileFailed(Path file, IOException exc) {
+                        log.warn("Visit file failed: {}, exception: {}", file, exc != null ? exc.getMessage() : "unknown");
+                        return FileVisitResult.CONTINUE;
+                    }
+
+                        @Override
+                        public FileVisitResult postVisitDirectory(Path dir, IOException exc) {
+                            if (exc != null) {
+                                log.warn("Post-visit directory error: {}, exception: {}", dir, exc.getMessage());
+                            }
+                            return FileVisitResult.CONTINUE;
+                        }
+                    });
+                } catch (Throwable t) {
+                    log.error("Walk file tree error for root: {}, exception: {}", root, t.getMessage());
                         log.warn("Visit file failed: {}, exception: {}", file, (exc != null ? exc.getMessage() : "unknown"));
                         return FileVisitResult.CONTINUE;
                     }
@@ -330,6 +358,11 @@ public class LuceneIndexer implements AutoCloseable { // Implements AutoCloseabl
     }
 
     private void walkOneRoot(IndexWriter writer, Path root,
+            java.util.concurrent.atomic.AtomicInteger count) throws IOException {
+        try {
+            Files.walkFileTree(root, new SimpleFileVisitor<Path>() {
+                @Override
+                public FileVisitResult preVisitDirectory(Path dir, BasicFileAttributes attrs) {
             java.util.concurrent.atomic.AtomicInteger count) {
         try {
         Files.walkFileTree(root, new SimpleFileVisitor<Path>() {
@@ -357,6 +390,13 @@ public class LuceneIndexer implements AutoCloseable { // Implements AutoCloseabl
             public FileVisitResult visitFile(Path file, BasicFileAttributes attrs) {
                 try {
                     if (attrs.isDirectory() || isExcluded(file)) return FileVisitResult.CONTINUE;
+                    String name = file.getFileName() == null ? "" : file.getFileName().toString();
+                    if (name.endsWith(".exe") || name.endsWith(".dll")) return FileVisitResult.CONTINUE;
+
+                    indexFile(writer, file, attrs);
+                    count.incrementAndGet();
+                } catch (Throwable t) {
+                    log.warn("Visit file error: {}, exception: {}", file, t.getMessage());
                     indexFile(writer, file, attrs);
 
                     String name = file.getFileName().toString();
@@ -456,6 +496,22 @@ public class LuceneIndexer implements AutoCloseable { // Implements AutoCloseabl
                 return FileVisitResult.CONTINUE;
             }
 
+            @Override
+            public FileVisitResult visitFileFailed(Path file, IOException exc) {
+                log.warn("Visit file failed: {}, exception: {}", file, exc != null ? exc.getMessage() : "unknown");
+                return FileVisitResult.CONTINUE;
+            }
+
+                @Override
+                public FileVisitResult postVisitDirectory(Path dir, IOException exc) {
+                    if (exc != null) {
+                        log.warn("Post-visit directory error: {}, exception: {}", dir, exc.getMessage());
+                    }
+                    return FileVisitResult.CONTINUE;
+                }
+            });
+        } catch (Throwable t) {
+            log.error("Walk file tree error for root: {}, exception: {}", root, t.getMessage());
                     @Override
                     public FileVisitResult visitFileFailed(Path file, IOException exc) {
                         log.warn("Visit file failed: {}, exception: {}", file, (exc != null ? exc.getMessage() : "unknown"));

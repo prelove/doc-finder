@@ -7,7 +7,12 @@ import java.util.*;
 import java.util.concurrent.*;
 import static java.nio.file.StandardWatchEventKinds.*;
 
+import org.slf4j.Logger;
+import org.slf4j.LoggerFactory;
+
 public class LocalRecursiveWatcher implements AutoCloseable {
+    private static final Logger log = LoggerFactory.getLogger(LocalRecursiveWatcher.class);
+
     public interface Listener {
         // type: "CREATE" | "MODIFY" | "DELETE"
         void onChange(String type, Path path);
@@ -43,6 +48,17 @@ public class LocalRecursiveWatcher implements AutoCloseable {
                     @Override public FileVisitResult preVisitDirectory(Path dir, BasicFileAttributes attrs) {
                         try {
                             registerDir(dir);
+                        } catch (Throwable t) {
+                            log.warn("Failed to register directory: {}, exception: {}", dir, t.getMessage());
+                        }
+                        return FileVisitResult.CONTINUE;
+                    }
+                    @Override public FileVisitResult visitFileFailed(Path file, IOException exc) {
+                        return FileVisitResult.CONTINUE;
+                    }
+                });
+            } catch (Throwable t) {
+                log.error("Walk file tree failed for watcher root: {}, exception: {}", root, t.getMessage());
                         } catch (Exception e) {
                             // Log or ignore
                         }
@@ -109,6 +125,17 @@ public class LocalRecursiveWatcher implements AutoCloseable {
                 @Override public FileVisitResult preVisitDirectory(Path dir, BasicFileAttributes attrs) {
                     try {
                         registerDir(dir);
+                    } catch (Throwable t) {
+                        log.warn("Failed to register directory in tree: {}, exception: {}", dir, t.getMessage());
+                    }
+                    return FileVisitResult.CONTINUE;
+                }
+                @Override public FileVisitResult visitFileFailed(Path file, IOException exc) {
+                    return FileVisitResult.CONTINUE;
+                }
+            });
+        } catch (Throwable t) {
+            log.error("Walk file tree failed for registerTree: {}, exception: {}", root, t.getMessage());
                     } catch (Exception e) {
                         // Ignore
                     }

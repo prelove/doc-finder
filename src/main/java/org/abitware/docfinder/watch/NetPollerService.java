@@ -2,6 +2,8 @@ package org.abitware.docfinder.watch;
 
 import org.abitware.docfinder.index.IndexSettings;
 import org.abitware.docfinder.index.LuceneIndexer;
+import org.slf4j.Logger;
+import org.slf4j.LoggerFactory;
 
 import java.io.IOException;
 import java.nio.file.*;
@@ -10,6 +12,7 @@ import java.util.*;
 import java.util.concurrent.*;
 
 public class NetPollerService implements AutoCloseable {
+    private static final Logger log = LoggerFactory.getLogger(NetPollerService.class);
     private final Path indexDir;
     private final IndexSettings settings;
     private final List<Path> roots;
@@ -75,6 +78,17 @@ public class NetPollerService implements AutoCloseable {
                                 newSnap.put(abs, new SnapshotStore.Entry(attrs.size(), attrs.lastModifiedTime().toMillis()));
                                 stats.scannedFiles++;
                             }
+                        } catch (Throwable t) {
+                            log.warn("Visit file error in net poller: {}, exception: {}", file, t.getMessage());
+                        }
+                        return FileVisitResult.CONTINUE;
+                    }
+                    @Override public FileVisitResult visitFileFailed(Path file, IOException exc) {
+                        return FileVisitResult.CONTINUE;
+                    }
+                });
+            } catch (Throwable t) {
+                log.error("Walk file tree error in net poller for root: {}, exception: {}", root, t.getMessage());
                         } catch (Exception e) {
                             // Ignore or log
                         }
@@ -142,6 +156,17 @@ public class NetPollerService implements AutoCloseable {
                             if (attrs.isDirectory()) return FileVisitResult.CONTINUE;
                             String abs = file.toAbsolutePath().toString();
                             newSnap.put(abs, new SnapshotStore.Entry(attrs.size(), attrs.lastModifiedTime().toMillis()));
+                        } catch (Throwable t) {
+                            log.warn("Visit file error in net poller (legacy): {}, exception: {}", file, t.getMessage());
+                        }
+                        return FileVisitResult.CONTINUE;
+                    }
+                    @Override public FileVisitResult visitFileFailed(Path file, IOException exc) {
+                        return FileVisitResult.CONTINUE;
+                    }
+                });
+            } catch (Throwable t) {
+                log.error("Walk file tree error in net poller (legacy) for root: {}, exception: {}", root, t.getMessage());
                         } catch (Exception e) {
                             // Ignore
                         }
