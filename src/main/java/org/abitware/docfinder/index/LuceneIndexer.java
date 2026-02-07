@@ -15,7 +15,6 @@ import org.apache.lucene.document.TextField;
 import org.apache.lucene.index.IndexWriter;
 import org.apache.lucene.index.IndexWriterConfig;
 import org.apache.lucene.index.Term;
-import org.apache.lucene.store.Directory;
 import org.apache.lucene.store.FSDirectory;
 import org.apache.tika.metadata.Metadata;
 import org.apache.tika.parser.AutoDetectParser;
@@ -26,7 +25,6 @@ import org.slf4j.LoggerFactory;
 
 import java.io.IOException;
 import java.io.InputStream;
-import java.nio.file.AccessDeniedException;
 import java.nio.file.FileSystems;
 import java.nio.file.FileVisitResult;
 import java.nio.file.Files;
@@ -34,10 +32,6 @@ import java.nio.file.Path;
 import java.nio.file.PathMatcher;
 import java.nio.file.SimpleFileVisitor;
 import java.nio.file.StandardOpenOption;
-
-import java.io.InputStream;
-import java.io.IOException;
-import java.nio.file.*;
 import java.nio.file.attribute.BasicFileAttributes;
 import java.util.Arrays;
 import java.util.HashMap;
@@ -77,10 +71,9 @@ public class LuceneIndexer implements AutoCloseable {
     private final Path indexDir;
     private final IndexSettings settings;
 
-    /** 按字段选择分析器：name/content 用 Standard，中文/日文用各自分词 */
+    /** 按字段选择分析器 */
     private final Analyzer perFieldAnalyzer;
 
-    /** 单个 IndexWriter 实例 */
     /** 共享的 IndexWriter 实例 */
     private final IndexWriter writer;
 
@@ -114,21 +107,6 @@ public class LuceneIndexer implements AutoCloseable {
      */
     public void upsertFile(Path file) {
         if (file == null) return;
-        if (!Files.exists(file)) {
-            deletePath(file);
-            return;
-        }
-        if (isExcluded(file)) return;
-
-        try {
-            BasicFileAttributes attrs = Files.readAttributes(file, BasicFileAttributes.class);
-            if (attrs.isDirectory()) {
-                indexDirectory(writer, file, attrs);
-            } else {
-                indexFile(writer, file, attrs);
-            }
-        } catch (AccessDeniedException e) {
-            log.warn("Access denied indexing {}: {}", file, e.getMessage());
         try {
             if (!Files.exists(file)) {
                 deletePath(file);
@@ -150,11 +128,14 @@ public class LuceneIndexer implements AutoCloseable {
     /**
      * 删除一个绝对路径对应的文档（按规范化 path 匹配）。
      */
-    public void deletePath(Path file) throws IOException {
+    public void deletePath(Path file) {
         if (file == null) return;
-        String pathStr = Utils.normalizeForIndex(file);
-        writer.deleteDocuments(new Term("path", pathStr));
-        this.writer.deleteDocuments(new Term("path", pathStr));
+        try {
+            String pathStr = Utils.normalizeForIndex(file);
+            this.writer.deleteDocuments(new Term("path", pathStr));
+        } catch (Throwable t) {
+            log.warn("Delete path error: {}, exception: {}", file, t.getMessage());
+        }
     }
 
     /**
@@ -166,28 +147,14 @@ public class LuceneIndexer implements AutoCloseable {
 
     @Override
     public void close() throws IOException {
-        writer.close();
+        if (writer != null) {
+            writer.close();
+        }
+        if (perFieldAnalyzer != null) {
+            perFieldAnalyzer.close();
+        }
     }
 
-    /* --------------------------- 全量索引 --------------------------- */
-
-    /**
-     * 全量索引一个根目录（旧入口，保留向后兼容）。
-     */
-    public int indexFolder(Path root) throws IOException {
-        Files.createDirectories(indexDir);
-        try (Directory dir = FSDirectory.open(indexDir)) {
-            IndexWriterConfig cfg = new IndexWriterConfig(perFieldAnalyzer)
-                    .setOpenMode(IndexWriterConfig.OpenMode.CREATE_OR_APPEND)
-                    .setRAMBufferSizeMB(256);
-
-            AtomicInteger count = new AtomicInteger(0);
-            try (IndexWriter writer = new IndexWriter(dir, cfg)) {
-                walkRoot(writer, root, count);
-                writer.commit();
-            }
-            return count.get();
-        }
     /* --------------------------- 批量索引 --------------------------- */
 
     /**
@@ -204,204 +171,22 @@ public class LuceneIndexer implements AutoCloseable {
      * 多目录全量索引；full=true 表示强制重建（CREATE，覆盖旧索引）。
      */
     public int indexFolders(List<Path> roots, boolean full) throws IOException {
-        Files.createDirectories(indexDir);
-        try (Directory dir = FSDirectory.open(indexDir)) {
-            IndexWriterConfig cfg = new IndexWriterConfig(perFieldAnalyzer)
-                    .setOpenMode(full ? IndexWriterConfig.OpenMode.CREATE : IndexWriterConfig.OpenMode.CREATE_OR_APPEND)
-                    .setRAMBufferSizeMB(256);
-
-            AtomicInteger count = new AtomicInteger(0);
-            try (IndexWriter writer = new IndexWriter(dir, cfg)) {
-                if (roots != null) {
-                    for (Path root : roots) {
-                        walkRoot(writer, root, count);
-                    }
-                }
-                writer.commit();
-            }
-            return count.get();
         if (full) {
             writer.deleteAll();
             writer.commit();
         }
 
         AtomicInteger count = new AtomicInteger(0);
-        for (Path root : roots) {
-            if (root == null) continue;
-            walkOneRoot(this.writer, root, count);
+        if (roots != null) {
+            for (Path root : roots) {
+                if (root == null) continue;
+                walkOneRoot(this.writer, root, count);
+            }
         }
         writer.commit();
         return count.get();
     }
 
-    private void walkRoot(IndexWriter writer, Path root, AtomicInteger count) throws IOException {
-        if (root == null) return;
-        Files.walkFileTree(root, new SimpleFileVisitor<Path>() {
-            @Override
-            public FileVisitResult preVisitDirectory(Path dir, BasicFileAttributes attrs) {
-                if (isExcluded(dir)) return FileVisitResult.SKIP_SUBTREE;
-                try {
-                    indexDirectory(writer, dir, attrs);
-                    count.incrementAndGet();
-                } catch (AccessDeniedException e) {
-                    log.warn("Access denied entering directory {}: {}", dir, e.getMessage());
-                    return FileVisitResult.SKIP_SUBTREE;
-                } catch (Throwable t) {
-                    log.warn("Pre-visit directory error: {}, exception: {}", dir, t.getMessage());
-                }
-                return FileVisitResult.CONTINUE;
-            }
-
-            @Override
-            public FileVisitResult visitFile(Path file, BasicFileAttributes attrs) {
-                if (isExcluded(file)) return FileVisitResult.CONTINUE;
-                try {
-                    indexFile(writer, file, attrs);
-                    count.incrementAndGet();
-                } catch (AccessDeniedException e) {
-                    log.warn("Access denied reading file {}: {}", file, e.getMessage());
-                } catch (Throwable t) {
-                    log.warn("Visit file error: {}, exception: {}", file, t.getMessage());
-                }
-                return FileVisitResult.CONTINUE;
-            }
-
-            @Override
-            public FileVisitResult visitFileFailed(Path file, IOException exc) {
-                if (exc != null) {
-                    log.warn("Visit file failed: {}, exception: {}", file, exc.getMessage());
-                }
-                return FileVisitResult.CONTINUE;
-            }
-
-            @Override
-            public FileVisitResult postVisitDirectory(Path dir, IOException exc) {
-                if (exc != null) {
-                    log.warn("Post-visit directory error: {}, exception: {}", dir, exc.getMessage());
-                }
-                return FileVisitResult.CONTINUE;
-            }
-        });
-    }
-
-    /* --------------------------- 规则/工具 --------------------------- */
-
-    /**
-     * 目录/文件排除：
-     * - 使用 settings.excludeGlob 中的 glob 规则；
-     * - 简单兜底：把路径转为 Unix 风格字符串做包含判断。
-     */
-    private boolean isExcluded(Path p) {
-        String unix = p.toString().replace('\\', '/');
-        String lower = unix.toLowerCase(Locale.ROOT);
-        for (String hint : DEFAULT_EXCLUDED_HINTS) {
-            if (lower.contains(hint)) return true;
-        }
-        if (settings.excludeGlob == null) return false;
-        for (String g : settings.excludeGlob) {
-            try {
-                PathMatcher m = FileSystems.getDefault().getPathMatcher("glob:" + g);
-                if (m.matches(p)) return true;
-            } catch (Exception e) {
-                log.warn("Invalid glob pattern '{}' in settings: {}", g, e.getMessage());
-            }
-            String hint = g.replace("**/", "").replace("/**", "");
-            if (!hint.isEmpty() && unix.contains(hint)) return true;
-        }
-        return false;
-    }
-
-    /** 取扩展名（小写；无扩展名返回空串） */
-    private static String getExt(String name) {
-        int i = name.lastIndexOf('.');
-        return (i > 0) ? name.substring(i + 1).toLowerCase(Locale.ROOT) : "";
-    }
-
-    /**
-     * 只读 + 限时抽取正文（不会修改文件时间；读取失败/超时返回空串）。
-     */
-    private String extractTextReadOnly(Path file) {
-        ExecutorService es = Executors.newSingleThreadExecutor(r -> {
-            Thread t = new Thread(r, "tika-extract");
-            t.setDaemon(true);
-            return t;
-        });
-        try {
-            Future<String> fut = es.submit(() -> {
-                try (InputStream is = Files.newInputStream(file, StandardOpenOption.READ)) {
-                    Metadata md = new Metadata();
-                    md.set(org.apache.tika.metadata.TikaCoreProperties.RESOURCE_NAME_KEY, file.getFileName().toString());
-                    BodyContentHandler handler = new BodyContentHandler(MAX_CHARS);
-                    ParseContext ctx = new ParseContext();
-                    tikaParser.parse(is, handler, md, ctx);
-                    return handler.toString();
-                } catch (Throwable e) {
-                    log.warn("Extract text error: {}, exception: {}", file, e.getMessage());
-                    return "";
-                }
-            });
-            return fut.get(settings.parseTimeoutSec, TimeUnit.SECONDS);
-        } catch (Exception timeoutOrOther) {
-            log.warn("Content extraction timed out or failed for {}: {}", file, timeoutOrOther.getMessage());
-            return "";
-        } finally {
-            es.shutdownNow();
-        }
-    }
-
-    /**
-     * 是否需要解析正文。
-     */
-    private boolean shouldParseContent(Path file, String name, long sizeBytes) {
-        if (sizeBytes <= 0 || sizeBytes > settings.maxFileMB * 1024L * 1024L) return false;
-
-        String ext = getExt(name);
-        if (settings.includeExt != null && settings.includeExt.contains(ext)) return true;
-
-        if (!settings.parseTextLike) return false;
-        if (settings.textExts != null && settings.textExts.contains(ext)) return true;
-        if (isTextMime(file)) return true;
-        return looksLikeText(file);
-    }
-
-    private void indexDirectory(IndexWriter writer, Path dir, BasicFileAttributes attrs) throws IOException {
-        if (dir == null || attrs == null || isExcluded(dir)) return;
-        String pathStr = Utils.normalizeForIndex(dir);
-        String name = dir.getFileName() == null ? dir.toString() : dir.getFileName().toString();
-
-        Document doc = new Document();
-        doc.add(new StringField("path", pathStr, Field.Store.YES));
-        doc.add(new TextField("name", name, Field.Store.YES));
-        doc.add(new StringField("name_raw", name.toLowerCase(Locale.ROOT), Field.Store.NO));
-        doc.add(new StringField("ext", "", Field.Store.YES));
-        doc.add(new StringField("kind", KIND_FOLDER, Field.Store.YES));
-        doc.add(new LongPoint("mtime_l", attrs.lastModifiedTime().toMillis()));
-        doc.add(new StoredField("mtime", attrs.lastModifiedTime().toMillis()));
-        doc.add(new StoredField("size", 0L));
-        doc.add(new StoredField("ctime", attrs.creationTime().toMillis()));
-        doc.add(new StoredField("atime", attrs.lastAccessTime().toMillis()));
-        writer.updateDocument(new Term("path", pathStr), doc);
-    }
-
-    private void indexFile(IndexWriter writer, Path file, BasicFileAttributes attrs) throws IOException {
-        if (file == null || attrs == null || isExcluded(file)) return;
-
-        String name = file.getFileName() == null ? file.toString() : file.getFileName().toString();
-        if (name.endsWith(".exe") || name.endsWith(".dll")) return;
-
-        String pathStr = Utils.normalizeForIndex(file);
-
-        Document doc = new Document();
-        doc.add(new StringField("path", pathStr, Field.Store.YES));
-        doc.add(new TextField("name", name, Field.Store.YES));
-        doc.add(new StringField("name_raw", name.toLowerCase(Locale.ROOT), Field.Store.NO));
-        doc.add(new StringField("ext", getExt(name), Field.Store.YES));
-        doc.add(new StringField("kind", KIND_FILE, Field.Store.YES));
-        doc.add(new LongPoint("mtime_l", attrs.lastModifiedTime().toMillis()));
-        doc.add(new StoredField("mtime", attrs.lastModifiedTime().toMillis()));
-        doc.add(new StoredField("size", attrs.size()));
-        doc.add(new StoredField("ctime", attrs.creationTime().toMillis()));
-        doc.add(new StoredField("atime", attrs.lastAccessTime().toMillis()));
     private void walkOneRoot(IndexWriter writer, Path root, AtomicInteger count) {
         try {
             if (!Files.exists(root)) {
@@ -497,7 +282,8 @@ public class LuceneIndexer implements AutoCloseable {
             doc.add(new StoredField("ctime", attrs.creationTime().toMillis()));
             doc.add(new StoredField("atime", attrs.lastAccessTime().toMillis()));
 
-            String mime = null, content = "";
+            String mime = null;
+            String content = "";
             try {
                 if (shouldParseContent(file, name, attrs.size())) {
                     content = extractTextReadOnly(file);
@@ -507,39 +293,42 @@ public class LuceneIndexer implements AutoCloseable {
                 log.warn("Get mime/content error: {}, exception: {}", file, e.getMessage());
             }
 
-        String mime = null;
-        String content = "";
-        try {
-            if (shouldParseContent(file, name, attrs.size())) {
-                content = extractTextReadOnly(file);
+            if (mime != null) doc.add(new StringField("mime", mime, Field.Store.YES));
+            if (!content.isEmpty()) {
+                doc.add(new TextField("content", content, Field.Store.NO));
+                doc.add(new TextField("content_zh", content, Field.Store.NO));
+                doc.add(new TextField("content_ja", content, Field.Store.NO));
             }
-            mime = Files.probeContentType(file);
-        } catch (Throwable e) {
-            log.warn("Get mime/content error: {}, exception: {}", file, e.getMessage());
-        }
 
-        if (mime != null) doc.add(new StringField("mime", mime, Field.Store.YES));
-        if (!content.isEmpty()) {
-            doc.add(new TextField("content", content, Field.Store.NO));
-            doc.add(new TextField("content_zh", content, Field.Store.NO));
-            doc.add(new TextField("content_ja", content, Field.Store.NO));
+            writer.updateDocument(new Term("path", pathStr), doc);
+        } catch (Throwable t) {
+            log.warn("Index file error: {}, exception: {}", file, t.getMessage());
         }
+    }
 
-        writer.updateDocument(new Term("path", pathStr), doc);
     /* --------------------------- 规则/工具 --------------------------- */
 
     private boolean isExcluded(Path p) {
-        String unix = p.toString().replace('\\', '/');
-        for (String g : settings.excludeGlob) {
-            try {
-                PathMatcher m = FileSystems.getDefault().getPathMatcher("glob:" + g);
-                if (m.matches(p)) return true;
-            } catch (Throwable e) {
-                log.warn("Invalid glob pattern: {}, exception: {}", g, e.getMessage());
+        try {
+            String unix = p.toString().replace('\\', '/');
+            String lower = unix.toLowerCase(Locale.ROOT);
+            for (String hint : DEFAULT_EXCLUDED_HINTS) {
+                if (lower.contains(hint)) return true;
             }
-            // 兜底判断
-            String hint = g.replace("**/", "").replace("/**", "");
-            if (!hint.isEmpty() && unix.contains(hint)) return true;
+            if (settings.excludeGlob == null) return false;
+            for (String g : settings.excludeGlob) {
+                try {
+                    PathMatcher m = FileSystems.getDefault().getPathMatcher("glob:" + g);
+                    if (m.matches(p)) return true;
+                } catch (Throwable e) {
+                    log.warn("Invalid glob pattern: {}, exception: {}", g, e.getMessage());
+                }
+                // 兜底判断
+                String hint = g.replace("**/", "").replace("/**", "");
+                if (!hint.isEmpty() && unix.contains(hint)) return true;
+            }
+        } catch (Throwable t) {
+            log.warn("isExcluded check error: {}, exception: {}", p, t.getMessage());
         }
         return false;
     }
@@ -550,8 +339,10 @@ public class LuceneIndexer implements AutoCloseable {
     }
 
     private String extractTextReadOnly(Path file) {
-        ExecutorService es = java.util.concurrent.Executors.newSingleThreadExecutor(r -> {
-            Thread t = new Thread(r, "tika-extract"); t.setDaemon(true); return t;
+        ExecutorService es = Executors.newSingleThreadExecutor(r -> {
+            Thread t = new Thread(r, "tika-extract");
+            t.setDaemon(true);
+            return t;
         });
         try {
             Future<String> fut = es.submit(() -> {
@@ -591,8 +382,8 @@ public class LuceneIndexer implements AutoCloseable {
             String mime = Files.probeContentType(file);
             if (mime == null) return false;
             mime = mime.toLowerCase(Locale.ROOT);
-            if (mime.startsWith("text/")) return true;
-            return mime.equals("application/json")
+            return mime.startsWith("text/")
+                    || mime.equals("application/json")
                     || mime.equals("application/xml")
                     || mime.equals("application/x-yaml")
                     || mime.equals("application/yaml")
@@ -600,20 +391,10 @@ public class LuceneIndexer implements AutoCloseable {
                     || mime.equals("application/x-javascript")
                     || mime.equals("application/x-sh")
                     || mime.equals("application/x-java-source");
-        } catch (IOException e) {
-            log.warn("MIME probe failed for {}: {}", file, e.getMessage());
-                || mime.equals("application/xml")
-                || mime.equals("application/x-yaml")
-                || mime.equals("application/yaml")
-                || mime.equals("application/javascript")
-                || mime.equals("application/x-javascript")
-                || mime.equals("application/x-sh")
-                || mime.equals("application/x-java-source");
         } catch (Throwable e) {
             log.warn("MIME probe failed for {}: {}", file, e.getMessage());
             return false;
         }
-        return false;
     }
 
     private boolean looksLikeText(Path file) {
@@ -630,7 +411,6 @@ public class LuceneIndexer implements AutoCloseable {
             }
             double ratio = printable / (double) n;
             return ratio >= 0.85;
-        } catch (IOException e) {
         } catch (Throwable e) {
             log.warn("Text sniffing failed for {}: {}", file, e.getMessage());
             return false;
