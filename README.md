@@ -43,7 +43,7 @@ DocFinder is a desktop utility that lets you search **file names and file conten
 
 - **Results UI**
   - Columns: **Name**, **Path**, **Score**, **Created**, **Last Accessed**, **Size**, **Match** (`name` / `content` / `name + content`).
-  - Preview panel (read‑only; smaller font).
+  - Preview panel (read‑only; smaller font), with a top-right toggle to show/hide.
   - Right‑click menu: Open, Open With… (remembers last choice), Reveal in Explorer/Finder, Copy Path/Name.
   - Shortcuts: **Enter** (open), **Ctrl+C** (copy path), **Ctrl+Shift+C** (copy name).
 
@@ -66,12 +66,12 @@ DocFinder is a desktop utility that lets you search **file names and file conten
 
 ## Architecture
 - **UI**: Swing (English strings). Main window shows search bar, results table, preview, and status bar. Menus: File (Index, Settings), Help (Usage, About). Tray icon and a global hotkey are integrated.
-- **Index**: Lucene index stored under `~/.docfinder/index`. A single writer used per operation; multi‑root indexing iterates sources.
+- **Index**: Lucene index stored under `./.docfinder/index`. A single writer used per operation; multi‑root indexing iterates sources.
 - **Extraction**: Apache Tika with an executor + timeout (future cancel). Streams opened with `StandardOpenOption.READ` only.
 - **Watchers**:
   - Local: Java NIO `WatchService` for create/modify/delete; coalesced and processed asynchronously.
   - Network: polling scheduler; snapshot/diff; back‑pressure to avoid UI blocking.
-- **Persistence**: sources list `~/.docfinder/sources.txt` (`path|0/1`), query history, and app settings stored under `~/.docfinder/`.
+- **Persistence**: sources list `./.docfinder/sources.txt` (`path|0/1`), query history, and app settings stored under `./.docfinder/`.
 
 ---
 
@@ -128,7 +128,7 @@ DocFinder is a desktop utility that lets you search **file names and file conten
 ---
 
 ## Sources: Local vs Network
-- **Storage**: `~/.docfinder/sources.txt` with lines of `path|0/1` (`1 = Network`). Old single‑column files are auto‑upgraded.
+- **Storage**: `./.docfinder/sources.txt` with lines of `path|0/1` (`1 = Network`). Old single‑column files are auto‑upgraded.
 - **Detection** (Windows): tries PowerShell `Get-PSDrive`, `net use`, `wmic`, with caching; falls back to `FileStore` type and UNC prefixes. Mapped drives (`J:\`, `M:\`) are treated as Network when resolved to remote targets.
 - **Live Watch**: enabled only for **Local** sources (uses NIO `WatchService`).
 - **Network Polling**: enabled only for **Network** sources; background snapshots + diffs; `Poll Network Sources Now` is async and updates the status bar when done.
@@ -165,7 +165,7 @@ mvn clean package
 java -jar target/docfinder-1.0.0.jar
 ```
 
-> Or launch from IDE. The app uses `~/.docfinder` for its runtime data.
+> Or launch from IDE. The app uses `./.docfinder` for its runtime data.
 
 ### Maven (key dependencies)
 ```xml
@@ -234,9 +234,9 @@ java -jar target/docfinder-1.0.0.jar
 ---
 
 ## Data Locations
-- **Index**: `~/.docfinder/index/`
-- **Sources**: `~/.docfinder/sources.txt` (`path|0/1` where `1 = Network`)
-- **History & settings**: `~/.docfinder/…`
+- **Index**: `./.docfinder/index/`
+- **Sources**: `./.docfinder/sources.txt` (`path|0/1` where `1 = Network`)
+- **History & settings**: `./.docfinder/…`
 
 ---
 
@@ -275,3 +275,6 @@ java -jar target/docfinder-1.0.0.jar
 
 ## License
 _TBD_ (MIT/Apache‑2.0/Proprietary — choose one and add the license fil
+
+
+- **Logs**: unified runtime logs are written to `./.docfinder/logs/docfinder.log`, and can be opened from **Help → View Log**.

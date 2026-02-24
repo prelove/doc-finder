@@ -5,8 +5,10 @@ import java.nio.file.*;
 import java.util.*;
 import java.util.stream.Collectors;
 
+import org.abitware.docfinder.util.AppPaths;
+
 public class ConfigManager {
-	private final Path dir = Paths.get(System.getProperty("user.home"), ".docfinder");
+	private final Path dir = AppPaths.getBaseDir();
 	private final Path file = dir.resolve("config.properties");
 
 	public IndexSettings loadIndexSettings() {
@@ -124,6 +126,27 @@ public class ConfigManager {
 	public void setPollingMinutes(int minutes) {
 	    java.util.Properties p = loadAll();
 	    p.setProperty("poll.minutes", String.valueOf(Math.max(1, minutes)));
+	    saveAll(p);
+	}
+
+	public Path getIndexDir() {
+	    String saved = loadAll().getProperty("index.dir", "").trim();
+	    if (!saved.isEmpty()) {
+	        try {
+	            return Paths.get(saved).toAbsolutePath().normalize();
+	        } catch (Exception ignore) {
+	        }
+	    }
+	    return dir.resolve("index").toAbsolutePath().normalize();
+	}
+
+	public void setIndexDir(Path path) {
+	    java.util.Properties p = loadAll();
+	    if (path == null) {
+	        p.remove("index.dir");
+	    } else {
+	        p.setProperty("index.dir", path.toAbsolutePath().normalize().toString());
+	    }
 	    saveAll(p);
 	}
 

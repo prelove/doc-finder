@@ -1,6 +1,7 @@
 package org.abitware.docfinder.index;
 
 import org.abitware.docfinder.util.Utils;
+import org.abitware.docfinder.util.AppPaths;
 
 import java.io.IOException;
 import java.nio.charset.StandardCharsets;
@@ -10,9 +11,9 @@ import java.util.stream.Collectors;
 
 /** 管理“索引源”列表（带本地/网络标记）。文件格式：每行 path|0/1 （1=network） */
 public class SourceManager {
-    private final Path baseDir = Paths.get(System.getProperty("user.home"), ".docfinder");
+    private final Path baseDir = AppPaths.getBaseDir();
     private final Path sourcesFile = baseDir.resolve("sources.txt"); // 向后兼容：无 | 时按旧格式读取
-    private final Path indexDir = baseDir.resolve("index");
+    private final Path indexDir = new ConfigManager().getIndexDir();
 
     /** 数据模型：一个源目录 + 是否网络 */
     public static class SourceEntry {
