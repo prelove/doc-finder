@@ -70,6 +70,7 @@ public class LuceneIndexer implements AutoCloseable {
     /** 索引目录、配置 */
     private final Path indexDir;
     private final IndexSettings settings;
+    private final Path appWorkDir;
 
     /** 按字段选择分析器 */
     private final Analyzer perFieldAnalyzer;
@@ -80,6 +81,7 @@ public class LuceneIndexer implements AutoCloseable {
     public LuceneIndexer(Path indexDir, IndexSettings settings) throws IOException {
         this.indexDir = indexDir;
         this.settings = settings;
+        this.appWorkDir = java.nio.file.Paths.get(System.getProperty("user.dir")).toAbsolutePath().normalize();
 
         Analyzer std = new StandardAnalyzer();
         Analyzer zh = new SmartChineseAnalyzer();
@@ -312,6 +314,8 @@ public class LuceneIndexer implements AutoCloseable {
         try {
             String unix = p.toString().replace('\\', '/');
             String lower = unix.toLowerCase(Locale.ROOT);
+            if (p.toAbsolutePath().normalize().startsWith(indexDir.toAbsolutePath().normalize())) return true;
+            if (p.toAbsolutePath().normalize().startsWith(appWorkDir)) return true;
             for (String hint : DEFAULT_EXCLUDED_HINTS) {
                 if (lower.contains(hint)) return true;
             }

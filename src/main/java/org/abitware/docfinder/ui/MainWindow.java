@@ -86,6 +86,10 @@ public class MainWindow extends JFrame implements MenuBarPanel.MenuListener {
 
 	// Bottom: status bar
 	private final JLabel statusLabel = new JLabel("Ready");
+	private final JLabel progressLabel = new JLabel(" ");
+	private final JProgressBar progressBar = new JProgressBar();
+	private final JToggleButton previewToggle = new JToggleButton("Preview");
+	private int lastDividerLocation = -1;
 
 	// Preview/search context
 	private String lastQuery = "";
@@ -204,6 +208,9 @@ public class MainWindow extends JFrame implements MenuBarPanel.MenuListener {
 		JPanel eastStrip = new JPanel(new FlowLayout(FlowLayout.RIGHT, 6, 0));
 		eastStrip.add(matchModeBox);
 		eastStrip.add(toggleFilters);
+		previewToggle.setSelected(true);
+		previewToggle.addActionListener(e -> setPreviewVisible(previewToggle.isSelected()));
+		eastStrip.add(previewToggle);
 
 		top.add(new JLabel("Scope:"), BorderLayout.WEST);
 		top.add(centerStrip, BorderLayout.CENTER);
@@ -284,15 +291,43 @@ public class MainWindow extends JFrame implements MenuBarPanel.MenuListener {
 
 		split = new JSplitPane(JSplitPane.HORIZONTAL_SPLIT, center, right);
 		split.setResizeWeight(0.72); // Left 72% / Right 28%
+		split.setOneTouchExpandable(true);
 		return split;
 	}
 
 	/** Bottom status bar */
 	private JComponent buildStatusBar() {
-		JPanel bottom = new JPanel(new BorderLayout());
+		JPanel bottom = new JPanel(new BorderLayout(8, 0));
 		bottom.setBorder(BorderFactory.createEmptyBorder(4, 8, 4, 8));
+		progressBar.setIndeterminate(false);
+		progressBar.setVisible(false);
 		bottom.add(statusLabel, BorderLayout.WEST);
+		bottom.add(progressLabel, BorderLayout.CENTER);
+		bottom.add(progressBar, BorderLayout.EAST);
 		return bottom;
+	}
+
+	private void setPreviewVisible(boolean visible) {
+		if (split == null) return;
+		if (visible) {
+			if (lastDividerLocation > 0) {
+				split.setDividerLocation(lastDividerLocation);
+			} else {
+				split.setDividerLocation(0.72);
+			}
+			split.getRightComponent().setVisible(true);
+		} else {
+			lastDividerLocation = split.getDividerLocation();
+			split.getRightComponent().setVisible(false);
+			split.setDividerLocation(1.0);
+		}
+		split.revalidate();
+	}
+
+	private void setBusyProgress(boolean busy, String text) {
+		progressBar.setVisible(busy);
+		progressBar.setIndeterminate(busy);
+		progressLabel.setText((text == null || text.trim().isEmpty()) ? " " : text);
 	}
 
 	private void setIndexingUiEnabled(boolean enabled) {
@@ -662,6 +697,7 @@ public class MainWindow extends JFrame implements MenuBarPanel.MenuListener {
 
 		long t0 = System.currentTimeMillis();
         statusLabel.setText("Indexing all sources…");
+		setBusyProgress(true, "Building index...");
 
 		java.nio.file.Path indexDir = sm.getIndexDir();
 		isIndexing = true;
@@ -693,6 +729,7 @@ public class MainWindow extends JFrame implements MenuBarPanel.MenuListener {
 				} finally {
 					isIndexing = false;
 					setIndexingUiEnabled(true);
+					setBusyProgress(false, "");
 				}
 			}
 		}.execute();
@@ -1142,9 +1179,10 @@ public class MainWindow extends JFrame implements MenuBarPanel.MenuListener {
 
 		java.io.File folder = fc.getSelectedFile();
 		statusLabel.setText("Indexing: " + folder.getAbsolutePath() + " ...");
+		setBusyProgress(true, "Indexing selected folder...");
 
         // 索引目录：用户主目录下 .docfinder/index
-        java.nio.file.Path indexDir = java.nio.file.Paths.get(System.getProperty("user.home"), ".docfinder", "index");
+        java.nio.file.Path indexDir = new org.abitware.docfinder.index.ConfigManager().getIndexDir();
 
 		new javax.swing.SwingWorker<Integer, Void>() {
 			@Override
@@ -1173,6 +1211,8 @@ public class MainWindow extends JFrame implements MenuBarPanel.MenuListener {
                     // doSearch();
 				} catch (Exception ex) {
 					statusLabel.setText("Index failed: " + ex.getMessage());
+				} finally {
+					setBusyProgress(false, "");
 				}
 			}
 		}.execute();
@@ -1186,6 +1226,21 @@ public class MainWindow extends JFrame implements MenuBarPanel.MenuListener {
 		JSpinner timeout = new JSpinner(new SpinnerNumberModel(s.parseTimeoutSec, 1, 120, 1));
 		JTextField include = new JTextField(String.join(",", s.includeExt));
 		JTextArea exclude = new JTextArea(String.join(";", s.excludeGlob));
+		JTextField indexDirField = new JTextField(cm.getIndexDir().toString());
+		indexDirField.setEditable(false);
+		JButton browseIndexDir = new JButton("Browse...");
+		browseIndexDir.addActionListener(e -> {
+			JFileChooser chooser = new JFileChooser(indexDirField.getText());
+			chooser.setFileSelectionMode(JFileChooser.DIRECTORIES_ONLY);
+			chooser.setDialogTitle("Choose index storage folder");
+			if (chooser.showOpenDialog(MainWindow.this) == JFileChooser.APPROVE_OPTION) {
+				indexDirField.setText(chooser.getSelectedFile().toPath().toAbsolutePath().normalize().toString());
+			}
+		});
+		JPanel indexDirRow = new JPanel(new BorderLayout(6, 0));
+		indexDirRow.add(indexDirField, BorderLayout.CENTER);
+		indexDirRow.add(browseIndexDir, BorderLayout.EAST);
+
 		exclude.setRows(3);
 		include.setToolTipText("Example: pdf,docx,xlsx,txt");
 		exclude.setToolTipText("Example: **/node_modules/**;**/$RECYCLE.BIN/**;**/System Volume Information/**");
@@ -1194,6 +1249,7 @@ public class MainWindow extends JFrame implements MenuBarPanel.MenuListener {
 		JLabel timeoutHint = buildHintLabel("Per-file parsing timeout (seconds).");
 		JLabel includeHint = buildHintLabel("Comma-separated list of extensions to parse with full content extraction.");
 		JLabel excludeHint = buildHintLabel("Semicolon-separated glob patterns to skip during indexing.");
+		JLabel indexDirHint = buildHintLabel("Default is ./.docfinder/index (next to app). You can move it to shared/network folders.");
 
 		JPanel p = new JPanel(new java.awt.GridBagLayout());
 		java.awt.GridBagConstraints c = new java.awt.GridBagConstraints();
@@ -1201,6 +1257,18 @@ public class MainWindow extends JFrame implements MenuBarPanel.MenuListener {
 		c.fill = java.awt.GridBagConstraints.HORIZONTAL;
 		c.weightx = 1;
 		int r = 0;
+		c.gridx = 0;
+		c.gridy = r;
+		p.add(new JLabel("Index location:"), c);
+		c.gridx = 1;
+		p.add(indexDirRow, c);
+		r++;
+		c.gridx = 0;
+		c.gridy = r;
+		c.gridwidth = 2;
+		p.add(indexDirHint, c);
+		r++;
+		c.gridwidth = 1;
 		c.gridx = 0;
 		c.gridy = r;
 		p.add(new JLabel("Max file size (MB):"), c);
@@ -1258,6 +1326,7 @@ public class MainWindow extends JFrame implements MenuBarPanel.MenuListener {
 					FilterState.parseExts(include.getText()));
 			s.excludeGlob = java.util.Arrays.asList(exclude.getText().split(";"));
 			cm.saveIndexSettings(s);
+			cm.setIndexDir(java.nio.file.Paths.get(indexDirField.getText()));
 			statusLabel.setText("Index settings saved.");
 		}
 	}
@@ -1284,6 +1353,7 @@ public class MainWindow extends JFrame implements MenuBarPanel.MenuListener {
 		isIndexing = true;
 		setIndexingUiEnabled(false);
         statusLabel.setText("Rebuilding index (full)… Searching is disabled.");
+		setBusyProgress(true, "Rebuilding index...");
 		long t0 = System.currentTimeMillis();
 
 		new javax.swing.SwingWorker<Integer, Void>() {
@@ -1312,6 +1382,7 @@ public class MainWindow extends JFrame implements MenuBarPanel.MenuListener {
 					// Re-enable UI and clear indexing flag
 					isIndexing = false;
 					setIndexingUiEnabled(true);
+					setBusyProgress(false, "");
 				}
 			}
 		}.execute();
@@ -1896,7 +1967,7 @@ public class MainWindow extends JFrame implements MenuBarPanel.MenuListener {
 
     @Override
     public void onShowLogViewer() {
-        // TODO: Implement log viewer functionality
+        new org.abitware.docfinder.ui.LogViewer(this).setVisible(true);
     }
 
     @Override

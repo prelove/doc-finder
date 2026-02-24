@@ -60,7 +60,7 @@ _Local file name & content search. Fast, read‑only, and multilingual._
   - **Add…**：选择文件夹。
   - **Type**：Local / Network（自动检测，后台异步刷新；可手动修改）。
   - **Re-detect Type**：重新检测所有行。
-  - **OK**：保存到 `~/.docfinder/sources.txt`（格式：`path|0/1`，`1=Network`）。
+  - **OK**：保存到 `./.docfinder/sources.txt`（格式：`path|0/1`，`1=Network`）。
 
 > Windows 下支持 UNC（`\\server\share`）与映射盘（如 `J:\`、`M:\`）；检测通过 PowerShell `Get-PSDrive`、`net use`、`wmic` 等并做缓存。
 
@@ -127,9 +127,9 @@ _Local file name & content search. Fast, read‑only, and multilingual._
 
 ## 12) Data Locations（数据位置）
 
-- Index: `~/.docfinder/index/`
-- Sources: `~/.docfinder/sources.txt`（`path|0/1`）
-- Query history & app settings: `~/.docfinder/…`
+- Index: `./.docfinder/index/`
+- Sources: `./.docfinder/sources.txt`（`path|0/1`）
+- Query history & app settings: `./.docfinder/…`
 
 ---
 
@@ -147,3 +147,9 @@ _Local file name & content search. Fast, read‑only, and multilingual._
 ---
 
 _Enjoy lightning‑fast local search!_
+
+
+## 12) Logs
+
+- Use **Help → View Log** to open a live, auto-scrolling log viewer.
+- Log file path: `./.docfinder/logs/docfinder.log`.
