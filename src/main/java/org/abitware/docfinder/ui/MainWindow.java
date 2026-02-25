@@ -1359,9 +1359,14 @@ public class MainWindow extends JFrame implements MenuBarPanel.MenuListener {
 		new javax.swing.SwingWorker<Integer, Void>() {
 			@Override
 			protected Integer doInBackground() throws Exception {
-				org.abitware.docfinder.index.LuceneIndexer idx = new org.abitware.docfinder.index.LuceneIndexer(
-						indexDir, s);
-				return idx.indexFolders(sources, true); // ✅ full = true
+				if (hasWriteLock(indexDir)) {
+					log.warn("Detected index write lock at {}. Force unlock and reset index before rebuild.", indexDir);
+					forceUnlockAndResetIndex(indexDir);
+				}
+				try (org.abitware.docfinder.index.LuceneIndexer idx = new org.abitware.docfinder.index.LuceneIndexer(
+						indexDir, s)) {
+					return idx.indexFolders(sources, true); // full = true
+				}
 			}
 
 			@Override
@@ -1386,6 +1391,75 @@ public class MainWindow extends JFrame implements MenuBarPanel.MenuListener {
 				}
 			}
 		}.execute();
+	}
+
+	private boolean hasWriteLock(java.nio.file.Path indexDir) {
+		java.nio.file.Path lockFile = indexDir.resolve(org.apache.lucene.index.IndexWriter.WRITE_LOCK_NAME);
+		return java.nio.file.Files.exists(lockFile);
+	}
+
+	private void forceUnlockAndResetIndex(java.nio.file.Path indexDir) throws java.io.IOException {
+		stopIndexServicesForLockRecovery();
+		if (!java.nio.file.Files.exists(indexDir)) {
+			java.nio.file.Files.createDirectories(indexDir);
+			return;
+		}
+		java.nio.file.Files.walkFileTree(indexDir, new java.nio.file.SimpleFileVisitor<java.nio.file.Path>() {
+			@Override
+			public java.nio.file.FileVisitResult visitFile(java.nio.file.Path file,
+					java.nio.file.attribute.BasicFileAttributes attrs) throws java.io.IOException {
+				java.nio.file.Files.deleteIfExists(file);
+				return java.nio.file.FileVisitResult.CONTINUE;
+			}
+
+			@Override
+			public java.nio.file.FileVisitResult postVisitDirectory(java.nio.file.Path dir, java.io.IOException exc)
+					throws java.io.IOException {
+				if (exc != null) {
+					throw exc;
+				}
+				if (!dir.equals(indexDir)) {
+					java.nio.file.Files.deleteIfExists(dir);
+				}
+				return java.nio.file.FileVisitResult.CONTINUE;
+			}
+		});
+	}
+
+	private void stopIndexServicesForLockRecovery() {
+		try {
+			if (liveService != null) {
+				liveService.close();
+				liveService = null;
+			}
+		} catch (Exception ex) {
+			log.warn("Failed to stop live watch before lock recovery: {}", ex.getMessage());
+		}
+		try {
+			if (netPoller != null) {
+				netPoller.close();
+				netPoller = null;
+			}
+		} catch (Exception ex) {
+			log.warn("Failed to stop network polling before lock recovery: {}", ex.getMessage());
+		}
+		try {
+			if (searchService != null) {
+				searchService.close();
+				searchService = null;
+			}
+		} catch (Exception ex) {
+			log.warn("Failed to stop search service before lock recovery: {}", ex.getMessage());
+		}
+
+		javax.swing.SwingUtilities.invokeLater(() -> {
+			if (liveWatchToggle != null) {
+				liveWatchToggle.setSelected(false);
+			}
+			if (netPollToggle != null) {
+				netPollToggle.setSelected(false);
+			}
+		});
 	}
 
 	private SearchScope getSelectedScope() {
