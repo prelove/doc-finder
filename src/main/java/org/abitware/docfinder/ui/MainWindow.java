@@ -351,6 +351,20 @@ public class MainWindow extends JFrame implements MenuBarPanel.MenuListener {
 		progressLabel.setText((text == null || text.trim().isEmpty()) ? " " : text);
 	}
 
+	private void setUiBusyCursor(boolean busy) {
+		java.awt.Cursor c = busy
+				? java.awt.Cursor.getPredefinedCursor(java.awt.Cursor.WAIT_CURSOR)
+				: java.awt.Cursor.getDefaultCursor();
+		setCursor(c);
+		if (getRootPane() != null) {
+			getRootPane().setCursor(c);
+		}
+		if (getGlassPane() != null) {
+			getGlassPane().setCursor(c);
+			getGlassPane().setVisible(busy);
+		}
+	}
+
 	private void setIndexingUiEnabled(boolean enabled) {
 		searchField.setEnabled(enabled);
 		queryBox.setEnabled(enabled);
@@ -465,8 +479,9 @@ public class MainWindow extends JFrame implements MenuBarPanel.MenuListener {
 		// Always create a new, dedicated poller for this manual run.
 		final org.abitware.docfinder.watch.NetPollerService manualPoller = new org.abitware.docfinder.watch.NetPollerService(sm.getIndexDir(), s, netRoots);
 
-		setCursor(java.awt.Cursor.getPredefinedCursor(java.awt.Cursor.WAIT_CURSOR));
-        statusLabel.setText("Polling network sources…");
+		setUiBusyCursor(true);
+		setBusyProgress(true, "Polling network sources...");
+		statusLabel.setText("Polling network sources...");
 
 		new javax.swing.SwingWorker<org.abitware.docfinder.watch.NetPollerService.PollStats, Void>() {
 			@Override
@@ -486,7 +501,8 @@ public class MainWindow extends JFrame implements MenuBarPanel.MenuListener {
 					JOptionPane.showMessageDialog(MainWindow.this, "Poll failed:\n" + ex.getMessage(), "Error",
 							JOptionPane.ERROR_MESSAGE);
 				} finally {
-					setCursor(java.awt.Cursor.getDefaultCursor());
+					setBusyProgress(false, "");
+					setUiBusyCursor(false);
 					// Always close the dedicated manual poller.
 					manualPoller.close();
 				}
