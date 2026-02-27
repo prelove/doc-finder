@@ -44,7 +44,8 @@ _Local file name & content search. Fast, read‑only, and multilingual._
 ## 4) Results & Preview（结果与预览）
 
 - 表格列：**Name**, **Path**, **Score**, **Created**, **Last Accessed**, **Size**, **Match**（`name` / `content` / `name + content`）。
-- 预览窗（右侧）：只读文本，字体略小。
+- 预览窗（右侧）：默认宽度约为窗口的 1/4（可拖拽调整）。
+- 预览开关：状态栏右侧的 👁 按钮可快速显示/隐藏。
 - 编码提示：预览会自动检测常见编码（UTF-8/UTF-16、Shift-JIS、GBK、Big5、EUC-KR 等），多语言混排文件也尽量兼容。
 - 右键菜单：**Open**, **Open With…**（记住上次选择）, **Reveal in Explorer/Finder**, **Copy Path**, **Copy Name** 等。
 - 快捷键：
@@ -97,9 +98,11 @@ _Local file name & content search. Fast, read‑only, and multilingual._
 ## 9) Tips & Notes（贴士）
 
 - **Japanese Windows（¥ 路径）**：内部路径已规范化；打开前会转换为 Explorer 可识别的形式。
+- 文件名中的全角斜杠 `／` 会被保留，不会被替换成目录分隔符。
 - **Performance**：为 `*.ext` 的通配增加了 `ext` MUST 过滤；可适度调整索引的 RAM buffer 与并发。
 - **Privacy**：所有数据均在本地，索引与解析均为只读。
 - **Query History**：下拉保留最近 **100** 条查询，持久化保存。
+- 从历史记录中选择查询时，会重新执行一次检索（不是结果缓存回放）。
 
 ---
 

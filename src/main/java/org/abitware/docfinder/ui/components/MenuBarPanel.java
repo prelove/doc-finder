@@ -152,7 +152,7 @@ public class MenuBarPanel extends JMenuBar {
         help.add(viewLog);
 
         JMenuItem about = new JMenuItem("About DocFinder");
-        about.addActionListener(e -> JOptionPane.showMessageDialog(this,
+        about.addActionListener(e -> JOptionPane.showMessageDialog(null,
                 "DocFinder\n\nLocal file name & content search.\n- Read-only indexing\n- Lucene + Tika\n- Java 8+\n",
                 "About", JOptionPane.INFORMATION_MESSAGE));
         help.add(usage);

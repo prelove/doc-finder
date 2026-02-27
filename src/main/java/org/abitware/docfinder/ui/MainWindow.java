@@ -208,10 +208,6 @@ public class MainWindow extends JFrame implements MenuBarPanel.MenuListener {
 		JPanel eastStrip = new JPanel(new FlowLayout(FlowLayout.RIGHT, 6, 0));
 		eastStrip.add(matchModeBox);
 		eastStrip.add(toggleFilters);
-		previewToggle.setSelected(true);
-		previewToggle.addActionListener(e -> setPreviewVisible(previewToggle.isSelected()));
-		eastStrip.add(previewToggle);
-
 		top.add(new JLabel("Scope:"), BorderLayout.WEST);
 		top.add(centerStrip, BorderLayout.CENTER);
 		top.add(eastStrip, BorderLayout.EAST);
@@ -290,8 +286,9 @@ public class MainWindow extends JFrame implements MenuBarPanel.MenuListener {
 		right.setPreferredSize(new Dimension(360, 560));
 
 		split = new JSplitPane(JSplitPane.HORIZONTAL_SPLIT, center, right);
-		split.setResizeWeight(0.72); // Left 72% / Right 28%
+		split.setResizeWeight(0.75); // Left 75% / Right 25%
 		split.setOneTouchExpandable(true);
+		javax.swing.SwingUtilities.invokeLater(() -> split.setDividerLocation(0.75));
 		return split;
 	}
 
@@ -301,9 +298,18 @@ public class MainWindow extends JFrame implements MenuBarPanel.MenuListener {
 		bottom.setBorder(BorderFactory.createEmptyBorder(4, 8, 4, 8));
 		progressBar.setIndeterminate(false);
 		progressBar.setVisible(false);
+
+		previewToggle.setText("👁");
+		previewToggle.setToolTipText("Toggle preview panel");
+		previewToggle.setSelected(true);
+		previewToggle.addActionListener(e -> setPreviewVisible(previewToggle.isSelected()));
+
+		JPanel east = new JPanel(new FlowLayout(FlowLayout.RIGHT, 6, 0));
+		east.add(previewToggle);
+		east.add(progressBar);
 		bottom.add(statusLabel, BorderLayout.WEST);
 		bottom.add(progressLabel, BorderLayout.CENTER);
-		bottom.add(progressBar, BorderLayout.EAST);
+		bottom.add(east, BorderLayout.EAST);
 		return bottom;
 	}
 
@@ -313,7 +319,7 @@ public class MainWindow extends JFrame implements MenuBarPanel.MenuListener {
 			if (lastDividerLocation > 0) {
 				split.setDividerLocation(lastDividerLocation);
 			} else {
-				split.setDividerLocation(0.72);
+				split.setDividerLocation(0.75);
 			}
 			split.getRightComponent().setVisible(true);
 		} else {

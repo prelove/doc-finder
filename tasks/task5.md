@@ -15,6 +15,17 @@ Store index, configuration, and history files inside an application-controlled d
 4. Ensure directories are created with appropriate permissions and handle cross-platform paths (Windows UNC, macOS sandbox, Linux XDG).
 5. Refresh documentation (README, UsageGuide, AGENTS) and packaging scripts to reference the new storage path.
 
+## Progress Update (2026-02-27)
+- ✅ `AppPaths` has been introduced and most runtime data already writes under `./.docfinder`.
+- ✅ `SourceManager` and `ConfigManager` are already on `AppPaths`.
+- ✅ This update moves remaining runtime artifacts (`history.txt`, network poll snapshots) from `~/.docfinder` to `./.docfinder`.
+- ⚠️ Legacy migration from `~/.docfinder` is still pending; we currently start fresh in the new location if old files exist only in home.
+
+## Next Step
+1. Add one-time migration logic from `~/.docfinder` to `./.docfinder` (copy + conflict handling + rollback messaging).
+2. Add a small startup notice to confirm the active runtime data directory.
+3. Add tests for path resolution and migration scenarios.
+
 ## Validation
 - Fresh installs write all data under the new directory and leave the home directory untouched.
 - Migration preserves index state or triggers a controlled rebuild without errors.

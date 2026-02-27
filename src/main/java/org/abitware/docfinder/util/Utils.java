@@ -19,8 +19,8 @@ public final class Utils {
         String t = s.trim();
         t = t.replace('\u00A5', '\\'); // ¥
         t = t.replace('\uFF3C', '\\'); // ＼
-        t = t.replace('\uFF0F', '/');  // ／
         t = t.replace('/', '\\');
+        // Keep full-width slash (／, U+FF0F) unchanged because it may be part of a valid file name.
         return t;
     }
     public static boolean isUncPrefix(String raw) {
