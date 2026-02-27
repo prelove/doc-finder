@@ -16,6 +16,17 @@ Ensure the preview pane reliably shows content or an explicit fallback whenever 
 4. Add minimal caching for the currently visible row to avoid re-reading files when the user toggles between preview and back.
 5. Verify preview behavior with text, binary, large, and folder results (after Task 2) to ensure meaningful messaging.
 
+
+## Progress Update (2026-02-27)
+- ✅ Added cancellable preview worker handling in `MainWindow` so previous preview tasks are cancelled before launching a new one.
+- ✅ Added token + selected-row guard to ignore stale preview callbacks that finish late.
+- ✅ Added lightweight per-selection preview cache (`path + query`) to avoid unnecessary re-reads.
+- ✅ Preview fallback reasons now distinguish timeout / binary / unsupported-empty cases.
+
+## Next Step
+1. Add focused tests (or scripted manual checks) for rapid row switching and stale preview suppression.
+2. Consider adding a small preview timeout setting in Indexing Settings for power users.
+
 ## Validation
 - Switching rows quickly never leaves the preview blank; it either shows the correct snippet or a descriptive fallback.
 - Preview content aligns with the selected row even during rapid searching.

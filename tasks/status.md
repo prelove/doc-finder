@@ -6,7 +6,7 @@
 - **Task 5 - Relocate Persistent Data Storage**: Most runtime files already use `./.docfinder`; this round also migrates history + poll snapshots away from home directory.
 
 ## In Progress
-- **Task 3 - Stabilize Preview Rendering**: Preview is async, but worker cancellation / stale preview guarding is still incomplete.
+- **Task 3 - Stabilize Preview Rendering**: Worker cancellation + stale-callback guard are done; richer fallback reasons and tests remain.
 - **Task 8 - Eliminate UI Lag**: Several heavy operations are in workers, but startup/search contention still needs profiling and cleanup.
 
 ## Not Started / Pending
@@ -15,12 +15,14 @@
 - **Task 7 - Web Interface Prototype**
 
 ## Current Step
-- Hardening indexing concurrency between **local live watch** and **network polling** to reduce lock conflicts.
+- Stabilizing preview rendering by cancelling stale workers and guarding async callbacks.
 
 ## Next Immediate Step
-1. Add explicit stale-preview cancellation logic (Task 3).
+1. Add focused tests for preview stale-callback suppression and rapid row switching (Task 3).
 2. Add one-time migration prompt from legacy `~/.docfinder` data (Task 5).
 3. Add integration tests for simultaneous local+network polling/index updates (Task 8).
 
 ## Latest Improvement
 - Network polling now scans roots concurrently (up to 4 threads) and then performs a single serialized Lucene write pass, reducing lock hold time while preserving index consistency.
+
+- Fixed `Poll Network Sources Now` lock failure by removing long-lived write lock ownership from search service (`LuceneSearchService` now uses a directory-based `SearcherManager`).
