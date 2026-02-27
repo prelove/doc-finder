@@ -71,10 +71,18 @@ public class MainWindow extends JFrame implements MenuBarPanel.MenuListener {
 
 	// Center: results + preview
 	private final DefaultTableModel model = new DefaultTableModel(
-			new Object[] { "Name", "Path", "Size", "Score", "Created", "Accessed", "Match" }, 0) {
+			new Object[] { "Name", "Path", "Size", "Created", "Accessed", "Match" }, 0) {
 		@Override
 		public boolean isCellEditable(int r, int c) {
 			return false;
+		}
+
+		@Override
+		public Class<?> getColumnClass(int columnIndex) {
+			if (columnIndex == 2) {
+				return Long.class;
+			}
+			return String.class;
 		}
 	};
 
@@ -93,6 +101,22 @@ public class MainWindow extends JFrame implements MenuBarPanel.MenuListener {
 
 	// Preview/search context
 	private String lastQuery = "";
+	private javax.swing.SwingWorker<String, Void> activePreviewWorker;
+	private long previewSequence = 0L;
+	private String cachedPreviewPath;
+	private String cachedPreviewQuery;
+	private String cachedPreviewHtml;
+	private java.util.List<SearchResult> currentResults = java.util.Collections.emptyList();
+
+	private static class PreviewLoadOutcome {
+		final String text;
+		final String reason;
+
+		PreviewLoadOutcome(String text, String reason) {
+			this.text = text;
+			this.reason = reason;
+		}
+	}
 
 	private SearchWorker activeSearchWorker;
 	private long searchSequence = 0L;
@@ -208,10 +232,6 @@ public class MainWindow extends JFrame implements MenuBarPanel.MenuListener {
 		JPanel eastStrip = new JPanel(new FlowLayout(FlowLayout.RIGHT, 6, 0));
 		eastStrip.add(matchModeBox);
 		eastStrip.add(toggleFilters);
-		previewToggle.setSelected(true);
-		previewToggle.addActionListener(e -> setPreviewVisible(previewToggle.isSelected()));
-		eastStrip.add(previewToggle);
-
 		top.add(new JLabel("Scope:"), BorderLayout.WEST);
 		top.add(centerStrip, BorderLayout.CENTER);
 		top.add(eastStrip, BorderLayout.EAST);
@@ -277,10 +297,23 @@ public class MainWindow extends JFrame implements MenuBarPanel.MenuListener {
 		resultTable.getColumnModel().getColumn(0).setPreferredWidth(240); // Name
 		resultTable.getColumnModel().getColumn(1).setPreferredWidth(480); // Path
 		resultTable.getColumnModel().getColumn(2).setPreferredWidth(90);  // Size ✅
-		resultTable.getColumnModel().getColumn(3).setPreferredWidth(70); // Score
-		resultTable.getColumnModel().getColumn(4).setPreferredWidth(130); // Created
-		resultTable.getColumnModel().getColumn(5).setPreferredWidth(130); // Accessed
-		resultTable.getColumnModel().getColumn(6).setPreferredWidth(110); // Match
+		resultTable.getColumnModel().getColumn(3).setPreferredWidth(130); // Created
+		resultTable.getColumnModel().getColumn(4).setPreferredWidth(130); // Accessed
+		resultTable.getColumnModel().getColumn(5).setPreferredWidth(110); // Match
+
+		javax.swing.table.DefaultTableCellRenderer sizeRenderer = new javax.swing.table.DefaultTableCellRenderer() {
+			@Override
+			public void setValue(Object value) {
+				if (value instanceof Number) {
+					long bytes = ((Number) value).longValue();
+					super.setValue(fmtSize(bytes));
+				} else {
+					super.setValue(value);
+				}
+			}
+		};
+		sizeRenderer.setHorizontalAlignment(javax.swing.SwingConstants.RIGHT);
+		resultTable.getColumnModel().getColumn(2).setCellRenderer(sizeRenderer);
 
 		JScrollPane center = new JScrollPane(resultTable);
 
@@ -290,8 +323,9 @@ public class MainWindow extends JFrame implements MenuBarPanel.MenuListener {
 		right.setPreferredSize(new Dimension(360, 560));
 
 		split = new JSplitPane(JSplitPane.HORIZONTAL_SPLIT, center, right);
-		split.setResizeWeight(0.72); // Left 72% / Right 28%
+		split.setResizeWeight(0.75); // Left 75% / Right 25%
 		split.setOneTouchExpandable(true);
+		javax.swing.SwingUtilities.invokeLater(() -> split.setDividerLocation(0.75));
 		return split;
 	}
 
@@ -301,9 +335,18 @@ public class MainWindow extends JFrame implements MenuBarPanel.MenuListener {
 		bottom.setBorder(BorderFactory.createEmptyBorder(4, 8, 4, 8));
 		progressBar.setIndeterminate(false);
 		progressBar.setVisible(false);
+
+		previewToggle.setText("👁");
+		previewToggle.setToolTipText("Toggle preview panel");
+		previewToggle.setSelected(true);
+		previewToggle.addActionListener(e -> setPreviewVisible(previewToggle.isSelected()));
+
+		JPanel east = new JPanel(new FlowLayout(FlowLayout.RIGHT, 6, 0));
+		east.add(previewToggle);
+		east.add(progressBar);
 		bottom.add(statusLabel, BorderLayout.WEST);
 		bottom.add(progressLabel, BorderLayout.CENTER);
-		bottom.add(progressBar, BorderLayout.EAST);
+		bottom.add(east, BorderLayout.EAST);
 		return bottom;
 	}
 
@@ -313,7 +356,7 @@ public class MainWindow extends JFrame implements MenuBarPanel.MenuListener {
 			if (lastDividerLocation > 0) {
 				split.setDividerLocation(lastDividerLocation);
 			} else {
-				split.setDividerLocation(0.72);
+				split.setDividerLocation(0.75);
 			}
 			split.getRightComponent().setVisible(true);
 		} else {
@@ -328,6 +371,20 @@ public class MainWindow extends JFrame implements MenuBarPanel.MenuListener {
 		progressBar.setVisible(busy);
 		progressBar.setIndeterminate(busy);
 		progressLabel.setText((text == null || text.trim().isEmpty()) ? " " : text);
+	}
+
+	private void setUiBusyCursor(boolean busy) {
+		java.awt.Cursor c = busy
+				? java.awt.Cursor.getPredefinedCursor(java.awt.Cursor.WAIT_CURSOR)
+				: java.awt.Cursor.getDefaultCursor();
+		setCursor(c);
+		if (getRootPane() != null) {
+			getRootPane().setCursor(c);
+		}
+		if (getGlassPane() != null) {
+			getGlassPane().setCursor(c);
+			getGlassPane().setVisible(busy);
+		}
 	}
 
 	private void setIndexingUiEnabled(boolean enabled) {
@@ -444,8 +501,9 @@ public class MainWindow extends JFrame implements MenuBarPanel.MenuListener {
 		// Always create a new, dedicated poller for this manual run.
 		final org.abitware.docfinder.watch.NetPollerService manualPoller = new org.abitware.docfinder.watch.NetPollerService(sm.getIndexDir(), s, netRoots);
 
-		setCursor(java.awt.Cursor.getPredefinedCursor(java.awt.Cursor.WAIT_CURSOR));
-        statusLabel.setText("Polling network sources…");
+		setUiBusyCursor(true);
+		setBusyProgress(true, "Polling network sources...");
+		statusLabel.setText("Polling network sources...");
 
 		new javax.swing.SwingWorker<org.abitware.docfinder.watch.NetPollerService.PollStats, Void>() {
 			@Override
@@ -465,7 +523,8 @@ public class MainWindow extends JFrame implements MenuBarPanel.MenuListener {
 					JOptionPane.showMessageDialog(MainWindow.this, "Poll failed:\n" + ex.getMessage(), "Error",
 							JOptionPane.ERROR_MESSAGE);
 				} finally {
-					setCursor(java.awt.Cursor.getDefaultCursor());
+					setBusyProgress(false, "");
+					setUiBusyCursor(false);
 					// Always close the dedicated manual poller.
 					manualPoller.close();
 				}
@@ -737,6 +796,8 @@ public class MainWindow extends JFrame implements MenuBarPanel.MenuListener {
 
     // 用 Tika 只读抽取的轻量预览（在 EDT 之外跑）
 	private void loadPreviewAsync() {
+		cancelActivePreviewWorker();
+
 		RowSel s = getSelectedRow();
 		if (s == null) {
 			updatePreviewInner("No selection.");
@@ -749,10 +810,21 @@ public class MainWindow extends JFrame implements MenuBarPanel.MenuListener {
 			updatePreviewInner("Preview unavailable.");
 			return;
 		}
+		final String currentQuery = (lastQuery == null) ? "" : lastQuery.trim();
+		final String pathText = path.toString();
+		if (java.util.Objects.equals(cachedPreviewPath, pathText)
+				&& java.util.Objects.equals(cachedPreviewQuery, currentQuery)
+				&& cachedPreviewHtml != null) {
+			updatePreviewInner(cachedPreviewHtml, false);
+			return;
+		}
+
+		final long token = ++previewSequence;
+
 		if (java.nio.file.Files.isDirectory(path)) {
 			updatePreviewInner("Loading folder...", false);
 			final java.nio.file.Path dir = path;
-			new javax.swing.SwingWorker<String, Void>() {
+			javax.swing.SwingWorker<String, Void> worker = new javax.swing.SwingWorker<String, Void>() {
 				@Override
 				protected String doInBackground() {
 					return buildFolderPreviewHtml(dir, 200);
@@ -760,13 +832,22 @@ public class MainWindow extends JFrame implements MenuBarPanel.MenuListener {
 
 				@Override
 				protected void done() {
+					if (isCancelled() || token != previewSequence || isPreviewSelectionChanged(pathText)) {
+						return;
+					}
 					try {
-						updatePreviewInner(get());
+						String html = get();
+						cachedPreviewPath = pathText;
+						cachedPreviewQuery = currentQuery;
+						cachedPreviewHtml = html;
+						updatePreviewInner(html);
 				} catch (Exception ex) {
 						updatePreviewInner("Preview failed.");
 					}
 				}
-			}.execute();
+			};
+			activePreviewWorker = worker;
+			worker.execute();
 			return;
 		}
 		if (!java.nio.file.Files.isRegularFile(path)) {
@@ -775,13 +856,17 @@ public class MainWindow extends JFrame implements MenuBarPanel.MenuListener {
 		}
 		updatePreviewInner("Loading preview...", false);
 		final java.nio.file.Path target = path;
-		new javax.swing.SwingWorker<String, Void>() {
+		javax.swing.SwingWorker<String, Void> worker = new javax.swing.SwingWorker<String, Void>() {
 			@Override
 			protected String doInBackground() throws Exception {
 				final int MAX_CHARS = 60_000;
-				String text = loadPreviewText(target, MAX_CHARS);
+				PreviewLoadOutcome outcome = loadPreviewText(target, MAX_CHARS);
+				String text = (outcome == null) ? "" : outcome.text;
 				if (text == null || text.trim().isEmpty()) {
-					return "(No text content.)";
+					String reason = (outcome == null || outcome.reason == null)
+							? "No text content."
+							: outcome.reason;
+					return "(" + reason + ")";
 				}
 
 				String q = (lastQuery == null) ? "" : lastQuery.trim();
@@ -793,40 +878,110 @@ public class MainWindow extends JFrame implements MenuBarPanel.MenuListener {
 
 			@Override
 			protected void done() {
+				if (isCancelled() || token != previewSequence || isPreviewSelectionChanged(pathText)) {
+					return;
+				}
 				try {
-					updatePreviewInner(get(), false);
+					String html = get();
+					cachedPreviewPath = pathText;
+					cachedPreviewQuery = currentQuery;
+					cachedPreviewHtml = html;
+					updatePreviewInner(html, false);
 				} catch (Exception ex) {
 					updatePreviewInner("Preview failed.");
 				}
 			}
-		}.execute();
+		};
+		activePreviewWorker = worker;
+		worker.execute();
+	}
+
+	private void cancelActivePreviewWorker() {
+		if (activePreviewWorker != null) {
+			activePreviewWorker.cancel(true);
+			activePreviewWorker = null;
+		}
+	}
+
+	private boolean isPreviewSelectionChanged(String expectedPath) {
+		RowSel current = getSelectedRow();
+		return current == null || !expectedPath.equals(current.path);
 	}
 
 
     // 只读抽取前 N 字符（复用我们已有的 Tika 逻辑，简化为局部方法以免循环依赖）
-	private String extractTextHead(java.nio.file.Path file, int maxChars) {
-		try (java.io.InputStream is = java.nio.file.Files.newInputStream(file, java.nio.file.StandardOpenOption.READ)) {
-			org.apache.tika.metadata.Metadata md = new org.apache.tika.metadata.Metadata();
-			md.set(org.apache.tika.metadata.TikaCoreProperties.RESOURCE_NAME_KEY, file.getFileName().toString());
-			org.apache.tika.parser.AutoDetectParser parser = new org.apache.tika.parser.AutoDetectParser();
-			org.apache.tika.sax.BodyContentHandler handler = new org.apache.tika.sax.BodyContentHandler(maxChars);
-			org.apache.tika.parser.ParseContext ctx = new org.apache.tika.parser.ParseContext();
-			parser.parse(is, handler, md, ctx);
-			return handler.toString();
+	private PreviewLoadOutcome extractTextHead(java.nio.file.Path file, int maxChars) {
+		java.util.concurrent.ExecutorService es = java.util.concurrent.Executors.newSingleThreadExecutor(r -> {
+			Thread t = new Thread(r, "docfinder-preview-parse");
+			t.setDaemon(true);
+			return t;
+		});
+		try {
+			java.util.concurrent.Future<String> fut = es.submit(() -> {
+				try (java.io.InputStream is = java.nio.file.Files.newInputStream(file, java.nio.file.StandardOpenOption.READ)) {
+					org.apache.tika.metadata.Metadata md = new org.apache.tika.metadata.Metadata();
+					md.set(org.apache.tika.metadata.TikaCoreProperties.RESOURCE_NAME_KEY, file.getFileName().toString());
+					org.apache.tika.parser.AutoDetectParser parser = new org.apache.tika.parser.AutoDetectParser();
+					org.apache.tika.sax.BodyContentHandler handler = new org.apache.tika.sax.BodyContentHandler(maxChars);
+					org.apache.tika.parser.ParseContext ctx = new org.apache.tika.parser.ParseContext();
+					parser.parse(is, handler, md, ctx);
+					return handler.toString();
+				}
+			});
+			String text = fut.get(5, java.util.concurrent.TimeUnit.SECONDS);
+			return new PreviewLoadOutcome(text, null);
+		} catch (java.util.concurrent.TimeoutException e) {
+			return new PreviewLoadOutcome("", "Preview parse timed out.");
 		} catch (Throwable e) {
-			return "";
+			return new PreviewLoadOutcome("", null);
+		} finally {
+			es.shutdownNow();
 		}
 	}
 
-	private String loadPreviewText(java.nio.file.Path file, int maxChars) {
+	private PreviewLoadOutcome loadPreviewText(java.nio.file.Path file, int maxChars) {
 		if (file == null || maxChars <= 0) {
-			return "";
+			return new PreviewLoadOutcome("", "Preview unavailable.");
 		}
-		String viaTika = extractTextHead(file, maxChars);
+		PreviewLoadOutcome tikaOutcome = extractTextHead(file, maxChars);
+		String viaTika = tikaOutcome == null ? "" : tikaOutcome.text;
 		if (viaTika != null && !viaTika.trim().isEmpty()) {
-			return viaTika;
+			return new PreviewLoadOutcome(viaTika, null);
 		}
-		return readTextFallback(file, maxChars);
+
+		if (isLikelyBinary(file)) {
+			return new PreviewLoadOutcome("", "Binary or non-text file.");
+		}
+
+		String fallback = readTextFallback(file, maxChars);
+		if (fallback != null && !fallback.trim().isEmpty()) {
+			return new PreviewLoadOutcome(fallback, null);
+		}
+
+		if (tikaOutcome != null && tikaOutcome.reason != null) {
+			return tikaOutcome;
+		}
+		return new PreviewLoadOutcome("", "Unsupported or empty text content.");
+	}
+
+	private boolean isLikelyBinary(java.nio.file.Path file) {
+		byte[] buf = new byte[4096];
+		try (java.io.InputStream is = java.nio.file.Files.newInputStream(file, java.nio.file.StandardOpenOption.READ)) {
+			int n = is.read(buf);
+			if (n <= 0) return false;
+			int printable = 0;
+			for (int i = 0; i < n; i++) {
+				int b = buf[i] & 0xFF;
+				if (b == 0x00) return true;
+				if (b == 0x09 || b == 0x0A || b == 0x0D || (b >= 0x20 && b <= 0x7E)) {
+					printable++;
+				}
+			}
+			double ratio = printable / (double) n;
+			return ratio < 0.2;
+		} catch (Exception ignore) {
+			return false;
+		}
 	}
 
 	private String readTextFallback(java.nio.file.Path file, int maxChars) {
@@ -1157,12 +1312,21 @@ public class MainWindow extends JFrame implements MenuBarPanel.MenuListener {
 	}
 
 	private RowSel getSelectedRow() {
-		int row = resultTable.getSelectedRow();
-		if (row < 0)
+		int viewRow = resultTable.getSelectedRow();
+		if (viewRow < 0)
 			return null;
-		String name = String.valueOf(resultTable.getValueAt(row, 0));
-		String path = String.valueOf(resultTable.getValueAt(row, 1));
-		return new RowSel(name, path);
+		int modelRow = resultTable.convertRowIndexToModel(viewRow);
+		String name = String.valueOf(model.getValueAt(modelRow, 0));
+		String path = String.valueOf(model.getValueAt(modelRow, 1));
+		return new RowSel(name, path, modelRow);
+	}
+
+	private SearchResult getSelectedResult() {
+		RowSel s = getSelectedRow();
+		if (s == null || s.modelRow < 0 || s.modelRow >= currentResults.size()) {
+			return null;
+		}
+		return currentResults.get(s.modelRow);
 	}
 
 	private void chooseAndIndexFolder() {
@@ -1549,13 +1713,14 @@ public class MainWindow extends JFrame implements MenuBarPanel.MenuListener {
 
 
 
+		currentResults = new java.util.ArrayList<>(list);
 		model.setRowCount(0);
 
 		for (SearchResult r : list) {
 
-			model.addRow(new Object[] { r.name, r.path, fmtSize(r.sizeBytes),
+			model.addRow(new Object[] { r.name, r.path, Long.valueOf(r.sizeBytes),
 
-				String.format("%.3f", r.score), fmtTime(r.ctime), fmtTime(r.atime),
+				fmtTime(r.ctime), fmtTime(r.atime),
 
 				(r.match == null ? "" : r.match) });
 
@@ -1737,6 +1902,7 @@ public class MainWindow extends JFrame implements MenuBarPanel.MenuListener {
 
 		JMenuItem openItem = new JMenuItem("Open");
 		JMenuItem revealItem = new JMenuItem("Reveal in Explorer");
+		JMenuItem showProperty = new JMenuItem("Show Properties");
 		JMenu copyMenu = new JMenu("Copy");
 		JMenuItem copyName = new JMenuItem("Name");
 		JMenuItem copyPath = new JMenuItem("Full Path");
@@ -1756,6 +1922,7 @@ public class MainWindow extends JFrame implements MenuBarPanel.MenuListener {
 		rowPopup.add(openItem);
 		rowPopup.add(openWith);
 		rowPopup.add(revealItem);
+		rowPopup.add(showProperty);
 		rowPopup.addSeparator();
 		rowPopup.add(copyMenu);
 
@@ -1807,6 +1974,7 @@ public class MainWindow extends JFrame implements MenuBarPanel.MenuListener {
 			if (s != null)
 				setClipboard(s.path);
 		});
+		showProperty.addActionListener(e -> showSearchPropertyDialog());
 
         // 右键触发：按下/弹起都判断
 		resultTable.addMouseListener(new java.awt.event.MouseAdapter() {
@@ -1926,7 +2094,11 @@ public class MainWindow extends JFrame implements MenuBarPanel.MenuListener {
 				List<String> cells = new java.util.ArrayList<>();
 				for (int c = 0; c < cols; c++) {
 					Object val = resultTable.getValueAt(r, c);
-					cells.add(csvQuote(val == null ? "" : val.toString()));
+					if (c == 2 && val instanceof Number) {
+						cells.add(csvQuote(fmtSize(((Number) val).longValue())));
+					} else {
+						cells.add(csvQuote(val == null ? "" : val.toString()));
+					}
 				}
 				pw.write(String.join(",", cells) + sep);
 			}
@@ -1965,11 +2137,54 @@ public class MainWindow extends JFrame implements MenuBarPanel.MenuListener {
 
 	private static class RowSel { // 灏忓伐鍏风被
 		final String name, path;
+		final int modelRow;
 
-		RowSel(String n, String p) {
+		RowSel(String n, String p, int modelRow) {
 			name = n;
 			path = p;
+			this.modelRow = modelRow;
 		}
+	}
+
+	private void showSearchPropertyDialog() {
+		SearchResult r = getSelectedResult();
+		if (r == null) {
+			JOptionPane.showMessageDialog(this, "No selected result.");
+			return;
+		}
+
+		StringBuilder sb = new StringBuilder();
+		sb.append("Name: ").append(r.name).append("\n");
+		sb.append("Path: ").append(r.path).append("\n");
+		sb.append("Type: ").append(r.directory ? "Folder" : "File").append("\n");
+		sb.append("Size: ").append(fmtSize(r.sizeBytes)).append("\n");
+		sb.append("Created: ").append(fmtTime(r.ctime)).append("\n");
+		sb.append("Accessed: ").append(fmtTime(r.atime)).append("\n");
+		sb.append("Match Type: ").append(r.match == null ? "" : r.match).append("\n");
+		sb.append("Score: ").append(String.format("%.5f", r.score)).append("\n\n");
+
+		sb.append("Query Context\n");
+		sb.append("- Query: ").append((lastQuery == null || lastQuery.trim().isEmpty()) ? "<empty>" : lastQuery.trim()).append("\n");
+		sb.append("- Scope: ").append(getSelectedScope()).append("\n");
+		sb.append("- Match mode: ").append(getSelectedMatchMode()).append("\n");
+		FilterState fs = buildFilterState();
+		sb.append("- Filter ext: ").append(fs.exts == null ? "[]" : fs.exts).append("\n");
+		sb.append("- Filter from: ").append(fs.mtimeFrom == null ? "" : fs.mtimeFrom).append("\n");
+		sb.append("- Filter to: ").append(fs.mtimeTo == null ? "" : fs.mtimeTo).append("\n\n");
+
+		sb.append("Scoring Note\n");
+		sb.append("- Score is Lucene relevance score (BM25-based by default).\n");
+		sb.append("- It is influenced by term frequency, inverse document frequency, field boosts,\n");
+		sb.append("  and query structure (e.g., name/content scope and filters).\n");
+		sb.append("- Match Type is derived by checking whether name/content conditions matched this document.\n");
+
+		JTextArea area = new JTextArea(sb.toString());
+		area.setEditable(false);
+		area.setCaretPosition(0);
+		area.setFont(new java.awt.Font(java.awt.Font.MONOSPACED, java.awt.Font.PLAIN, 12));
+		JScrollPane sp = new JScrollPane(area);
+		sp.setPreferredSize(new java.awt.Dimension(780, 520));
+		JOptionPane.showMessageDialog(this, sp, "Search Result Properties", JOptionPane.INFORMATION_MESSAGE);
 	}
 
 	private void setClipboard(String s) {

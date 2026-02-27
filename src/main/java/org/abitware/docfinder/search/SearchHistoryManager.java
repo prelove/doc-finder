@@ -1,5 +1,7 @@
 package org.abitware.docfinder.search;
 
+import org.abitware.docfinder.util.AppPaths;
+
 import java.io.*;
 import java.nio.charset.StandardCharsets;
 import java.nio.file.*;
@@ -10,7 +12,7 @@ public class SearchHistoryManager {
     private final Path file;
 
     public SearchHistoryManager() {
-        this.file = Paths.get(System.getProperty("user.home"), ".docfinder", "history.txt");
+        this.file = AppPaths.getBaseDir().resolve("history.txt");
     }
 
     /** 读取历史（最新在前） */
