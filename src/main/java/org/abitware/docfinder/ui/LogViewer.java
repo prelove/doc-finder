@@ -8,16 +8,22 @@ import java.io.IOException;
 import java.nio.charset.StandardCharsets;
 import java.nio.file.Files;
 import java.nio.file.Path;
+import java.util.List;
 
 public class LogViewer extends JFrame {
+    private static final int DEFAULT_TAIL_LINES = 1000;
+
     private final JTextArea logArea = new JTextArea();
     private final JCheckBox autoScroll = new JCheckBox("Auto-scroll", true);
     private final Path logFile = AppPaths.getBaseDir().resolve("logs").resolve("docfinder.log");
 
+    private final JLabel tailLabel = new JLabel();
+    private int tailLines = DEFAULT_TAIL_LINES;
+
     public LogViewer(JFrame parent) {
         setTitle("DocFinder Logs");
         setDefaultCloseOperation(WindowConstants.DISPOSE_ON_CLOSE);
-        setSize(840, 520);
+        setSize(900, 560);
         setLocationRelativeTo(parent);
 
         logArea.setEditable(false);
@@ -26,9 +32,29 @@ public class LogViewer extends JFrame {
         JButton refresh = new JButton("Refresh");
         refresh.addActionListener(e -> reload());
 
+        JButton showMore = new JButton("Show More (+1000)");
+        showMore.addActionListener(e -> {
+            tailLines += 1000;
+            reload();
+        });
+
+        JButton resetTail = new JButton("Reset Tail");
+        resetTail.addActionListener(e -> {
+            tailLines = DEFAULT_TAIL_LINES;
+            reload();
+        });
+
+        JButton clear = new JButton("Clear");
+        clear.setToolTipText("Clear current viewer text (does not delete log file)");
+        clear.addActionListener(e -> logArea.setText(""));
+
         JPanel top = new JPanel(new FlowLayout(FlowLayout.LEFT));
         top.add(refresh);
+        top.add(showMore);
+        top.add(resetTail);
+        top.add(clear);
         top.add(autoScroll);
+        top.add(tailLabel);
         top.add(new JLabel("File: " + logFile));
 
         add(top, BorderLayout.NORTH);
@@ -50,16 +76,29 @@ public class LogViewer extends JFrame {
         try {
             if (!Files.exists(logFile)) {
                 logArea.setText("Log file not found yet:\n" + logFile);
+                tailLabel.setText("tail=0");
                 return;
             }
-            byte[] bytes = Files.readAllBytes(logFile);
-            String text = new String(bytes, StandardCharsets.UTF_8);
+
+            List<String> lines = Files.readAllLines(logFile, StandardCharsets.UTF_8);
+            int total = lines.size();
+            int from = Math.max(0, total - tailLines);
+            List<String> tail = (from <= 0) ? lines : lines.subList(from, total);
+            String text = String.join(System.lineSeparator(), tail);
+
+            if (!text.isEmpty()) {
+                text += System.lineSeparator();
+            }
+
             logArea.setText(text);
+            tailLabel.setText("tail=" + tail.size() + "/" + total);
+
             if (autoScroll.isSelected()) {
                 logArea.setCaretPosition(logArea.getDocument().getLength());
             }
         } catch (IOException ex) {
             logArea.setText("Failed to read logs: " + ex.getMessage());
+            tailLabel.setText("tail=error");
         }
     }
 }

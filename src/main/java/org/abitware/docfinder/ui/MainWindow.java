@@ -71,10 +71,18 @@ public class MainWindow extends JFrame implements MenuBarPanel.MenuListener {
 
 	// Center: results + preview
 	private final DefaultTableModel model = new DefaultTableModel(
-			new Object[] { "Name", "Path", "Size", "Score", "Created", "Accessed", "Match" }, 0) {
+			new Object[] { "Name", "Path", "Size", "Created", "Accessed", "Match" }, 0) {
 		@Override
 		public boolean isCellEditable(int r, int c) {
 			return false;
+		}
+
+		@Override
+		public Class<?> getColumnClass(int columnIndex) {
+			if (columnIndex == 2) {
+				return Long.class;
+			}
+			return String.class;
 		}
 	};
 
@@ -98,6 +106,7 @@ public class MainWindow extends JFrame implements MenuBarPanel.MenuListener {
 	private String cachedPreviewPath;
 	private String cachedPreviewQuery;
 	private String cachedPreviewHtml;
+	private java.util.List<SearchResult> currentResults = java.util.Collections.emptyList();
 
 	private static class PreviewLoadOutcome {
 		final String text;
@@ -288,10 +297,23 @@ public class MainWindow extends JFrame implements MenuBarPanel.MenuListener {
 		resultTable.getColumnModel().getColumn(0).setPreferredWidth(240); // Name
 		resultTable.getColumnModel().getColumn(1).setPreferredWidth(480); // Path
 		resultTable.getColumnModel().getColumn(2).setPreferredWidth(90);  // Size ✅
-		resultTable.getColumnModel().getColumn(3).setPreferredWidth(70); // Score
-		resultTable.getColumnModel().getColumn(4).setPreferredWidth(130); // Created
-		resultTable.getColumnModel().getColumn(5).setPreferredWidth(130); // Accessed
-		resultTable.getColumnModel().getColumn(6).setPreferredWidth(110); // Match
+		resultTable.getColumnModel().getColumn(3).setPreferredWidth(130); // Created
+		resultTable.getColumnModel().getColumn(4).setPreferredWidth(130); // Accessed
+		resultTable.getColumnModel().getColumn(5).setPreferredWidth(110); // Match
+
+		javax.swing.table.DefaultTableCellRenderer sizeRenderer = new javax.swing.table.DefaultTableCellRenderer() {
+			@Override
+			public void setValue(Object value) {
+				if (value instanceof Number) {
+					long bytes = ((Number) value).longValue();
+					super.setValue(fmtSize(bytes));
+				} else {
+					super.setValue(value);
+				}
+			}
+		};
+		sizeRenderer.setHorizontalAlignment(javax.swing.SwingConstants.RIGHT);
+		resultTable.getColumnModel().getColumn(2).setCellRenderer(sizeRenderer);
 
 		JScrollPane center = new JScrollPane(resultTable);
 
@@ -1290,12 +1312,21 @@ public class MainWindow extends JFrame implements MenuBarPanel.MenuListener {
 	}
 
 	private RowSel getSelectedRow() {
-		int row = resultTable.getSelectedRow();
-		if (row < 0)
+		int viewRow = resultTable.getSelectedRow();
+		if (viewRow < 0)
 			return null;
-		String name = String.valueOf(resultTable.getValueAt(row, 0));
-		String path = String.valueOf(resultTable.getValueAt(row, 1));
-		return new RowSel(name, path);
+		int modelRow = resultTable.convertRowIndexToModel(viewRow);
+		String name = String.valueOf(model.getValueAt(modelRow, 0));
+		String path = String.valueOf(model.getValueAt(modelRow, 1));
+		return new RowSel(name, path, modelRow);
+	}
+
+	private SearchResult getSelectedResult() {
+		RowSel s = getSelectedRow();
+		if (s == null || s.modelRow < 0 || s.modelRow >= currentResults.size()) {
+			return null;
+		}
+		return currentResults.get(s.modelRow);
 	}
 
 	private void chooseAndIndexFolder() {
@@ -1682,13 +1713,14 @@ public class MainWindow extends JFrame implements MenuBarPanel.MenuListener {
 
 
 
+		currentResults = new java.util.ArrayList<>(list);
 		model.setRowCount(0);
 
 		for (SearchResult r : list) {
 
-			model.addRow(new Object[] { r.name, r.path, fmtSize(r.sizeBytes),
+			model.addRow(new Object[] { r.name, r.path, Long.valueOf(r.sizeBytes),
 
-				String.format("%.3f", r.score), fmtTime(r.ctime), fmtTime(r.atime),
+				fmtTime(r.ctime), fmtTime(r.atime),
 
 				(r.match == null ? "" : r.match) });
 
@@ -1870,6 +1902,7 @@ public class MainWindow extends JFrame implements MenuBarPanel.MenuListener {
 
 		JMenuItem openItem = new JMenuItem("Open");
 		JMenuItem revealItem = new JMenuItem("Reveal in Explorer");
+		JMenuItem showProperty = new JMenuItem("Show Properties");
 		JMenu copyMenu = new JMenu("Copy");
 		JMenuItem copyName = new JMenuItem("Name");
 		JMenuItem copyPath = new JMenuItem("Full Path");
@@ -1889,6 +1922,7 @@ public class MainWindow extends JFrame implements MenuBarPanel.MenuListener {
 		rowPopup.add(openItem);
 		rowPopup.add(openWith);
 		rowPopup.add(revealItem);
+		rowPopup.add(showProperty);
 		rowPopup.addSeparator();
 		rowPopup.add(copyMenu);
 
@@ -1940,6 +1974,7 @@ public class MainWindow extends JFrame implements MenuBarPanel.MenuListener {
 			if (s != null)
 				setClipboard(s.path);
 		});
+		showProperty.addActionListener(e -> showSearchPropertyDialog());
 
         // 右键触发：按下/弹起都判断
 		resultTable.addMouseListener(new java.awt.event.MouseAdapter() {
@@ -2059,7 +2094,11 @@ public class MainWindow extends JFrame implements MenuBarPanel.MenuListener {
 				List<String> cells = new java.util.ArrayList<>();
 				for (int c = 0; c < cols; c++) {
 					Object val = resultTable.getValueAt(r, c);
-					cells.add(csvQuote(val == null ? "" : val.toString()));
+					if (c == 2 && val instanceof Number) {
+						cells.add(csvQuote(fmtSize(((Number) val).longValue())));
+					} else {
+						cells.add(csvQuote(val == null ? "" : val.toString()));
+					}
 				}
 				pw.write(String.join(",", cells) + sep);
 			}
@@ -2098,11 +2137,54 @@ public class MainWindow extends JFrame implements MenuBarPanel.MenuListener {
 
 	private static class RowSel { // 灏忓伐鍏风被
 		final String name, path;
+		final int modelRow;
 
-		RowSel(String n, String p) {
+		RowSel(String n, String p, int modelRow) {
 			name = n;
 			path = p;
+			this.modelRow = modelRow;
 		}
+	}
+
+	private void showSearchPropertyDialog() {
+		SearchResult r = getSelectedResult();
+		if (r == null) {
+			JOptionPane.showMessageDialog(this, "No selected result.");
+			return;
+		}
+
+		StringBuilder sb = new StringBuilder();
+		sb.append("Name: ").append(r.name).append("\n");
+		sb.append("Path: ").append(r.path).append("\n");
+		sb.append("Type: ").append(r.directory ? "Folder" : "File").append("\n");
+		sb.append("Size: ").append(fmtSize(r.sizeBytes)).append("\n");
+		sb.append("Created: ").append(fmtTime(r.ctime)).append("\n");
+		sb.append("Accessed: ").append(fmtTime(r.atime)).append("\n");
+		sb.append("Match Type: ").append(r.match == null ? "" : r.match).append("\n");
+		sb.append("Score: ").append(String.format("%.5f", r.score)).append("\n\n");
+
+		sb.append("Query Context\n");
+		sb.append("- Query: ").append((lastQuery == null || lastQuery.trim().isEmpty()) ? "<empty>" : lastQuery.trim()).append("\n");
+		sb.append("- Scope: ").append(getSelectedScope()).append("\n");
+		sb.append("- Match mode: ").append(getSelectedMatchMode()).append("\n");
+		FilterState fs = buildFilterState();
+		sb.append("- Filter ext: ").append(fs.exts == null ? "[]" : fs.exts).append("\n");
+		sb.append("- Filter from: ").append(fs.mtimeFrom == null ? "" : fs.mtimeFrom).append("\n");
+		sb.append("- Filter to: ").append(fs.mtimeTo == null ? "" : fs.mtimeTo).append("\n\n");
+
+		sb.append("Scoring Note\n");
+		sb.append("- Score is Lucene relevance score (BM25-based by default).\n");
+		sb.append("- It is influenced by term frequency, inverse document frequency, field boosts,\n");
+		sb.append("  and query structure (e.g., name/content scope and filters).\n");
+		sb.append("- Match Type is derived by checking whether name/content conditions matched this document.\n");
+
+		JTextArea area = new JTextArea(sb.toString());
+		area.setEditable(false);
+		area.setCaretPosition(0);
+		area.setFont(new java.awt.Font(java.awt.Font.MONOSPACED, java.awt.Font.PLAIN, 12));
+		JScrollPane sp = new JScrollPane(area);
+		sp.setPreferredSize(new java.awt.Dimension(780, 520));
+		JOptionPane.showMessageDialog(this, sp, "Search Result Properties", JOptionPane.INFORMATION_MESSAGE);
 	}
 
 	private void setClipboard(String s) {

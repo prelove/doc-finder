@@ -43,11 +43,12 @@ _Local file name & content search. Fast, read‑only, and multilingual._
 
 ## 4) Results & Preview（结果与预览）
 
-- 表格列：**Name**, **Path**, **Score**, **Created**, **Last Accessed**, **Size**, **Match**（`name` / `content` / `name + content`）。
+- 表格列：**Name**, **Path**, **Size**, **Created**, **Last Accessed**, **Match**（`name` / `content` / `name + content`）。
+- `Size` 列右对齐，并按真实字节数进行数值排序（不是按字符串排序）；显示会自动换算为 KB/MB/GB。
 - 预览窗（右侧）：默认宽度约为窗口的 1/4（可拖拽调整）。
 - 预览开关：状态栏右侧的 👁 按钮可快速显示/隐藏。
 - 编码提示：预览会自动检测常见编码（UTF-8/UTF-16、Shift-JIS、GBK、Big5、EUC-KR 等），多语言混排文件也尽量兼容。
-- 右键菜单：**Open**, **Open With…**（记住上次选择）, **Reveal in Explorer/Finder**, **Copy Path**, **Copy Name** 等。
+- 右键菜单：**Open**, **Open With…**（记住上次选择）, **Reveal in Explorer/Finder**, **Show Properties**（高级检索详情）, **Copy Path**, **Copy Name** 等。
 - 快捷键：
   - **Enter**：Open
   - **Ctrl+C**：Copy Path
@@ -155,4 +156,7 @@ _Enjoy lightning‑fast local search!_
 ## 12) Logs
 
 - Use **Help → View Log** to open a live, auto-scrolling log viewer.
+- Viewer defaults to **tail -f 1000 lines** for readability/performance.
+- Use **Show More (+1000)** to load more history and **Reset Tail** to return to 1000.
+- Use **Clear** to clear current viewer text quickly (does not delete the log file).
 - Log file path: `./.docfinder/logs/docfinder.log`.
