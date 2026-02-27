@@ -1,5 +1,7 @@
 package org.abitware.docfinder.watch;
 
+import org.abitware.docfinder.util.AppPaths;
+
 import java.io.*;
 import java.nio.charset.StandardCharsets;
 import java.nio.file.*;
@@ -10,7 +12,7 @@ public class SnapshotStore {
     private final Path dir;
 
     public SnapshotStore() {
-        this.dir = Paths.get(System.getProperty("user.home"), ".docfinder", "snapshots");
+        this.dir = AppPaths.getBaseDir().resolve("snapshots");
     }
 
     private String keyForRoot(Path root) {
