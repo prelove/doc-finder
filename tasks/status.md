@@ -24,3 +24,5 @@
 
 ## Latest Improvement
 - Network polling now scans roots concurrently (up to 4 threads) and then performs a single serialized Lucene write pass, reducing lock hold time while preserving index consistency.
+
+- Fixed `Poll Network Sources Now` lock failure by removing long-lived write lock ownership from search service (`LuceneSearchService` now uses a directory-based `SearcherManager`).

@@ -22,8 +22,6 @@ import org.apache.lucene.document.StoredField;
 import org.apache.lucene.document.StringField;
 import org.apache.lucene.document.TextField;
 import org.apache.lucene.index.DirectoryReader;
-import org.apache.lucene.index.IndexWriter;
-import org.apache.lucene.index.IndexWriterConfig;
 import org.apache.lucene.index.Term;
 import org.apache.lucene.queryparser.classic.MultiFieldQueryParser;
 import org.apache.lucene.queryparser.classic.ParseException;
@@ -42,6 +40,7 @@ import org.apache.lucene.search.TermQuery;
 import org.apache.lucene.search.TopDocs;
 import org.apache.lucene.search.WildcardQuery;
 import org.apache.lucene.store.FSDirectory;
+import org.apache.lucene.store.Directory;
 
 /** 仅按 name 字段搜索（下一步再扩展 content） */
 public class LuceneSearchService implements SearchService {
@@ -62,9 +61,9 @@ public class LuceneSearchService implements SearchService {
     private final Path indexDir;
     private final Analyzer queryAnalyzer;
 
-    // Added fields for SearcherManager
+    // SearcherManager based on Directory (read-only) to avoid write.lock ownership in search service
     private volatile SearcherManager searcherManager;
-    private volatile IndexWriter indexWriter; // IndexWriter is needed for SearcherManager to refresh
+    private volatile Directory directory;
 
     public LuceneSearchService(Path indexDir) throws IOException { // Constructor now throws IOException
         this.indexDir = indexDir;
@@ -80,13 +79,8 @@ public class LuceneSearchService implements SearchService {
 
         this.queryAnalyzer = new PerFieldAnalyzerWrapper(std, perField);
 
-        // Initialize IndexWriter and SearcherManager
-        IndexWriterConfig iwc = new IndexWriterConfig(queryAnalyzer);
-        iwc.setOpenMode(IndexWriterConfig.OpenMode.CREATE_OR_APPEND);
-        iwc.setRAMBufferSizeMB(256.0); // As suggested in README performance notes
-
-        this.indexWriter = new IndexWriter(FSDirectory.open(indexDir), iwc);
-        this.searcherManager = new SearcherManager(indexWriter, new SearcherFactory());
+        this.directory = FSDirectory.open(indexDir);
+        this.searcherManager = new SearcherManager(directory, new SearcherFactory());
     }
 
     @Override
@@ -176,8 +170,8 @@ public class LuceneSearchService implements SearchService {
             if (searcherManager != null) {
                 searcherManager.close();
             }
-            if (indexWriter != null) {
-                indexWriter.close();
+            if (directory != null) {
+                directory.close();
             }
         } catch (IOException e) {
             // TODO: log this error
