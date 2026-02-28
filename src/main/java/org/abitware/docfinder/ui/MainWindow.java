@@ -2169,8 +2169,8 @@ public class MainWindow extends JFrame implements MenuBarPanel.MenuListener {
 		sb.append("- Match mode: ").append(getSelectedMatchMode()).append("\n");
 		FilterState fs = buildFilterState();
 		sb.append("- Filter ext: ").append(fs.exts == null ? "[]" : fs.exts).append("\n");
-		sb.append("- Filter from: ").append(fs.mtimeFrom == null ? "" : fs.mtimeFrom).append("\n");
-		sb.append("- Filter to: ").append(fs.mtimeTo == null ? "" : fs.mtimeTo).append("\n\n");
+		sb.append("- Filter from: ").append(fs.fromEpochMs == null ? "" : fs.fromEpochMs).append("\n");
+		sb.append("- Filter to: ").append(fs.toEpochMs == null ? "" : fs.toEpochMs).append("\n\n");
 
 		sb.append("Scoring Note\n");
 		sb.append("- Score is Lucene relevance score (BM25-based by default).\n");
