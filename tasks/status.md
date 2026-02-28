@@ -19,10 +19,14 @@
 - JUnit 5 added to `pom.xml` with surefire plugin.
 - 18 unit tests covering `FilterState`, `SearchRequest`/`SearchScope`/`MatchMode`, `AppPaths`, `LegacyMigration`.
 
-## Follow-up Subtasks (from Task 4 evaluation)
-1. Implement `SearcherManager.maybeRefresh()` after each index commit in `LiveIndexService` and `NetPollerService`.
-2. Set `TieredMergePolicy` parameters in `LuceneIndexer`.
-3. Add optional `ByteBuffersDirectory` mode behind a config flag for small in-memory indexes.
+## Follow-up Subtasks (from Task 4 evaluation) – COMPLETED (2026-02-28)
+1. ✅ **NRT reader refresh** – `SearchService.notifyIndexCommit()` added (default no-op). `LuceneSearchService` overrides it to call `searcherManager.maybeRefresh()`. `LiveIndexService` and `NetPollerService` accept an `onAfterCommit: Runnable` callback and invoke it after each commit. `MainWindow` wires `MainWindow::onIndexCommit` callback; `App.java` supplies settings-aware `LuceneSearchService`.
+2. ✅ **TieredMergePolicy tuning** – `LuceneIndexer` now sets `TieredMergePolicy(maxMergedSegmentMB=512, segmentsPerTier=10)` on the `IndexWriterConfig`, reducing segment count and improving query speed after bulk/incremental indexing.
+3. ✅ **NRTCachingDirectory** – New `IndexSettings.nrtCacheMaxMB = 32` field (persisted via `ConfigManager`). `LuceneSearchService(Path, IndexSettings)` wraps `FSDirectory` with `NRTCachingDirectory(delegate, 5 MB merge cap, nrtCacheMaxMB)` when the value is > 0, caching recently-written small segment files in RAM to reduce disk I/O for NRT reads.
+
+## Tests Added (2026-02-28)
+- `IndexSettingsTest` – verifies `nrtCacheMaxMB = 32` default and other defaults.
+- `SearchServiceNotifyTest` – verifies default no-op and override of `notifyIndexCommit()`.
 
 ## Milestone Summary
 All 8 planned tasks are now complete. The application features:

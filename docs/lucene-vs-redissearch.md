@@ -109,6 +109,11 @@ These changes are estimated at < 1 week of effort each and have no external serv
 - [ ] Add optional `ByteBuffersDirectory` mode behind a config flag for small in-memory indexes.
 - [ ] Re-run benchmark after each change and update this document with new numbers.
 
+## Implementation Status (2026-02-28)
+- ✅ #1 NRT reader refresh implemented (`notifyIndexCommit()` in SearchService + LuceneSearchService; wired in LiveIndexService, NetPollerService, MainWindow, App.java).
+- ✅ #2 TieredMergePolicy implemented (`LuceneIndexer` constructor).
+- ✅ #3 NRTCachingDirectory implemented (`IndexSettings.nrtCacheMaxMB=32`; `LuceneSearchService(Path, IndexSettings)` wraps FSDirectory when enabled).
+
 ---
 
 _No Redis dependency will be added. This decision is final unless user-scale or multi-host requirements change._

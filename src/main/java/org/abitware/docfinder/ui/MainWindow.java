@@ -446,7 +446,7 @@ public class MainWindow extends JFrame implements MenuBarPanel.MenuListener {
 						if (existing != null) {
 							try { existing.close(); } catch (Exception ignore) {}
 						}
-						org.abitware.docfinder.watch.NetPollerService poller = new org.abitware.docfinder.watch.NetPollerService(sm.getIndexDir(), s, netRoots);
+						org.abitware.docfinder.watch.NetPollerService poller = new org.abitware.docfinder.watch.NetPollerService(sm.getIndexDir(), s, netRoots, MainWindow.this::onIndexCommit);
 						poller.start(minutes);
 						cm.setPollingEnabled(true);
 						newPoller = poller;
@@ -571,7 +571,7 @@ public class MainWindow extends JFrame implements MenuBarPanel.MenuListener {
 						if (existing != null) {
 							try { existing.close(); } catch (Exception ignore) {}
 						}
-						org.abitware.docfinder.watch.LiveIndexService service = new org.abitware.docfinder.watch.LiveIndexService(sm.getIndexDir(), s, localRoots);
+						org.abitware.docfinder.watch.LiveIndexService service = new org.abitware.docfinder.watch.LiveIndexService(sm.getIndexDir(), s, localRoots, MainWindow.this::onIndexCommit);
 						service.start();
 						newService = service;
 						rootCount = localRoots.size();
@@ -1372,7 +1372,8 @@ public class MainWindow extends JFrame implements MenuBarPanel.MenuListener {
 					statusLabel.setText("Indexed files: " + n + "  |  Index: " + indexDir.toString());
                     // 切换到 Lucene 搜索服务
 					try {
-						setSearchService(new org.abitware.docfinder.search.LuceneSearchService(indexDir));
+						org.abitware.docfinder.index.IndexSettings svc_s = new org.abitware.docfinder.index.ConfigManager().loadIndexSettings();
+						setSearchService(new org.abitware.docfinder.search.LuceneSearchService(indexDir, svc_s));
 					} catch (java.io.IOException ioEx) {
 						statusLabel.setText("Failed to switch search service: " + ioEx.getMessage());
 						ioEx.printStackTrace();
@@ -1561,7 +1562,8 @@ public class MainWindow extends JFrame implements MenuBarPanel.MenuListener {
 					long ms = System.currentTimeMillis() - t0;
 					statusLabel.setText("Rebuilt files: " + n + " | Time: " + ms + " ms | Index: " + indexDir);
 					try {
-						setSearchService(new org.abitware.docfinder.search.LuceneSearchService(indexDir));
+						org.abitware.docfinder.index.IndexSettings svc_s = new org.abitware.docfinder.index.ConfigManager().loadIndexSettings();
+						setSearchService(new org.abitware.docfinder.search.LuceneSearchService(indexDir, svc_s));
 					} catch (java.io.IOException ioEx) {
 						statusLabel.setText("Failed to switch search service after rebuild: " + ioEx.getMessage());
 						ioEx.printStackTrace();
@@ -2427,6 +2429,14 @@ public class MainWindow extends JFrame implements MenuBarPanel.MenuListener {
 			this.searchService.close(); // Close the old service
 		}
 		this.searchService = newSvc;
+	}
+
+	/** Called by background watcher/poller after commit; notifies search service to refresh NRT reader */
+	private void onIndexCommit() {
+		SearchService svc = searchService;
+		if (svc != null) {
+			svc.notifyIndexCommit();
+		}
 	}
 	@Override
 	public void dispose() {

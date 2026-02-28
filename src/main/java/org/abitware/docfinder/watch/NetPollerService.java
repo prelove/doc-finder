@@ -34,15 +34,21 @@ public class NetPollerService implements AutoCloseable {
     private final IndexSettings settings;
     private final List<Path> roots;
     private final SnapshotStore store = new SnapshotStore();
+    private final Runnable onAfterCommit;
 
     private ScheduledExecutorService scheduler;
     private ExecutorService onDemand;
     private volatile boolean running = false;
 
     public NetPollerService(Path indexDir, IndexSettings settings, List<Path> roots) {
+        this(indexDir, settings, roots, null);
+    }
+
+    public NetPollerService(Path indexDir, IndexSettings settings, List<Path> roots, Runnable onAfterCommit) {
         this.indexDir = indexDir;
         this.settings = settings;
         this.roots = new ArrayList<>(roots);
+        this.onAfterCommit = onAfterCommit;
         this.onDemand = Executors.newSingleThreadExecutor(r -> {
             Thread t = new Thread(r, "docfinder-netpoll-once");
             t.setDaemon(true);
@@ -146,6 +152,11 @@ public class NetPollerService implements AutoCloseable {
                 throw (IOException) e.getCause();
             }
             throw e;
+        }
+
+        // Notify search service to refresh reader after commit, making changes from this poll immediately visible to next search
+        if (onAfterCommit != null) {
+            onAfterCommit.run();
         }
 
         stats.durationMs = System.currentTimeMillis() - t0;

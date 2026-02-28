@@ -70,7 +70,9 @@ public class App {
             new Thread(() -> {
                 try {
                     java.nio.file.Path indexDir = new SourceManager().getIndexDir();
-                    SearchService searchService = new LuceneSearchService(indexDir);
+                    ConfigManager cm = new ConfigManager();
+                    org.abitware.docfinder.index.IndexSettings idxSettings = cm.loadIndexSettings();
+                    SearchService searchService = new LuceneSearchService(indexDir, idxSettings);
                     // Web interface gets a reference to the search service once index is ready
                     if (webServer != null) webServer.setSearchService(searchService);
                     SwingUtilities.invokeLater(() -> win.setSearchService(searchService));

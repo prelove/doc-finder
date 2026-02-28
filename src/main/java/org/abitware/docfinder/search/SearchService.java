@@ -11,6 +11,13 @@ public interface SearchService {
     List<SearchResult> search(SearchRequest request);
 
     /**
+     * Called after an index write is committed so that implementations can
+     * proactively refresh their internal reader and stay near-real-time.
+     * Default implementation is a no-op.
+     */
+    default void notifyIndexCommit() { }
+
+    /**
      * Releases any resources held by this service, such as the SearcherManager.
      */
     default void close() {

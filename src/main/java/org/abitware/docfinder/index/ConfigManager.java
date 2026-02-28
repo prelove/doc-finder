@@ -28,6 +28,7 @@ public class ConfigManager {
 		s.textMaxBytes = Long.parseLong(p.getProperty("index.textMaxBytes", String.valueOf(s.textMaxBytes)));
 		s.textExts = java.util.Arrays.asList(p.getProperty("index.textExts", String.join(",", s.textExts)).split(","));
 		s.previewTimeoutSec = Integer.parseInt(p.getProperty("index.previewTimeoutSec", String.valueOf(s.previewTimeoutSec)));
+		s.nrtCacheMaxMB = Integer.parseInt(p.getProperty("index.nrtCacheMaxMB", String.valueOf(s.nrtCacheMaxMB)));
 		
 		return s;
 	}
@@ -48,6 +49,7 @@ public class ConfigManager {
 		p.setProperty("index.textMaxBytes", String.valueOf(s.textMaxBytes));
 		p.setProperty("index.textExts", String.join(",", s.textExts));
 		p.setProperty("index.previewTimeoutSec", String.valueOf(s.previewTimeoutSec));
+		p.setProperty("index.nrtCacheMaxMB", String.valueOf(s.nrtCacheMaxMB));
 		
 		try (OutputStream out = Files.newOutputStream(file, StandardOpenOption.CREATE,
 				StandardOpenOption.TRUNCATE_EXISTING)) {

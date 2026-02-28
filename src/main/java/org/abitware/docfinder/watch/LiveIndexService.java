@@ -15,6 +15,7 @@ public class LiveIndexService implements AutoCloseable {
     private final Path indexDir;
     private final IndexSettings settings;
     private final List<Path> roots;
+    private final Runnable onAfterCommit;
     private LocalRecursiveWatcher watcher;
     private final ExecutorService worker = Executors.newSingleThreadExecutor(r -> {
         Thread t = new Thread(r, "docfinder-liveindex-worker");
@@ -23,9 +24,14 @@ public class LiveIndexService implements AutoCloseable {
     });
 
     public LiveIndexService(Path indexDir, IndexSettings settings, List<Path> roots) {
+        this(indexDir, settings, roots, null);
+    }
+
+    public LiveIndexService(Path indexDir, IndexSettings settings, List<Path> roots, Runnable onAfterCommit) {
         this.indexDir = indexDir;
         this.settings = settings;
         this.roots = new ArrayList<>(roots);
+        this.onAfterCommit = onAfterCommit;
     }
 
     public void start() throws Exception {
@@ -45,6 +51,10 @@ public class LiveIndexService implements AutoCloseable {
                     indexer.upsertFile(path);
                 }
                 indexer.commit();
+                // Notify search service to refresh reader after commit, making changes immediately visible to next search
+                if (onAfterCommit != null) {
+                    onAfterCommit.run();
+                }
             } catch (Throwable ex) {
                 ex.printStackTrace();
             }

@@ -9,6 +9,15 @@ public class IndexSettings {
  public int parseTimeoutSec = 15;
  public int previewTimeoutSec = 5;
 
+ /**
+  * NRT cache size for the search reader (SearcherManager).
+  * When > 0, the FSDirectory is wrapped with NRTCachingDirectory so that
+  * recently-written small segment files are kept in RAM, reducing disk I/O
+  * for near-real-time reads after incremental commits.
+  * Set to 0 to disable. Default: 32 MB.
+  */
+ public int nrtCacheMaxMB = 32;
+
  // 文档类（用 Tika 深度解析）：PDF/Office/HTML…
  public java.util.List<String> includeExt = java.util.Arrays.asList(
      "pdf","doc","docx","ppt","pptx","xls","xlsx","xlsm","txt","md","rtf","html","htm"

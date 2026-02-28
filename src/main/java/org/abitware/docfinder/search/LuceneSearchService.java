@@ -41,6 +41,9 @@ import org.apache.lucene.search.TopDocs;
 import org.apache.lucene.search.WildcardQuery;
 import org.apache.lucene.store.FSDirectory;
 import org.apache.lucene.store.Directory;
+import org.apache.lucene.store.NRTCachingDirectory;
+
+import org.abitware.docfinder.index.IndexSettings;
 
 /** 仅按 name 字段搜索（下一步再扩展 content） */
 public class LuceneSearchService implements SearchService {
@@ -65,7 +68,11 @@ public class LuceneSearchService implements SearchService {
     private volatile SearcherManager searcherManager;
     private volatile Directory directory;
 
-    public LuceneSearchService(Path indexDir) throws IOException { // Constructor now throws IOException
+    public LuceneSearchService(Path indexDir) throws IOException {
+        this(indexDir, new IndexSettings());
+    }
+
+    public LuceneSearchService(Path indexDir, IndexSettings settings) throws IOException { // Constructor now throws IOException
         this.indexDir = indexDir;
 
         Analyzer std = new StandardAnalyzer();
@@ -79,7 +86,15 @@ public class LuceneSearchService implements SearchService {
 
         this.queryAnalyzer = new PerFieldAnalyzerWrapper(std, perField);
 
-        this.directory = FSDirectory.open(indexDir);
+        // When nrtCacheMaxMB > 0, wrap FSDirectory with NRTCachingDirectory to keep recently-written
+        // small segment files in memory, reducing disk I/O for NRT reads after incremental commits.
+        Directory fsDir = FSDirectory.open(indexDir);
+        if (settings != null && settings.nrtCacheMaxMB > 0) {
+            // NRTCachingDirectory(delegate, maxMergeSizeMB, maxCachedMB)
+            this.directory = new NRTCachingDirectory(fsDir, 5.0, settings.nrtCacheMaxMB);
+        } else {
+            this.directory = fsDir;
+        }
         this.searcherManager = new SearcherManager(directory, new SearcherFactory());
     }
 
@@ -162,6 +177,16 @@ public class LuceneSearchService implements SearchService {
         }
 
         return out;
+    }
+
+    @Override
+    public void notifyIndexCommit() {
+        // Proactively refresh SearcherManager after commit to make newly-written documents immediately visible to next search
+        try {
+            searcherManager.maybeRefresh();
+        } catch (IOException e) {
+            e.printStackTrace();
+        }
     }
 
     @Override
