@@ -27,6 +27,7 @@ public class ConfigManager {
 		s.parseTextLike = Boolean.parseBoolean(p.getProperty("index.parseTextLike", String.valueOf(s.parseTextLike)));
 		s.textMaxBytes = Long.parseLong(p.getProperty("index.textMaxBytes", String.valueOf(s.textMaxBytes)));
 		s.textExts = java.util.Arrays.asList(p.getProperty("index.textExts", String.join(",", s.textExts)).split(","));
+		s.previewTimeoutSec = Integer.parseInt(p.getProperty("index.previewTimeoutSec", String.valueOf(s.previewTimeoutSec)));
 		
 		return s;
 	}
@@ -46,6 +47,7 @@ public class ConfigManager {
 		p.setProperty("index.parseTextLike", String.valueOf(s.parseTextLike));
 		p.setProperty("index.textMaxBytes", String.valueOf(s.textMaxBytes));
 		p.setProperty("index.textExts", String.join(",", s.textExts));
+		p.setProperty("index.previewTimeoutSec", String.valueOf(s.previewTimeoutSec));
 		
 		try (OutputStream out = Files.newOutputStream(file, StandardOpenOption.CREATE,
 				StandardOpenOption.TRUNCATE_EXISTING)) {

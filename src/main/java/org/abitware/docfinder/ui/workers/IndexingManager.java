@@ -29,8 +29,9 @@ public class IndexingManager {
             protected Integer doInBackground() throws Exception {
                 ConfigManager cm = new ConfigManager();
                 IndexSettings s = cm.loadIndexSettings();
-                LuceneIndexer idx = new LuceneIndexer(indexDir, s);
-                return idx.indexFolder(folder);
+                try (LuceneIndexer idx = new LuceneIndexer(indexDir, s)) {
+                    return idx.indexFolder(folder);
+                }
             }
 
             @Override
@@ -54,13 +55,13 @@ public class IndexingManager {
             protected Integer doInBackground() throws Exception {
                 ConfigManager cm = new ConfigManager();
                 IndexSettings s = cm.loadIndexSettings();
-                LuceneIndexer idx = new LuceneIndexer(indexDir, s);
-
-                int total = 0;
-                for (Path p : sources) {
-                    total += idx.indexFolder(p);
+                try (LuceneIndexer idx = new LuceneIndexer(indexDir, s)) {
+                    int total = 0;
+                    for (Path p : sources) {
+                        total += idx.indexFolder(p);
+                    }
+                    return total;
                 }
-                return total;
             }
 
             @Override
@@ -84,8 +85,9 @@ public class IndexingManager {
             protected Integer doInBackground() throws Exception {
                 ConfigManager cm = new ConfigManager();
                 IndexSettings s = cm.loadIndexSettings();
-                LuceneIndexer idx = new LuceneIndexer(indexDir, s);
-                return idx.indexFolders(sources, true); // full rebuild
+                try (LuceneIndexer idx = new LuceneIndexer(indexDir, s)) {
+                    return idx.indexFolders(sources, true); // full rebuild
+                }
             }
 
             @Override

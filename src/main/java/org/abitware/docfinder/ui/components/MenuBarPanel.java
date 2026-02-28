@@ -15,6 +15,8 @@ import javax.swing.*;
  */
 public class MenuBarPanel extends JMenuBar {
     private MenuListener menuListener;
+    private JCheckBoxMenuItem liveWatchToggle;
+    private JCheckBoxMenuItem netPollToggle;
 
     public interface MenuListener {
         void onManageSources();
@@ -99,13 +101,13 @@ public class MenuBarPanel extends JMenuBar {
 
         file.addSeparator();
 
-        JCheckBoxMenuItem liveWatchToggle = new JCheckBoxMenuItem("Enable Live Watch (Local)");
+        liveWatchToggle = new JCheckBoxMenuItem("Enable Live Watch (Local)");
         liveWatchToggle.addActionListener(e -> {
             if (menuListener != null) menuListener.onToggleLiveWatch();
         });
         file.add(liveWatchToggle);
 
-        JCheckBoxMenuItem netPollToggle = new JCheckBoxMenuItem("Enable Network Polling");
+        netPollToggle = new JCheckBoxMenuItem("Enable Network Polling");
         netPollToggle.addActionListener(e -> {
             if (menuListener != null) menuListener.onToggleNetworkPolling();
         });
@@ -167,5 +169,15 @@ public class MenuBarPanel extends JMenuBar {
      */
     public void setMenuListener(MenuListener listener) {
         this.menuListener = listener;
+    }
+
+    /** Returns the Live Watch toggle menu item so callers can read/set its state. */
+    public JCheckBoxMenuItem getLiveWatchToggle() {
+        return liveWatchToggle;
+    }
+
+    /** Returns the Network Polling toggle menu item so callers can read/set its state. */
+    public JCheckBoxMenuItem getNetPollToggle() {
+        return netPollToggle;
     }
 }

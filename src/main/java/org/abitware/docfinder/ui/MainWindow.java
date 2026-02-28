@@ -150,6 +150,11 @@ public class MainWindow extends JFrame implements MenuBarPanel.MenuListener {
 		menuBar.setMenuListener(this);
 		setJMenuBar(menuBar);
 
+		// Wire toggle items from the menu bar so toggleLiveWatch()/toggleNetPolling()
+		// can read and update their checked state without NPE.
+		this.liveWatchToggle = menuBar.getLiveWatchToggle();
+		this.netPollToggle = menuBar.getNetPollToggle();
+
 		// 5) Right-click menu, shortcuts, table selection listener
 		installTablePopupActions(); // Right-click: Open / Reveal / Copy
 		installTableShortcuts(); // Enter / Ctrl+C / Ctrl+Shift+C
@@ -767,14 +772,14 @@ public class MainWindow extends JFrame implements MenuBarPanel.MenuListener {
 			protected Integer doInBackground() throws Exception {
 				org.abitware.docfinder.index.ConfigManager cm = new org.abitware.docfinder.index.ConfigManager();
 				org.abitware.docfinder.index.IndexSettings s = cm.loadIndexSettings();
-				org.abitware.docfinder.index.LuceneIndexer idx = new org.abitware.docfinder.index.LuceneIndexer(
-						indexDir, s);
-
-				int total = 0;
-				for (java.nio.file.Path p : sources) {
-					total += idx.indexFolder(p);
+				try (org.abitware.docfinder.index.LuceneIndexer idx = new org.abitware.docfinder.index.LuceneIndexer(
+						indexDir, s)) {
+					int total = 0;
+					for (java.nio.file.Path p : sources) {
+						total += idx.indexFolder(p);
+					}
+					return total;
 				}
-				return total;
 			}
 
 			@Override
@@ -911,6 +916,7 @@ public class MainWindow extends JFrame implements MenuBarPanel.MenuListener {
 
     // 只读抽取前 N 字符（复用我们已有的 Tika 逻辑，简化为局部方法以免循环依赖）
 	private PreviewLoadOutcome extractTextHead(java.nio.file.Path file, int maxChars) {
+		int timeoutSec = new org.abitware.docfinder.index.ConfigManager().loadIndexSettings().previewTimeoutSec;
 		java.util.concurrent.ExecutorService es = java.util.concurrent.Executors.newSingleThreadExecutor(r -> {
 			Thread t = new Thread(r, "docfinder-preview-parse");
 			t.setDaemon(true);
@@ -928,7 +934,7 @@ public class MainWindow extends JFrame implements MenuBarPanel.MenuListener {
 					return handler.toString();
 				}
 			});
-			String text = fut.get(5, java.util.concurrent.TimeUnit.SECONDS);
+			String text = fut.get(timeoutSec, java.util.concurrent.TimeUnit.SECONDS);
 			return new PreviewLoadOutcome(text, null);
 		} catch (java.util.concurrent.TimeoutException e) {
 			return new PreviewLoadOutcome("", "Preview parse timed out.");
@@ -1353,10 +1359,10 @@ public class MainWindow extends JFrame implements MenuBarPanel.MenuListener {
 			protected Integer doInBackground() throws Exception {
 				org.abitware.docfinder.index.ConfigManager cm = new org.abitware.docfinder.index.ConfigManager();
 				org.abitware.docfinder.index.IndexSettings s = cm.loadIndexSettings();
-				org.abitware.docfinder.index.LuceneIndexer idx = new org.abitware.docfinder.index.LuceneIndexer(
-						indexDir, s);
-
-				return idx.indexFolder(folder.toPath());
+				try (org.abitware.docfinder.index.LuceneIndexer idx = new org.abitware.docfinder.index.LuceneIndexer(
+						indexDir, s)) {
+					return idx.indexFolder(folder.toPath());
+				}
 			}
 
 			@Override
@@ -1388,6 +1394,7 @@ public class MainWindow extends JFrame implements MenuBarPanel.MenuListener {
 
 		JSpinner maxMb = new JSpinner(new SpinnerNumberModel((int) s.maxFileMB, 1, 1024, 1));
 		JSpinner timeout = new JSpinner(new SpinnerNumberModel(s.parseTimeoutSec, 1, 120, 1));
+		JSpinner previewTimeout = new JSpinner(new SpinnerNumberModel(s.previewTimeoutSec, 1, 60, 1));
 		JTextField include = new JTextField(String.join(",", s.includeExt));
 		JTextArea exclude = new JTextArea(String.join(";", s.excludeGlob));
 		JTextField indexDirField = new JTextField(cm.getIndexDir().toString());
@@ -1411,6 +1418,7 @@ public class MainWindow extends JFrame implements MenuBarPanel.MenuListener {
 
 		JLabel maxHint = buildHintLabel("Files larger than this are skipped for content parsing.");
 		JLabel timeoutHint = buildHintLabel("Per-file parsing timeout (seconds).");
+		JLabel previewTimeoutHint = buildHintLabel("Preview pane parsing timeout (seconds).");
 		JLabel includeHint = buildHintLabel("Comma-separated list of extensions to parse with full content extraction.");
 		JLabel excludeHint = buildHintLabel("Semicolon-separated glob patterns to skip during indexing.");
 		JLabel indexDirHint = buildHintLabel("Default is ./.docfinder/index (next to app). You can move it to shared/network folders.");
@@ -1459,6 +1467,18 @@ public class MainWindow extends JFrame implements MenuBarPanel.MenuListener {
 		c.gridwidth = 1;
 		c.gridx = 0;
 		c.gridy = r;
+		p.add(new JLabel("Preview timeout (sec):"), c);
+		c.gridx = 1;
+		p.add(previewTimeout, c);
+		r++;
+		c.gridx = 0;
+		c.gridy = r;
+		c.gridwidth = 2;
+		p.add(previewTimeoutHint, c);
+		r++;
+		c.gridwidth = 1;
+		c.gridx = 0;
+		c.gridy = r;
 		p.add(new JLabel("Include extensions (comma):"), c);
 		c.gridx = 1;
 		p.add(include, c);
@@ -1486,6 +1506,7 @@ public class MainWindow extends JFrame implements MenuBarPanel.MenuListener {
 		if (ret == JOptionPane.OK_OPTION) {
 			s.maxFileMB = ((Number) maxMb.getValue()).longValue();
 			s.parseTimeoutSec = ((Number) timeout.getValue()).intValue();
+			s.previewTimeoutSec = ((Number) previewTimeout.getValue()).intValue();
 			s.includeExt = new java.util.ArrayList<>(
 					FilterState.parseExts(include.getText()));
 			s.excludeGlob = java.util.Arrays.asList(exclude.getText().split(";"));
