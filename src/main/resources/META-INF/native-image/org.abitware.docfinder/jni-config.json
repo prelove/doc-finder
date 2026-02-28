@@ -1,0 +1,18 @@
+[
+  {
+    "comment": "JNativeHook uses JNI to register OS-level keyboard/mouse hooks",
+    "name": "com.github.kwhat.jnativehook.NativeSystem",
+    "methods": [
+      {"name": "getProperty", "parameterTypes": ["java.lang.String"]}
+    ]
+  },
+  {
+    "comment": "AWT peer factories accessed via JNI on all desktop platforms",
+    "name": "sun.awt.X11.XToolkit",
+    "allDeclaredMethods": true
+  },
+  {
+    "name": "sun.awt.windows.WToolkit",
+    "allDeclaredMethods": true
+  }
+]

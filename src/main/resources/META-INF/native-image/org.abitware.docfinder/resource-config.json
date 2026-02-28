@@ -1,0 +1,17 @@
+{
+  "resources": {
+    "includes": [
+      {"pattern": "\\Qlogback.xml\\E"},
+      {"pattern": "\\QMETA-INF/services/.*\\E"},
+      {"pattern": "\\QMETA-INF/tika-mimetypes.xml\\E"},
+      {"pattern": "\\QMETA-INF/tika-parsers-standard-override.xml\\E"},
+      {"pattern": "icons/.*\\.png"},
+      {"pattern": "web/index\\.html"},
+      {"pattern": "\\Qorg/apache/lucene/analysis/cn/smart/hhmm/BigramDictionary.mem\\E"},
+      {"pattern": "\\Qorg/apache/lucene/analysis/cn/smart/hhmm/CoreDictionary.mem\\E"},
+      {"pattern": "\\Qorg/apache/lucene/analysis/cn/smart/hhmm/WordDictionary.mem\\E"},
+      {"pattern": "\\Qorg/apache/lucene/analysis/ja/ipadic/.*\\E"}
+    ]
+  },
+  "bundles": []
+}

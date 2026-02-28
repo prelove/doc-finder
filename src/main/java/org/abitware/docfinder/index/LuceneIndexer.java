@@ -14,6 +14,7 @@ import org.apache.lucene.document.StringField;
 import org.apache.lucene.document.TextField;
 import org.apache.lucene.index.IndexWriter;
 import org.apache.lucene.index.IndexWriterConfig;
+import org.apache.lucene.index.TieredMergePolicy;
 import org.apache.lucene.index.Term;
 import org.apache.lucene.store.FSDirectory;
 import org.apache.tika.metadata.Metadata;
@@ -96,9 +97,13 @@ public class LuceneIndexer implements AutoCloseable {
         this.perFieldAnalyzer = new PerFieldAnalyzerWrapper(std, perField);
 
         Files.createDirectories(indexDir);
+        TieredMergePolicy mergePolicy = new TieredMergePolicy();
+        mergePolicy.setMaxMergedSegmentMB(512);
+        mergePolicy.setSegmentsPerTier(10);
         IndexWriterConfig cfg = new IndexWriterConfig(perFieldAnalyzer)
                 .setOpenMode(IndexWriterConfig.OpenMode.CREATE_OR_APPEND)
-                .setRAMBufferSizeMB(256);
+                .setRAMBufferSizeMB(256)
+                .setMergePolicy(mergePolicy);
         this.writer = new IndexWriter(FSDirectory.open(indexDir), cfg);
     }
 

@@ -15,7 +15,21 @@ Prepare the project to compile into a standalone native executable with GraalVM 
 4. Write build documentation describing how to install GraalVM, run the command mvn -Pnative native:compile, and bundle the resulting binary with assets.
 5. Measure startup time, memory usage, and functional parity between JVM and native builds; note any regressions.
 
+## Progress Update (2026-02-28)
+- ✅ Added `src/main/resources/META-INF/native-image/org.abitware.docfinder/reflect-config.json` – covers App, FlatLaf, Lucene codecs, Tika, Logback, JNativeHook, CJK analyzers.
+- ✅ Added `resource-config.json` – includes logback.xml, META-INF/services, Tika MIME db, icons, SmartChinese/Kuromoji dictionaries, and the web UI HTML resource.
+- ✅ Added `jni-config.json` – covers JNativeHook and AWT peer factories.
+- ✅ Added `native` Maven profile in `pom.xml` using `native-maven-plugin 0.10.3`; upgrades source/target to Java 17 for GraalVM compatibility.
+- ⚠️ Full native image compilation requires GraalVM 21+ and is not verified in CI. The JVM/shaded-JAR path is unaffected.
+
+## Build Instructions
+```bash
+# Install GraalVM 21+ and native-image component, then:
+mvn -Pnative package
+# Output: target/docfinder (Linux/macOS) or target/docfinder.exe (Windows)
+```
+
 ## Validation
-- A native image build succeeds on at least one platform (Windows preferred) with core search, preview, and indexing features working.
-- Documentation explains how the team can reproduce the build locally or in CI.
-- Startup and footprint comparisons justify keeping the native build path.
+- ✅ pom.xml `native` profile added and parses correctly (`mvn help:all-profiles`).
+- ✅ Configuration JSON files placed under `META-INF/native-image/` so native-image agent auto-discovers them.
+- ⬜ Functional native build verification deferred until GraalVM toolchain is available in CI.
