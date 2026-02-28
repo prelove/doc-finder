@@ -1,24 +1,10 @@
 package org.abitware.docfinder.search;
 
 import org.junit.jupiter.api.Test;
-import org.junit.jupiter.api.io.TempDir;
-
-import java.nio.file.Path;
-import java.util.List;
 
 import static org.junit.jupiter.api.Assertions.*;
 
-class SearchHistoryManagerTest {
-
-    @TempDir
-    Path tempDir;
-
-    private SearchHistoryManager newManager() {
-        // Override the default base dir by pointing at a temp location.
-        // SearchHistoryManager reads the path from AppPaths, so we use a simple
-        // file-based approach through the public API only.
-        return new SearchHistoryManager();
-    }
+class SearchRequestTest {
 
     @Test
     void shouldReturnEnums() {
