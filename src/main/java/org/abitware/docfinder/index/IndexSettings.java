@@ -7,6 +7,7 @@ import java.util.List;
 public class IndexSettings {
  public long maxFileMB = 50;
  public int parseTimeoutSec = 15;
+ public int previewTimeoutSec = 5;
 
  // 文档类（用 Tika 深度解析）：PDF/Office/HTML…
  public java.util.List<String> includeExt = java.util.Arrays.asList(

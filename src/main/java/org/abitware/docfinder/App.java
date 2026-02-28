@@ -13,6 +13,7 @@ import org.abitware.docfinder.search.SearchService;
 import org.abitware.docfinder.ui.GlobalHotkey;
 import org.abitware.docfinder.ui.MainWindow;
 import org.abitware.docfinder.ui.ThemeUtil;
+import org.abitware.docfinder.util.LegacyMigration;
 import org.abitware.docfinder.util.SingleInstance;
 
 import org.slf4j.Logger; // ADDED
@@ -31,75 +32,78 @@ public class App {
         SingleInstance instance = SingleInstance.tryAcquire(APP_ID, cmd -> bringToFront());
         if (instance == null) return; // 次实例：已通知老实例激活，直接退出
 
-        SwingUtilities.invokeLater(() -> {
-            try {
-                java.nio.file.Path indexDir = new SourceManager().getIndexDir();
-                SearchService searchService = new LuceneSearchService(indexDir);
-
-                MainWindow win = new MainWindow(searchService);
-                MAIN = win; // 赋值䧛回调 bringToFront 使用
-                win.setVisible(true);
-
-                // 全局热键：Ctrl + Alt + Space
-                GlobalHotkey ghk = new GlobalHotkey(win);
-                ghk.register();
-                Runtime.getRuntime().addShutdownHook(new Thread(ghk::unregister));
-
-                // 托盘
-                if (SystemTray.isSupported()) {
-                    try {
-                        SystemTray tray = SystemTray.getSystemTray();
-                        PopupMenu menu = new PopupMenu();
-                        MenuItem openItem = new MenuItem("Open");
-                        openItem.addActionListener(e -> {
-                            bringToFront();
-                        });
-                        menu.add(openItem);
-
-                        MenuItem exitItem = new MenuItem("Exit");
-                        exitItem.addActionListener(e -> {
-                            // 退出前清理托盘与单实例
-                            try {
-                                for (TrayIcon ti : tray.getTrayIcons()) tray.remove(ti);
-                            } catch (Exception ex) { logger.error("Error removing tray icon", ex); } // MODIFIED
-                            try { instance.close(); } catch (Exception ex) { logger.error("Error closing single instance lock", ex); } // MODIFIED
-                            System.exit(0);
-                        });
-                        menu.add(exitItem);
-
-                        TrayIcon icon = new TrayIcon(createTrayImage(), "DocFinder", menu);
-                        icon.setImageAutoSize(true);
-                        icon.addMouseListener(new MouseAdapter() {
-                            @Override public void mouseClicked(MouseEvent e) {
-                                if (e.getButton() == MouseEvent.BUTTON1) bringToFront();
-                            }
-                        });
-                        tray.add(icon);
-                        win.setDefaultCloseOperation(WindowConstants.HIDE_ON_CLOSE);
-                    } catch (Exception ex) {
-                        logger.error("Error setting up system tray", ex); // MODIFIED
-                    }
+        // 3) One-time legacy data migration (~/.docfinder → ./.docfinder) off the EDT
+        if (LegacyMigration.needsMigration()) {
+            new Thread(() -> {
+                int count = LegacyMigration.migrate();
+                if (count > 0) {
+                    logger.info("Migrated {} file(s) from legacy ~/.docfinder to app data directory.", count);
                 }
+            }, "docfinder-migration").start();
+        }
 
-                // JVM 退出时关闭单实例监听
-                Runtime.getRuntime().addShutdownHook(new Thread(() -> {
-                    try { instance.close(); } catch (Exception ex) { logger.error("Error closing single instance lock on shutdown", ex); } // MODIFIED
-                }));
-            } catch (IOException ex) {
-                logger.error("Failed to initialize search service", ex); // MODIFIED
-                JOptionPane.showMessageDialog(null,
-                        "Failed to initialize search service: " + ex.getMessage() + "\nApplication will exit.",
-                        "Initialization Error",
-                        JOptionPane.ERROR_MESSAGE);
-                System.exit(1);
-            } catch (Exception ex) {
-                logger.error("An unexpected error occurred during application startup", ex); // MODIFIED
-                JOptionPane.showMessageDialog(null,
-                        "An unexpected error occurred during application startup: " + ex.getMessage() + "\nApplication will exit.",
-                        "Initialization Error",
-                        JOptionPane.ERROR_MESSAGE);
-                System.exit(1);
+        // 4) Show window on the EDT, then open the search index in a background thread to avoid EDT blocking
+        SwingUtilities.invokeLater(() -> {
+            // Create the window first with a null search service so the UI is immediately responsive
+            MainWindow win = new MainWindow(null);
+            MAIN = win;
+            win.setVisible(true);
+
+            // Open the Lucene index off the EDT to avoid blocking Swing painting
+            new Thread(() -> {
+                try {
+                    java.nio.file.Path indexDir = new SourceManager().getIndexDir();
+                    SearchService searchService = new LuceneSearchService(indexDir);
+                    SwingUtilities.invokeLater(() -> win.setSearchService(searchService));
+                } catch (IOException ex) {
+                    logger.error("Failed to open search index", ex);
+                    SwingUtilities.invokeLater(() ->
+                        win.getStatusLabel().setText("Search index unavailable: " + ex.getMessage()));
+                }
+            }, "docfinder-index-open").start();
+
+            // 全局热键：Ctrl + Alt + Space
+            GlobalHotkey ghk = new GlobalHotkey(win);
+            ghk.register();
+            Runtime.getRuntime().addShutdownHook(new Thread(ghk::unregister));
+
+            // 托盘
+            if (SystemTray.isSupported()) {
+                try {
+                    SystemTray tray = SystemTray.getSystemTray();
+                    PopupMenu menu = new PopupMenu();
+                    MenuItem openItem = new MenuItem("Open");
+                    openItem.addActionListener(e -> bringToFront());
+                    menu.add(openItem);
+
+                    MenuItem exitItem = new MenuItem("Exit");
+                    exitItem.addActionListener(e -> {
+                        try {
+                            for (TrayIcon ti : tray.getTrayIcons()) tray.remove(ti);
+                        } catch (Exception ex) { logger.error("Error removing tray icon", ex); }
+                        try { instance.close(); } catch (Exception ex) { logger.error("Error closing single instance lock", ex); }
+                        System.exit(0);
+                    });
+                    menu.add(exitItem);
+
+                    TrayIcon icon = new TrayIcon(createTrayImage(), "DocFinder", menu);
+                    icon.setImageAutoSize(true);
+                    icon.addMouseListener(new MouseAdapter() {
+                        @Override public void mouseClicked(MouseEvent e) {
+                            if (e.getButton() == MouseEvent.BUTTON1) bringToFront();
+                        }
+                    });
+                    tray.add(icon);
+                    win.setDefaultCloseOperation(WindowConstants.HIDE_ON_CLOSE);
+                } catch (Exception ex) {
+                    logger.error("Error setting up system tray", ex);
+                }
             }
+
+            // JVM 退出时关闭单实例监听
+            Runtime.getRuntime().addShutdownHook(new Thread(() -> {
+                try { instance.close(); } catch (Exception ex) { logger.error("Error closing single instance lock on shutdown", ex); }
+            }));
         });
     }
 
