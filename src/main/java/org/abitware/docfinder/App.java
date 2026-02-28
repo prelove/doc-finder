@@ -7,6 +7,7 @@ import java.awt.image.BufferedImage;
 import java.io.IOException;
 import javax.swing.*;
 
+import org.abitware.docfinder.index.ConfigManager;
 import org.abitware.docfinder.index.SourceManager;
 import org.abitware.docfinder.search.LuceneSearchService;
 import org.abitware.docfinder.search.SearchService;
@@ -15,6 +16,7 @@ import org.abitware.docfinder.ui.MainWindow;
 import org.abitware.docfinder.ui.ThemeUtil;
 import org.abitware.docfinder.util.LegacyMigration;
 import org.abitware.docfinder.util.SingleInstance;
+import org.abitware.docfinder.web.WebServer;
 
 import org.slf4j.Logger; // ADDED
 import org.slf4j.LoggerFactory; // ADDED
@@ -42,7 +44,22 @@ public class App {
             }, "docfinder-migration").start();
         }
 
-        // 4) Show window on the EDT, then open the search index in a background thread to avoid EDT blocking
+        // 4) Optionally start web interface (before EDT to get config early)
+        ConfigManager cfg = new ConfigManager();
+        final WebServer webServer;
+        if (cfg.isWebEnabled()) {
+            webServer = new WebServer(cfg.getWebPort(), cfg.getWebBindAddress());
+            try {
+                webServer.start();
+            } catch (IOException ex) {
+                logger.error("Failed to start web interface", ex);
+            }
+            Runtime.getRuntime().addShutdownHook(new Thread(webServer::stop, "docfinder-web-stop"));
+        } else {
+            webServer = null;
+        }
+
+        // 5) Show window on the EDT, then open the search index in a background thread to avoid EDT blocking
         SwingUtilities.invokeLater(() -> {
             // Create the window first with a null search service so the UI is immediately responsive
             MainWindow win = new MainWindow(null);
@@ -54,6 +71,8 @@ public class App {
                 try {
                     java.nio.file.Path indexDir = new SourceManager().getIndexDir();
                     SearchService searchService = new LuceneSearchService(indexDir);
+                    // Web interface gets a reference to the search service once index is ready
+                    if (webServer != null) webServer.setSearchService(searchService);
                     SwingUtilities.invokeLater(() -> win.setSearchService(searchService));
                 } catch (IOException ex) {
                     logger.error("Failed to open search index", ex);

@@ -125,6 +125,61 @@
   </dependencies>
 
 		
+  <!--
+    GraalVM native image profile.
+    Prerequisites:
+      1. Install GraalVM 21+ (Java 17+): https://www.graalvm.org/downloads/
+      2. Run: gu install native-image
+      3. Set GRAALVM_HOME / JAVA_HOME to the GraalVM JDK.
+    Build:
+      mvn -Pnative package
+    Output: target/docfinder (Linux/macOS) or target/docfinder.exe (Windows)
+    NOTE: The shaded-jar build still targets Java 8.
+          The native profile upgrades to Java 17 source/target for GraalVM compatibility.
+  -->
+  <profiles>
+    <profile>
+      <id>native</id>
+      <properties>
+        <maven.compiler.source>17</maven.compiler.source>
+        <maven.compiler.target>17</maven.compiler.target>
+      </properties>
+      <build>
+        <plugins>
+          <plugin>
+            <groupId>org.graalvm.buildtools</groupId>
+            <artifactId>native-maven-plugin</artifactId>
+            <version>0.10.3</version>
+            <extensions>true</extensions>
+            <executions>
+              <execution>
+                <id>build-native</id>
+                <goals>
+                  <goal>compile-no-fork</goal>
+                </goals>
+                <phase>package</phase>
+              </execution>
+            </executions>
+            <configuration>
+              <mainClass>org.abitware.docfinder.App</mainClass>
+              <imageName>docfinder</imageName>
+              <buildArgs>
+                <!-- Include all native-image configuration files bundled in the JAR -->
+                <buildArg>-H:+ReportExceptionStackTraces</buildArg>
+                <!-- Swing requires AWT/headful mode -->
+                <buildArg>-H:+AddAllCharsets</buildArg>
+                <!-- Allow incomplete class path (some Tika parsers may be absent) -->
+                <buildArg>--allow-incomplete-classpath</buildArg>
+                <!-- Initialize Swing/AWT at run time, not build time -->
+                <buildArg>--initialize-at-run-time=java.awt,javax.swing,sun.awt,sun.java2d,com.formdev.flatlaf</buildArg>
+              </buildArgs>
+            </configuration>
+          </plugin>
+        </plugins>
+      </build>
+    </profile>
+  </profiles>
+
   <build>
 	  <plugins>
 	    <!-- Java 8 目标：你已有 -->

@@ -110,7 +110,34 @@ public class ConfigManager {
 		return String.join(";", l);
 	}
 	
-	// --- Network polling settings ---
+	// --- Web server settings ---
+	public boolean isWebEnabled() {
+	    return Boolean.parseBoolean(loadAll().getProperty("web.enabled", "false"));
+	}
+	public void setWebEnabled(boolean on) {
+	    java.util.Properties p = loadAll();
+	    p.setProperty("web.enabled", String.valueOf(on));
+	    saveAll(p);
+	}
+	public int getWebPort() {
+	    try { return Integer.parseInt(loadAll().getProperty("web.port", "7070")); }
+	    catch (Exception e) { return 7070; }
+	}
+	public void setWebPort(int port) {
+	    java.util.Properties p = loadAll();
+	    p.setProperty("web.port", String.valueOf(Math.max(1024, Math.min(65535, port))));
+	    saveAll(p);
+	}
+	public String getWebBindAddress() {
+	    return loadAll().getProperty("web.bindAddress", "127.0.0.1");
+	}
+	public void setWebBindAddress(String addr) {
+	    java.util.Properties p = loadAll();
+	    p.setProperty("web.bindAddress", addr == null ? "127.0.0.1" : addr.trim());
+	    saveAll(p);
+	}
+
+	
 	public boolean isPollingEnabled() {
 	    java.util.Properties p = loadAll();
 	    return Boolean.parseBoolean(p.getProperty("poll.enabled", "false"));

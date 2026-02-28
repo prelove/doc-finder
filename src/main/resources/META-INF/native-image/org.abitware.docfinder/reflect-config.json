@@ -1,0 +1,86 @@
+[
+  {
+    "comment": "App main class",
+    "name": "org.abitware.docfinder.App",
+    "allPublicMethods": true,
+    "allDeclaredFields": true
+  },
+  {
+    "comment": "Swing / AWT classes loaded by name",
+    "name": "javax.swing.JFrame",
+    "allPublicMethods": true
+  },
+  {
+    "comment": "FlatLaf LaF class – loaded reflectively by UIManager.setLookAndFeel",
+    "name": "com.formdev.flatlaf.FlatDarkLaf",
+    "allPublicMethods": true,
+    "allDeclaredConstructors": true
+  },
+  {
+    "name": "com.formdev.flatlaf.FlatLightLaf",
+    "allPublicMethods": true,
+    "allDeclaredConstructors": true
+  },
+  {
+    "comment": "Lucene codec / format classes discovered via SPI (META-INF/services)",
+    "name": "org.apache.lucene.codecs.lucene87.Lucene87Codec",
+    "allPublicMethods": true,
+    "allDeclaredConstructors": true
+  },
+  {
+    "name": "org.apache.lucene.codecs.perfield.PerFieldPostingsFormat",
+    "allPublicMethods": true,
+    "allDeclaredConstructors": true
+  },
+  {
+    "comment": "Tika AutoDetectParser and parsers loaded via SPI",
+    "name": "org.apache.tika.parser.AutoDetectParser",
+    "allPublicMethods": true,
+    "allDeclaredConstructors": true
+  },
+  {
+    "comment": "Tika DefaultParser",
+    "name": "org.apache.tika.parser.DefaultParser",
+    "allPublicMethods": true,
+    "allDeclaredConstructors": true
+  },
+  {
+    "comment": "Logback configuration loaded reflectively",
+    "name": "ch.qos.logback.classic.Logger",
+    "allPublicMethods": true,
+    "allDeclaredFields": true
+  },
+  {
+    "name": "ch.qos.logback.core.ConsoleAppender",
+    "allPublicMethods": true,
+    "allDeclaredConstructors": true
+  },
+  {
+    "name": "ch.qos.logback.core.rolling.RollingFileAppender",
+    "allPublicMethods": true,
+    "allDeclaredConstructors": true
+  },
+  {
+    "comment": "SLF4J / Logback binding discovered by ServiceLoader",
+    "name": "org.slf4j.impl.StaticLoggerBinder",
+    "allPublicMethods": true,
+    "allDeclaredFields": true
+  },
+  {
+    "comment": "JNativeHook hook loader (JNI-backed)",
+    "name": "com.github.kwhat.jnativehook.NativeSystem",
+    "allPublicMethods": true,
+    "allDeclaredFields": true
+  },
+  {
+    "comment": "SmartChineseAnalyzer and KuromojiAnalyzer – loaded reflectively by PerFieldAnalyzerWrapper",
+    "name": "org.apache.lucene.analysis.cn.smart.SmartChineseAnalyzer",
+    "allPublicMethods": true,
+    "allDeclaredConstructors": true
+  },
+  {
+    "name": "org.apache.lucene.analysis.ja.JapaneseAnalyzer",
+    "allPublicMethods": true,
+    "allDeclaredConstructors": true
+  }
+]

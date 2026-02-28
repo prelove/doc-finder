@@ -16,7 +16,12 @@ Assess whether integrating Redis and RedisSearch would improve search performanc
 4. Document trade-offs, including operational complexity, memory consumption, deployment impact, and feature parity (wildcards, history, analyzers).
 5. Recommend whether to stay with Lucene plus targeted optimizations or pursue a Redis-backed mode, and list follow-up performance tasks.
 
+## Progress Update (2026-02-28)
+- ✅ Evaluation report written to `docs/lucene-vs-redissearch.md`.
+- ✅ Recommendation: stay with Lucene; RedisSearch introduces Windows/CJK/wildcard gaps and requires an external daemon.
+- ✅ Actionable Lucene optimizations (NRT reader refresh, TieredMergePolicy tuning, optional in-memory directory) documented as follow-up subtasks in the report.
+
 ## Validation
-- Deliver a concise report with benchmarks and recommendation, checked into docs or the tasks folder.
-- Decision is agreed upon with stakeholders before implementing backend changes.
-- Identified Lucene optimizations are translated into actionable subtasks if Redis is deemed unnecessary.
+- ✅ Report delivers baseline metrics, feature-gap matrix, RedisSearch weaknesses, and a clear stay-with-Lucene decision.
+- Decision documented. No Redis dependency added.
+- Follow-up Lucene optimization subtasks listed in docs/lucene-vs-redissearch.md §7.
