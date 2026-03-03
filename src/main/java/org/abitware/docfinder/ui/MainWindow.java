@@ -58,6 +58,7 @@ public class MainWindow extends JFrame implements MenuBarPanel.MenuListener {
 	private final javax.swing.JComboBox<MatchMode> matchModeBox = new javax.swing.JComboBox<>(MatchMode.values());
 	private final javax.swing.JComboBox<String> queryBox = new javax.swing.JComboBox<>();
 	private javax.swing.JTextField searchField; // Actual editor
+	private boolean suppressQueryActions = false;
 	private final org.abitware.docfinder.search.SearchHistoryManager historyMgr = new org.abitware.docfinder.search.SearchHistoryManager();
 
 	// Popup & "Open With" remembered item (for right-click menu and refresh)
@@ -200,17 +201,19 @@ public class MainWindow extends JFrame implements MenuBarPanel.MenuListener {
 		queryBox.setToolTipText("Tips: name:<term>, content:<term>, phrase with quotes, AND/OR, wildcard *");
 
 		// Install placeholder for query box editor (JTextField)
-		searchField = (javax.swing.JTextField) queryBox.getEditor().getEditorComponent();
+		searchField = getActiveSearchField();
 		searchField.putClientProperty("JTextField.placeholderText",
 				"Search... (e.g. report*, content:\"zero knowledge\", name:\"瑷▓\")");
-		// Immediate search on Enter
-		searchField.addActionListener(e -> doSearch());
 
-		// History dropdown on query box action
+		// History dropdown selection + editor Enter both go through combo action.
 		queryBox.addActionListener(e -> {
+			if (suppressQueryActions)
+				return;
 			Object sel = queryBox.getSelectedItem();
 			if (sel != null && queryBox.isPopupVisible()) {
 				setQueryText(sel.toString());
+			}
+			if (!getQueryText().isEmpty()) {
 				doSearch();
 			}
 		});
@@ -221,7 +224,9 @@ public class MainWindow extends JFrame implements MenuBarPanel.MenuListener {
 			queryBox.addItem(s);
 
 		// Shortcuts: focus search field, clear selection
+		suppressQueryActions = true;
 		queryBox.setSelectedItem(""); // <-- Clear
+		suppressQueryActions = false;
 		searchField.requestFocusInWindow(); // Focus search field
 
 		JButton toggleFilters = new JButton("Filters");
@@ -245,7 +250,8 @@ public class MainWindow extends JFrame implements MenuBarPanel.MenuListener {
 
 
 	private String getQueryText() {
-		return (searchField == null) ? "" : searchField.getText().trim();
+		javax.swing.JTextField tf = getActiveSearchField();
+		return (tf == null) ? "" : tf.getText().trim();
 	}
 
 	private void rerunIfQueryPresent() {
@@ -256,8 +262,17 @@ public class MainWindow extends JFrame implements MenuBarPanel.MenuListener {
 	}
 
 	private void setQueryText(String s) {
-		if (searchField != null)
-			searchField.setText(s);
+		javax.swing.JTextField tf = getActiveSearchField();
+		if (tf != null)
+			tf.setText(s);
+	}
+
+	private javax.swing.JTextField getActiveSearchField() {
+		java.awt.Component c = queryBox.getEditor().getEditorComponent();
+		if (c instanceof javax.swing.JTextField) {
+			searchField = (javax.swing.JTextField) c;
+		}
+		return searchField;
 	}
 
 	/** Filter bar (extension + time range), hidden by default */
@@ -1678,7 +1693,7 @@ public class MainWindow extends JFrame implements MenuBarPanel.MenuListener {
 
 		FilterState filters = buildFilterState();
 
-		String q = (searchField == null) ? "" : searchField.getText().trim();
+		String q = getQueryText();
 
 		lastQuery = q;
 
@@ -1912,11 +1927,13 @@ public class MainWindow extends JFrame implements MenuBarPanel.MenuListener {
 
         // 更新下拉模型：去重reset顶、最多100
 		javax.swing.DefaultComboBoxModel<String> m = (javax.swing.DefaultComboBoxModel<String>) queryBox.getModel();
+		suppressQueryActions = true;
         // 简单粗暴：清空重加（100 项以内性能无感）
 		m.removeAllElements();
 		for (String s : latest)
 			m.addElement(s);
-		queryBox.setSelectedItem(q); // 缃《鏄剧ず
+		suppressQueryActions = false;
+		setQueryText(q); // 保持编辑器文本，不触发额外查询
 	}
 
     // 新增方法：
