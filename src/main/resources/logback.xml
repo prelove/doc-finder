@@ -20,6 +20,12 @@
         </encoder>
     </appender>
 
+
+    <!-- Suppress known non-fatal Apache POI noise emitted during Tika extraction.
+         These warnings are about editability/format edge-cases and do not block read-only indexing. -->
+    <logger name="org.apache.poi.xssf.usermodel.XSSFDrawing" level="ERROR"/>
+    <logger name="org.apache.poi.ss.usermodel.DataFormatter" level="ERROR"/>
+
     <root level="info">
         <appender-ref ref="STDOUT" />
         <appender-ref ref="FILE" />

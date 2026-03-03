@@ -46,7 +46,7 @@ class SearchHandler implements HttpHandler {
 
         SearchService svc = serviceSupplier.get();
         if (svc == null) {
-            sendJson(exchange, 503, "{\"error\":\"Search index not ready\"}");
+            sendJson(exchange, 503, "{\"error\":\"Search index is initializing, please retry in a moment\"}");
             return;
         }
 

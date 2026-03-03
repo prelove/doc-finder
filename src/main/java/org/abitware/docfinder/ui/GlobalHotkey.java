@@ -16,6 +16,7 @@ import com.github.kwhat.jnativehook.keyboard.NativeKeyListener;
 /** 全局热键注册：Ctrl + Alt + Space 呼出/隐藏窗口 */
 public class GlobalHotkey implements NativeKeyListener {
     private final JFrame target;
+    private int hiddenExtendedState = JFrame.NORMAL;
 
     public GlobalHotkey(JFrame target) { this.target = target; }
 
@@ -48,9 +49,13 @@ public class GlobalHotkey implements NativeKeyListener {
         if (ctrl && alt && e.getKeyCode() == NativeKeyEvent.VC_SPACE) {
             SwingUtilities.invokeLater(() -> {
                 boolean visible = target.isVisible();
-                target.setVisible(!visible);
-                if (!visible) {
-                    target.setExtendedState(JFrame.NORMAL);
+                if (visible) {
+                    hiddenExtendedState = target.getExtendedState();
+                    target.setVisible(false);
+                } else {
+                    target.setVisible(true);
+                    int restoreState = hiddenExtendedState == 0 ? JFrame.NORMAL : hiddenExtendedState;
+                    target.setExtendedState(restoreState & ~JFrame.ICONIFIED);
                     target.toFront();
                     target.requestFocus();
                 }

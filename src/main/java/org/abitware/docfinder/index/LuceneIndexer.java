@@ -391,7 +391,7 @@ public class LuceneIndexer implements AutoCloseable {
                         String msg = e.getMessage() == null ? "" : e.getMessage();
                         if (isWriteLimitReached(msg)) {
                             clearFailedExtraction(file);
-                            log.info("Tika extract truncated by maxExtractChars({}) for {}", maxChars, file);
+                            log.info("Tika extract truncated by index.maxExtractChars={} for {}", maxChars, file);
                             return handler.toString();
                         }
                         if (isSevereExtractionError(msg)) {
@@ -458,6 +458,12 @@ public class LuceneIndexer implements AutoCloseable {
         String ext = getExt(name);
         if (settings.includeExt != null && settings.includeExt.contains(ext)) return true;
         if (!settings.parseTextLike) return false;
+
+        long textLimitBytes = settings.textMaxBytes > 0 ? settings.textMaxBytes : settings.maxFileMB * 1024L * 1024L;
+        if (sizeBytes > textLimitBytes) {
+            return false;
+        }
+
         if (settings.textExts != null && settings.textExts.contains(ext)) return true;
         if (isTextMime(file)) return true;
         return looksLikeText(file);

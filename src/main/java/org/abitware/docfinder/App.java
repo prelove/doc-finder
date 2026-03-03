@@ -134,7 +134,8 @@ public class App {
             MainWindow w = MAIN;
             if (w == null) return;
             if (!w.isVisible()) w.setVisible(true);
-            w.setExtendedState(JFrame.NORMAL);
+            int state = w.getExtendedState();
+            w.setExtendedState(state & ~JFrame.ICONIFIED);
             w.toFront();
             w.requestFocus();
         });

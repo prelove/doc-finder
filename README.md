@@ -123,6 +123,8 @@ DocFinder is a desktop utility that lets you search **file names and file conten
   - `includeExt` document allowlist (e.g., pdf/docx/xlsx/pptx/html…).
   - `parseTextLike` toggle to parse text‑like files.
   - `textExts` for source code / config (java, go, rs, py, js, ts, json, yaml/yml, xml, md, txt, sh, properties…).
+  - `textMaxBytes` applies to all text-like parsing (including MIME/heuristic-detected text files with uncommon extensions).
+  - `maxExtractChars` controls maximum extracted characters per file before truncation.
   - MIME check (`text/*`, common `application/*`) and **4KB heuristic**: no NUL and ASCII printable ratio ≥ 0.85.
 
 ---
@@ -226,8 +228,10 @@ java -jar target/docfinder-1.0.0.jar
 `IndexSettings` main fields:
 - `maxFileMB` — parse size cap
 - `parseTimeoutSec` — per‑file Tika timeout
+- `maxExtractChars` — max extracted characters per file before truncation
 - `includeExt` — document‑type allowlist (e.g., pdf, docx, xlsx, pptx, html)
 - `parseTextLike` — parse text‑like files
+- `textMaxBytes` — max bytes for text-like files (including unknown extensions detected by MIME/heuristics)
 - `textExts` — text/source extensions (txt, md, json, yaml, xml, java, go, rs, py, js, ts, sh, properties…)
 - `excludeGlob` — glob patterns to skip (e.g., `**/.git/**`, `**/node_modules/**`)
 
@@ -245,6 +249,7 @@ java -jar target/docfinder-1.0.0.jar
 - **“Manage Sources…” seems slow** → detection runs in background; upgrade to latest build if you still see blocking.
 - **“Poll Network Sources Now” shows no changes** → verify the folder is marked **Network** and reachable; NAS may reflect updates with delay.
 - **Preview empty** → file too large/timeout/unsupported; increase timeout or extend allowlist.
+- **POI WARN logs (`XSSFDrawing` / `DataFormatter`)** → usually non-fatal format warnings from Office parsing; indexing can still succeed. Default logging suppresses these noisy categories.
 - **Windows yen sign (¥)** → internal normalization handles it; opening uses Explorer‑friendly paths.
 
 ---
