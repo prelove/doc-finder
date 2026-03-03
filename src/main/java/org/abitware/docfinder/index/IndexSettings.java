@@ -8,6 +8,7 @@ public class IndexSettings {
  public long maxFileMB = 50;
  public int parseTimeoutSec = 15;
  public int previewTimeoutSec = 5;
+ public int maxExtractChars = 1_000_000;
 
  /**
   * NRT cache size for the search reader (SearcherManager).

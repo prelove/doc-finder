@@ -44,6 +44,7 @@ import java.util.concurrent.Executors;
 import java.util.concurrent.Future;
 import java.util.concurrent.TimeUnit;
 import java.util.concurrent.atomic.AtomicInteger;
+import java.util.concurrent.ConcurrentHashMap;
 
 /**
  * Lucene 索引器：
@@ -55,7 +56,8 @@ public class LuceneIndexer implements AutoCloseable {
     private static final Logger log = LoggerFactory.getLogger(LuceneIndexer.class);
     private static final String KIND_FILE = "file";
     private static final String KIND_FOLDER = "folder";
-    private static final int MAX_CHARS = 1_000_000;
+    private static final int DEFAULT_MAX_CHARS = 1_000_000;
+    private static final int MAX_ERROR_CACHE_SIZE = 10_000;
     private static final List<String> DEFAULT_EXCLUDED_HINTS = Arrays.asList(
             "/$recycle.bin/",
             "/$recycle.bin",
@@ -64,6 +66,18 @@ public class LuceneIndexer implements AutoCloseable {
             "/recycler/",
             "/recycler"
     );
+
+    private static final Map<String, FailedFileState> FAILED_CONTENT_CACHE = new ConcurrentHashMap<>();
+
+    private static class FailedFileState {
+        final long size;
+        final long mtime;
+
+        FailedFileState(long size, long mtime) {
+            this.size = size;
+            this.mtime = mtime;
+        }
+    }
 
     /** Tika 解析器（自动探测） */
     private final AutoDetectParser tikaParser = new AutoDetectParser();
@@ -119,7 +133,10 @@ public class LuceneIndexer implements AutoCloseable {
                 deletePath(file);
                 return;
             }
-            if (isExcluded(file)) return;
+            if (isExcluded(file)) {
+                deletePath(file);
+                return;
+            }
 
             BasicFileAttributes attrs = Files.readAttributes(file, BasicFileAttributes.class);
             if (attrs.isDirectory()) {
@@ -292,8 +309,8 @@ public class LuceneIndexer implements AutoCloseable {
             String mime = null;
             String content = "";
             try {
-                if (shouldParseContent(file, name, attrs.size())) {
-                    content = extractTextReadOnly(file);
+                if (shouldParseContent(file, name, attrs.size()) && !shouldSkipContentExtraction(file, attrs)) {
+                    content = extractTextReadOnly(file, attrs);
                 }
                 mime = Files.probeContentType(file);
             } catch (Throwable e) {
@@ -324,6 +341,11 @@ public class LuceneIndexer implements AutoCloseable {
             for (String hint : DEFAULT_EXCLUDED_HINTS) {
                 if (lower.contains(hint)) return true;
             }
+            String name = p.getFileName() == null ? "" : p.getFileName().toString();
+            String lowerName = name.toLowerCase(Locale.ROOT);
+            if (lowerName.startsWith("~$") || lowerName.startsWith("~") || lowerName.endsWith(".tmp") || lowerName.endsWith(".temp")) {
+                return true;
+            }
             if (settings.excludeGlob == null) return false;
             for (String g : settings.excludeGlob) {
                 try {
@@ -347,7 +369,7 @@ public class LuceneIndexer implements AutoCloseable {
         return (i > 0) ? name.substring(i + 1).toLowerCase(Locale.ROOT) : "";
     }
 
-    private String extractTextReadOnly(Path file) {
+    private String extractTextReadOnly(Path file, BasicFileAttributes attrs) {
         ExecutorService es = Executors.newSingleThreadExecutor(r -> {
             Thread t = new Thread(r, "tika-extract");
             t.setDaemon(true);
@@ -358,22 +380,77 @@ public class LuceneIndexer implements AutoCloseable {
                 try (InputStream is = Files.newInputStream(file, StandardOpenOption.READ)) {
                     Metadata md = new Metadata();
                     md.set(org.apache.tika.metadata.TikaCoreProperties.RESOURCE_NAME_KEY, file.getFileName().toString());
-                    BodyContentHandler handler = new BodyContentHandler(MAX_CHARS);
+                    int maxChars = settings.maxExtractChars > 0 ? settings.maxExtractChars : DEFAULT_MAX_CHARS;
+                    BodyContentHandler handler = new BodyContentHandler(maxChars);
                     ParseContext ctx = new ParseContext();
-                    tikaParser.parse(is, handler, md, ctx);
-                    return handler.toString();
-                } catch (Throwable e) {
-                    log.warn("Tika parse failed for {}: {}", file, e.getMessage());
-                    return "";
+                    try {
+                        tikaParser.parse(is, handler, md, ctx);
+                        clearFailedExtraction(file);
+                        return handler.toString();
+                    } catch (Throwable e) {
+                        String msg = e.getMessage() == null ? "" : e.getMessage();
+                        if (isWriteLimitReached(msg)) {
+                            clearFailedExtraction(file);
+                            log.info("Tika extract truncated by maxExtractChars({}) for {}", maxChars, file);
+                            return handler.toString();
+                        }
+                        if (isSevereExtractionError(msg)) {
+                            rememberFailedExtraction(file, attrs);
+                        }
+                        log.warn("Tika parse failed for {}: {}", file, msg);
+                        return "";
+                    }
                 }
             });
             return fut.get(settings.parseTimeoutSec, TimeUnit.SECONDS);
         } catch (Throwable t) {
             log.warn("Extract text timeout or error: {}, exception: {}", file, t.getMessage());
+            rememberFailedExtraction(file, attrs);
             return "";
         } finally {
             es.shutdownNow();
         }
+    }
+
+    private boolean shouldSkipContentExtraction(Path file, BasicFileAttributes attrs) {
+        String key = toPathKey(file);
+        FailedFileState failed = FAILED_CONTENT_CACHE.get(key);
+        if (failed == null) {
+            return false;
+        }
+        long size = attrs.size();
+        long mtime = attrs.lastModifiedTime().toMillis();
+        return failed.size == size && failed.mtime == mtime;
+    }
+
+    private void rememberFailedExtraction(Path file, BasicFileAttributes attrs) {
+        if (attrs == null) {
+            return;
+        }
+        if (FAILED_CONTENT_CACHE.size() > MAX_ERROR_CACHE_SIZE) {
+            FAILED_CONTENT_CACHE.clear();
+        }
+        FAILED_CONTENT_CACHE.put(toPathKey(file), new FailedFileState(attrs.size(), attrs.lastModifiedTime().toMillis()));
+    }
+
+    private void clearFailedExtraction(Path file) {
+        FAILED_CONTENT_CACHE.remove(toPathKey(file));
+    }
+
+    private String toPathKey(Path file) {
+        return Utils.normalizeForIndex(file);
+    }
+
+    private boolean isWriteLimitReached(String msg) {
+        String lower = msg.toLowerCase(Locale.ROOT);
+        return lower.contains("limit has been reached") || lower.contains("more than") && lower.contains("characters");
+    }
+
+    private boolean isSevereExtractionError(String msg) {
+        if (msg == null || msg.isEmpty()) {
+            return true;
+        }
+        return !isWriteLimitReached(msg);
     }
 
     private boolean shouldParseContent(Path file, String name, long sizeBytes) {
