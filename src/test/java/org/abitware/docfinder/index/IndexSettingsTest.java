@@ -37,4 +37,10 @@ class IndexSettingsTest {
         IndexSettings s = new IndexSettings();
         assertEquals(5, s.previewTimeoutSec);
     }
+
+    @Test
+    void shouldHaveDefaultMaxExtractChars() {
+        IndexSettings s = new IndexSettings();
+        assertEquals(1_000_000, s.maxExtractChars);
+    }
 }

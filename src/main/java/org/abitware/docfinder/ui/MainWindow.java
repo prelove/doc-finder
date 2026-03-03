@@ -94,7 +94,7 @@ public class MainWindow extends JFrame implements MenuBarPanel.MenuListener {
 	private JSplitPane split;
 
 	// Bottom: status bar
-	private final JLabel statusLabel = new JLabel("Ready");
+	private final JLabel statusLabel = new JLabel("Search index is initializing...");
 	private final JLabel progressLabel = new JLabel(" ");
 	private final JProgressBar progressBar = new JProgressBar();
 	private final JToggleButton previewToggle = new JToggleButton("Preview");
@@ -1411,6 +1411,7 @@ public class MainWindow extends JFrame implements MenuBarPanel.MenuListener {
 		JSpinner maxMb = new JSpinner(new SpinnerNumberModel((int) s.maxFileMB, 1, 1024, 1));
 		JSpinner timeout = new JSpinner(new SpinnerNumberModel(s.parseTimeoutSec, 1, 120, 1));
 		JSpinner previewTimeout = new JSpinner(new SpinnerNumberModel(s.previewTimeoutSec, 1, 60, 1));
+		JSpinner maxExtractChars = new JSpinner(new SpinnerNumberModel(s.maxExtractChars, 100000, 20000000, 100000));
 		JTextField include = new JTextField(String.join(",", s.includeExt));
 		JTextArea exclude = new JTextArea(String.join(";", s.excludeGlob));
 		JTextField indexDirField = new JTextField(cm.getIndexDir().toString());
@@ -1435,6 +1436,7 @@ public class MainWindow extends JFrame implements MenuBarPanel.MenuListener {
 		JLabel maxHint = buildHintLabel("Files larger than this are skipped for content parsing.");
 		JLabel timeoutHint = buildHintLabel("Per-file parsing timeout (seconds).");
 		JLabel previewTimeoutHint = buildHintLabel("Preview pane parsing timeout (seconds).");
+		JLabel maxExtractHint = buildHintLabel("Maximum characters extracted per file (index.maxExtractChars). Raise to 2000000+ for large text/code files.");
 		JLabel includeHint = buildHintLabel("Comma-separated list of extensions to parse with full content extraction.");
 		JLabel excludeHint = buildHintLabel("Semicolon-separated glob patterns to skip during indexing.");
 		JLabel indexDirHint = buildHintLabel("Default is ./.docfinder/index (next to app). You can move it to shared/network folders.");
@@ -1495,6 +1497,18 @@ public class MainWindow extends JFrame implements MenuBarPanel.MenuListener {
 		c.gridwidth = 1;
 		c.gridx = 0;
 		c.gridy = r;
+		p.add(new JLabel("Max extract chars:"), c);
+		c.gridx = 1;
+		p.add(maxExtractChars, c);
+		r++;
+		c.gridx = 0;
+		c.gridy = r;
+		c.gridwidth = 2;
+		p.add(maxExtractHint, c);
+		r++;
+		c.gridwidth = 1;
+		c.gridx = 0;
+		c.gridy = r;
 		p.add(new JLabel("Include extensions (comma):"), c);
 		c.gridx = 1;
 		p.add(include, c);
@@ -1523,6 +1537,7 @@ public class MainWindow extends JFrame implements MenuBarPanel.MenuListener {
 			s.maxFileMB = ((Number) maxMb.getValue()).longValue();
 			s.parseTimeoutSec = ((Number) timeout.getValue()).intValue();
 			s.previewTimeoutSec = ((Number) previewTimeout.getValue()).intValue();
+			s.maxExtractChars = ((Number) maxExtractChars.getValue()).intValue();
 			s.includeExt = new java.util.ArrayList<>(
 					FilterState.parseExts(include.getText()));
 			s.excludeGlob = java.util.Arrays.asList(exclude.getText().split(";"));
@@ -1683,7 +1698,7 @@ public class MainWindow extends JFrame implements MenuBarPanel.MenuListener {
 
 		if (searchService == null) {
 
-			statusLabel.setText("Search service unavailable.");
+			statusLabel.setText("Search index is still initializing, please retry in a moment.");
 
 			return;
 
@@ -2446,6 +2461,11 @@ public class MainWindow extends JFrame implements MenuBarPanel.MenuListener {
 			this.searchService.close(); // Close the old service
 		}
 		this.searchService = newSvc;
+		if (newSvc == null) {
+			statusLabel.setText("Search index is initializing...");
+		} else {
+			statusLabel.setText("Ready");
+		}
 	}
 
 	/** Called by background watcher/poller after commit; notifies search service to refresh NRT reader */

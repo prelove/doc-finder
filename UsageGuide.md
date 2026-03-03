@@ -72,8 +72,8 @@ _Local file name & content search. Fast, read‑only, and multilingual._
 
 - **Index All Sources**：对所有源进行索引/更新。
 - **Rebuild Index (Full)**：清空并重建（字段结构变更后建议执行一次）。
-- **Indexing Settings…**：调整解析上限、超时和 include/exclude 规则。
-- **Read‑only parsing**（只读解析）：使用 Apache Tika，带超时与大小上限；文本类文件通过扩展名、MIME 与启发式判定。
+- **Indexing Settings…**：调整解析上限、超时和 include/exclude 规则（含 `maxExtractChars` 与 `textMaxBytes`）。
+- **Read‑only parsing**（只读解析）：使用 Apache Tika，带超时与大小上限；文本类文件通过扩展名、MIME 与启发式判定，未知扩展名但可识别为文本也会尝试索引。
 
 > 文本判定：首 4KB 无 NUL 且可打印 ASCII 比例高（≥0.85）。
 
@@ -144,6 +144,12 @@ _Local file name & content search. Fast, read‑only, and multilingual._
 
 **Q: 支持哪些文件类型？**
 > 常见文档（pdf/docx/xlsx/pptx/html/txt/markdown 等）与大量文本类（json/yaml/xml/java/go/rs/py/js 等）。可通过设置扩展 allowlist/文本类判定扩展。
+
+**Q: Office（Excel/Word/PPT）里的文本框内容能被抽取吗？**
+> 一般情况下 Tika/POI 会尽力抽取工作表/正文及部分形状文本（best effort），但复杂模板、兼容模式对象或非常规绘图结构可能存在漏提取。
+
+**Q: 日志里出现 `XSSFDrawing` / `DataFormatter` WARN，是否影响检索？**
+> 这类日志大多是 POI 对特殊格式的非致命提示（例如旧日期值、AlternateContent 形状），通常不影响读索引流程；当前已在日志层降噪处理。
 
 **Q: 如何加速 `name:*.ext`？**
 > 已内置 `ext` 过滤优化，确保通配后缀能快速命中。
