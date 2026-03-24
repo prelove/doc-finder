@@ -19,6 +19,7 @@ public class MenuBarPanel extends JMenuBar {
     private JCheckBoxMenuItem netPollToggle;
     private JCheckBoxMenuItem webServerToggle;
     private JMenuItem openWebItem;
+    private JCheckBoxMenuItem showScoreToggle;
 
     public interface MenuListener {
         void onManageSources();
@@ -49,10 +50,14 @@ public class MenuBarPanel extends JMenuBar {
 
         /** Called when the user clicks "Open Web Interface…". */
         void onOpenWebInterface();
+
+        /** Called when the user toggles the Score column visibility. */
+        void onToggleScoreColumn(boolean visible);
     }
 
     public MenuBarPanel() {
         buildFileMenu();
+        buildViewMenu();
         buildThemeMenu();
         buildHelpMenu();
     }
@@ -160,6 +165,20 @@ public class MenuBarPanel extends JMenuBar {
         add(file);
     }
 
+    private void buildViewMenu() {
+        JMenu view = new JMenu("View");
+
+        showScoreToggle = new JCheckBoxMenuItem("Show Score Column");
+        showScoreToggle.setToolTipText("Show or hide the Lucene relevance score column in results");
+        showScoreToggle.setSelected(false); // default hidden; caller sets correct state
+        showScoreToggle.addActionListener(e -> {
+            if (menuListener != null) menuListener.onToggleScoreColumn(showScoreToggle.isSelected());
+        });
+        view.add(showScoreToggle);
+
+        add(view);
+    }
+
     private void buildThemeMenu() {
         add(org.abitware.docfinder.ui.ThemeUtil.buildThemeMenu());
     }
@@ -214,5 +233,10 @@ public class MenuBarPanel extends JMenuBar {
     /** Returns the "Open Web Interface…" menu item so callers can enable/disable it. */
     public JMenuItem getOpenWebItem() {
         return openWebItem;
+    }
+
+    /** Returns the Show Score Column toggle so callers can read/set its state. */
+    public JCheckBoxMenuItem getShowScoreToggle() {
+        return showScoreToggle;
     }
 }

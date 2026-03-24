@@ -54,6 +54,11 @@ public class MainWindow extends JFrame implements MenuBarPanel.MenuListener {
 	private javax.swing.JCheckBoxMenuItem webServerToggle;
 	private javax.swing.JMenuItem openWebItem;
 
+	// Score column toggle
+	private javax.swing.JCheckBoxMenuItem showScoreToggle;
+	/** Index of the Score column in the DefaultTableModel (fixed at 2). */
+	private static final int SCORE_COL = 2;
+
 	// ========= Fields =========
 	private SearchService searchService;
 
@@ -77,7 +82,7 @@ public class MainWindow extends JFrame implements MenuBarPanel.MenuListener {
 
 	// Center: results + preview
 	private final DefaultTableModel model = new DefaultTableModel(
-			new Object[] { "Name", "Path", "Size", "Created", "Accessed", "Match" }, 0) {
+			new Object[] { "Name", "Path", "Score", "Size", "Created", "Accessed", "Match" }, 0) {
 		@Override
 		public boolean isCellEditable(int r, int c) {
 			return false;
@@ -86,6 +91,9 @@ public class MainWindow extends JFrame implements MenuBarPanel.MenuListener {
 		@Override
 		public Class<?> getColumnClass(int columnIndex) {
 			if (columnIndex == 2) {
+				return Float.class;
+			}
+			if (columnIndex == 3) {
 				return Long.class;
 			}
 			return String.class;
@@ -162,10 +170,15 @@ public class MainWindow extends JFrame implements MenuBarPanel.MenuListener {
 		this.netPollToggle = menuBar.getNetPollToggle();
 		this.webServerToggle = menuBar.getWebServerToggle();
 		this.openWebItem = menuBar.getOpenWebItem();
+		this.showScoreToggle = menuBar.getShowScoreToggle();
 
 		// Restore web server toggle state from config
 		org.abitware.docfinder.index.ConfigManager cfgInit = new org.abitware.docfinder.index.ConfigManager();
 		if (webServerToggle != null) webServerToggle.setSelected(cfgInit.isWebEnabled());
+		// Restore score column visibility from config (default hidden)
+		boolean showScore = cfgInit.isShowScoreColumn();
+		if (showScoreToggle != null) showScoreToggle.setSelected(showScore);
+		setScoreColumnVisible(showScore);
 
 		// 5) Right-click menu, shortcuts, table selection listener
 		installTablePopupActions(); // Right-click: Open / Reveal / Copy
@@ -327,10 +340,24 @@ public class MainWindow extends JFrame implements MenuBarPanel.MenuListener {
 
 		resultTable.getColumnModel().getColumn(0).setPreferredWidth(240); // Name
 		resultTable.getColumnModel().getColumn(1).setPreferredWidth(480); // Path
-		resultTable.getColumnModel().getColumn(2).setPreferredWidth(90);  // Size ✅
-		resultTable.getColumnModel().getColumn(3).setPreferredWidth(130); // Created
-		resultTable.getColumnModel().getColumn(4).setPreferredWidth(130); // Accessed
-		resultTable.getColumnModel().getColumn(5).setPreferredWidth(110); // Match
+		resultTable.getColumnModel().getColumn(2).setPreferredWidth(70);  // Score
+		resultTable.getColumnModel().getColumn(3).setPreferredWidth(90);  // Size
+		resultTable.getColumnModel().getColumn(4).setPreferredWidth(130); // Created
+		resultTable.getColumnModel().getColumn(5).setPreferredWidth(130); // Accessed
+		resultTable.getColumnModel().getColumn(6).setPreferredWidth(110); // Match
+
+		javax.swing.table.DefaultTableCellRenderer scoreRenderer = new javax.swing.table.DefaultTableCellRenderer() {
+			@Override
+			public void setValue(Object value) {
+				if (value instanceof Number) {
+					super.setValue(String.format("%.3f", ((Number) value).floatValue()));
+				} else {
+					super.setValue(value);
+				}
+			}
+		};
+		scoreRenderer.setHorizontalAlignment(javax.swing.SwingConstants.RIGHT);
+		resultTable.getColumnModel().getColumn(2).setCellRenderer(scoreRenderer);
 
 		javax.swing.table.DefaultTableCellRenderer sizeRenderer = new javax.swing.table.DefaultTableCellRenderer() {
 			@Override
@@ -344,7 +371,7 @@ public class MainWindow extends JFrame implements MenuBarPanel.MenuListener {
 			}
 		};
 		sizeRenderer.setHorizontalAlignment(javax.swing.SwingConstants.RIGHT);
-		resultTable.getColumnModel().getColumn(2).setCellRenderer(sizeRenderer);
+		resultTable.getColumnModel().getColumn(3).setCellRenderer(sizeRenderer);
 
 		JScrollPane center = new JScrollPane(resultTable);
 
@@ -423,6 +450,7 @@ public class MainWindow extends JFrame implements MenuBarPanel.MenuListener {
 		queryBox.setEnabled(enabled);
 		scopeBox.setEnabled(enabled);
 		matchModeBox.setEnabled(enabled);
+		if (webServerToggle != null) webServerToggle.setEnabled(enabled);
 	}
 
 	private JLabel buildHintLabel(String text) {
@@ -900,7 +928,7 @@ public class MainWindow extends JFrame implements MenuBarPanel.MenuListener {
 					return "(" + reason + ")";
 				}
 
-				String q = (lastQuery == null) ? "" : lastQuery.trim();
+				String q = (currentQuery == null) ? "" : currentQuery.trim();
 				String[] terms = tokenizeForHighlight(q);
 				String snippet = makeSnippet(text, terms, 300);
 				String html = toHtml(snippet, terms);
@@ -1782,7 +1810,7 @@ public class MainWindow extends JFrame implements MenuBarPanel.MenuListener {
 
 		for (SearchResult r : list) {
 
-			model.addRow(new Object[] { r.name, r.path, Long.valueOf(r.sizeBytes),
+			model.addRow(new Object[] { r.name, r.path, r.score, Long.valueOf(r.sizeBytes),
 
 				fmtTime(r.ctime), fmtTime(r.atime),
 
@@ -1992,6 +2020,32 @@ public class MainWindow extends JFrame implements MenuBarPanel.MenuListener {
 		rowPopup.addSeparator();
 		rowPopup.add(copyMenu);
 
+		// Copy Web Link (only enabled when web server is running)
+		JMenuItem copyWebLink = new JMenuItem("Copy Web Link");
+		copyWebLink.setToolTipText("Copy a shareable web preview link (requires web server to be running)");
+		copyWebLink.addActionListener(e -> {
+			RowSel s = getSelectedRow();
+			if (s == null) return;
+			if (webServer == null || !webServer.isRunning()) {
+				JOptionPane.showMessageDialog(this,
+						"Web server is not running.\nEnable it via File → Enable Web Server first.",
+						"Copy Web Link", JOptionPane.INFORMATION_MESSAGE);
+				return;
+			}
+			String link = webServer.getBaseUrl() + "/?preview=" + java.net.URLEncoder.encode(s.path, java.nio.charset.StandardCharsets.UTF_8);
+			setClipboard(link);
+			statusLabel.setText("Web link copied: " + link);
+		});
+		rowPopup.add(copyWebLink);
+		// Dynamically enable/disable copyWebLink based on web server state when the popup opens
+		rowPopup.addPopupMenuListener(new javax.swing.event.PopupMenuListener() {
+			@Override public void popupMenuWillBecomeVisible(javax.swing.event.PopupMenuEvent ev) {
+				copyWebLink.setEnabled(webServer != null && webServer.isRunning());
+			}
+			@Override public void popupMenuWillBecomeInvisible(javax.swing.event.PopupMenuEvent ev) {}
+			@Override public void popupMenuCanceled(javax.swing.event.PopupMenuEvent ev) {}
+		});
+
         // 选择程序并记住
 		chooseProg.addActionListener(e -> {
 			RowSel s = getSelectedRow();
@@ -2160,7 +2214,7 @@ public class MainWindow extends JFrame implements MenuBarPanel.MenuListener {
 				List<String> cells = new java.util.ArrayList<>();
 				for (int c = 0; c < cols; c++) {
 					Object val = resultTable.getValueAt(r, c);
-					if (c == 2 && val instanceof Number) {
+					if (c == 3 && val instanceof Number) {
 						cells.add(csvQuote(fmtSize(((Number) val).longValue())));
 					} else {
 						cells.add(csvQuote(val == null ? "" : val.toString()));
@@ -2417,6 +2471,26 @@ public class MainWindow extends JFrame implements MenuBarPanel.MenuListener {
     @Override
     public void onOpenWebInterface() {
         openWebInterface();
+    }
+
+    @Override
+    public void onToggleScoreColumn(boolean visible) {
+        setScoreColumnVisible(visible);
+        new org.abitware.docfinder.index.ConfigManager().setShowScoreColumn(visible);
+    }
+
+    /** Shows or hides the Score column at index SCORE_COL by setting its min/max/preferred width. */
+    private void setScoreColumnVisible(boolean visible) {
+        javax.swing.table.TableColumn col = resultTable.getColumnModel().getColumn(SCORE_COL);
+        if (visible) {
+            col.setMinWidth(15);
+            col.setMaxWidth(Integer.MAX_VALUE);
+            col.setPreferredWidth(70);
+        } else {
+            col.setMinWidth(0);
+            col.setMaxWidth(0);
+            col.setPreferredWidth(0);
+        }
     }
 
     /**

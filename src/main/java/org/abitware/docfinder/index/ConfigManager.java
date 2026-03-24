@@ -183,5 +183,15 @@ public class ConfigManager {
 	    saveAll(p);
 	}
 
+	public boolean isShowScoreColumn() {
+	    return Boolean.parseBoolean(loadAll().getProperty("ui.showScoreColumn", "false"));
+	}
+
+	public void setShowScoreColumn(boolean show) {
+	    java.util.Properties p = loadAll();
+	    p.setProperty("ui.showScoreColumn", String.valueOf(show));
+	    saveAll(p);
+	}
+
 	
 }

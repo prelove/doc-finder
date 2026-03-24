@@ -7,79 +7,167 @@
   <link rel="stylesheet" href="/web/jit-viewer.min.css"/>
   <style>
     *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
-    body { font-family: system-ui, -apple-system, sans-serif; background: #0f1117; color: #e2e8f0; min-height: 100vh; }
-    header { background: #1a1d2e; border-bottom: 1px solid #2d3748; padding: 12px 20px; display: flex; align-items: center; gap: 12px; }
-    header h1 { font-size: 1.2rem; font-weight: 700; color: #60a5fa; letter-spacing: 0.02em; }
-    header span.tag { font-size: 0.7rem; background: #2d3748; color: #94a3b8; border-radius: 4px; padding: 2px 6px; }
-    .search-bar { display: flex; gap: 8px; padding: 16px 20px; background: #13151f; border-bottom: 1px solid #2d3748; flex-wrap: wrap; }
-    .search-bar input[type=text] { flex: 1; min-width: 200px; padding: 8px 12px; border-radius: 6px; border: 1px solid #3d4a5c; background: #1e2333; color: #e2e8f0; font-size: 0.95rem; outline: none; }
-    .search-bar input[type=text]:focus { border-color: #60a5fa; }
-    .search-bar select { padding: 8px 10px; border-radius: 6px; border: 1px solid #3d4a5c; background: #1e2333; color: #e2e8f0; font-size: 0.85rem; cursor: pointer; }
+
+    /* ── CSS variables for theming ── */
+    :root {
+      --bg:       #0f1117;
+      --bg2:      #1a1d2e;
+      --bg3:      #13151f;
+      --border:   #2d3748;
+      --border2:  #1e2333;
+      --text:     #e2e8f0;
+      --text2:    #94a3b8;
+      --text3:    #64748b;
+      --accent:   #3b82f6;
+      --accent2:  #60a5fa;
+      --accent3:  #2563eb;
+      --hover:    #1e2840;
+      --sel:      #1e3a5f;
+      --input-bg: #1e2333;
+      --input-bd: #3d4a5c;
+      --btn-sec:  #374151;
+      --btn-sec2: #4b5563;
+      --name-col: #93c5fd;
+      --match-col:#6ee7b7;
+      --text-pre: #e2e8f0;
+      --pre-bg:   #0d1117;
+      --pre-bd:   #30363d;
+    }
+    body.light {
+      --bg:       #f8fafc;
+      --bg2:      #ffffff;
+      --bg3:      #f1f5f9;
+      --border:   #e2e8f0;
+      --border2:  #cbd5e1;
+      --text:     #1e293b;
+      --text2:    #475569;
+      --text3:    #94a3b8;
+      --accent:   #2563eb;
+      --accent2:  #1d4ed8;
+      --accent3:  #1e40af;
+      --hover:    #eff6ff;
+      --sel:      #dbeafe;
+      --input-bg: #ffffff;
+      --input-bd: #cbd5e1;
+      --btn-sec:  #e2e8f0;
+      --btn-sec2: #cbd5e1;
+      --name-col: #1d4ed8;
+      --match-col:#059669;
+      --text-pre: #1e293b;
+      --pre-bg:   #f8fafc;
+      --pre-bd:   #e2e8f0;
+    }
+
+    body { font-family: system-ui, -apple-system, sans-serif; background: var(--bg); color: var(--text); min-height: 100vh; }
+
+    /* ── Header ── */
+    #appHeader { background: var(--bg2); border-bottom: 1px solid var(--border); padding: 10px 16px; display: flex; align-items: center; gap: 10px; }
+    #appHeader h1 { font-size: 1.1rem; font-weight: 700; color: var(--accent2); letter-spacing: 0.02em; flex: 1; }
+    #appHeader span.tag { font-size: 0.68rem; background: var(--bg); color: var(--text2); border-radius: 4px; padding: 2px 6px; border: 1px solid var(--border); }
+    #collapseHeaderBtn { background: none; border: none; cursor: pointer; color: var(--text3); font-size: 0.8rem; padding: 4px 8px; border-radius: 4px; white-space: nowrap; }
+    #collapseHeaderBtn:hover { background: var(--bg); color: var(--text); }
+    #themeToggleBtn { background: none; border: none; cursor: pointer; color: var(--text2); font-size: 1rem; padding: 4px 8px; border-radius: 4px; }
+    #themeToggleBtn:hover { background: var(--bg); color: var(--text); }
+
+    /* ── Search bar ── */
+    .search-bar { display: flex; gap: 8px; padding: 12px 16px; background: var(--bg3); border-bottom: 1px solid var(--border); flex-wrap: wrap; align-items: center; }
+    .search-bar input[type=text] { flex: 1; min-width: 200px; padding: 7px 11px; border-radius: 6px; border: 1px solid var(--input-bd); background: var(--input-bg); color: var(--text); font-size: 0.92rem; outline: none; }
+    .search-bar input[type=text]:focus { border-color: var(--accent); }
+    .search-bar select { padding: 7px 9px; border-radius: 6px; border: 1px solid var(--input-bd); background: var(--input-bg); color: var(--text); font-size: 0.82rem; cursor: pointer; outline: none; }
     .search-bar input[type=text]#extInput { min-width: 0; flex: 0 0 110px; }
-    .search-bar button { padding: 8px 18px; border-radius: 6px; border: none; background: #3b82f6; color: #fff; font-size: 0.9rem; font-weight: 600; cursor: pointer; white-space: nowrap; }
-    .search-bar button:hover { background: #2563eb; }
-    .main { display: flex; height: calc(100vh - 110px); overflow: hidden; }
-    .results-pane { flex: 1; overflow-y: auto; }
-    .status-bar { padding: 6px 20px; font-size: 0.78rem; color: #64748b; background: #0f1117; border-bottom: 1px solid #1e2333; min-height: 28px; }
+    .search-bar button { padding: 7px 16px; border-radius: 6px; border: none; background: var(--accent); color: #fff; font-size: 0.88rem; font-weight: 600; cursor: pointer; white-space: nowrap; }
+    .search-bar button:hover { background: var(--accent3); }
+
+    /* ── Status bar ── */
+    .status-bar { padding: 5px 16px; font-size: 0.76rem; color: var(--text3); background: var(--bg); border-bottom: 1px solid var(--border2); min-height: 26px; }
+
+    /* ── Main: resizable split ── */
+    .main { display: flex; height: calc(100vh - var(--main-offset, 110px)); overflow: hidden; }
+    .results-pane { flex: 1; overflow-y: auto; min-width: 0; }
+    .resize-handle { width: 6px; cursor: col-resize; background: var(--border); flex-shrink: 0; transition: background 0.15s; }
+    .resize-handle:hover, .resize-handle.dragging { background: var(--accent); }
+    .preview-pane { width: 420px; min-width: 180px; max-width: 80vw; background: var(--bg3); display: flex; flex-direction: column; overflow: hidden; flex-shrink: 0; }
+
+    /* ── Table ── */
     table { width: 100%; border-collapse: collapse; font-size: 0.82rem; }
-    thead th { position: sticky; top: 0; background: #1a1d2e; padding: 8px 12px; text-align: left; font-weight: 600; color: #94a3b8; border-bottom: 1px solid #2d3748; white-space: nowrap; cursor: pointer; user-select: none; }
-    thead th:hover { color: #e2e8f0; }
-    tbody tr { border-bottom: 1px solid #1a1d2e; cursor: pointer; transition: background 0.1s; }
-    tbody tr:hover { background: #1e2840; }
-    tbody tr.selected { background: #1e3a5f; }
+    thead th { position: sticky; top: 0; background: var(--bg2); padding: 8px 12px; text-align: left; font-weight: 600; color: var(--text2); border-bottom: 1px solid var(--border); white-space: nowrap; cursor: pointer; user-select: none; }
+    thead th:hover { color: var(--text); }
+    tbody tr { border-bottom: 1px solid var(--border2); cursor: pointer; transition: background 0.1s; }
+    tbody tr:hover { background: var(--hover); }
+    tbody tr.selected { background: var(--sel); }
     td { padding: 7px 12px; vertical-align: middle; max-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
-    td.name { color: #93c5fd; font-weight: 500; }
-    td.path { color: #64748b; }
-    td.match { color: #6ee7b7; font-size: 0.75rem; }
-    td.score { color: #94a3b8; font-size: 0.78rem; }
-    td.size { color: #94a3b8; text-align: right; }
-    td.actions { width: 80px; text-align: center; white-space: nowrap; }
-    .btn-icon { background: none; border: none; cursor: pointer; padding: 2px 5px; border-radius: 4px; font-size: 0.85rem; color: #94a3b8; transition: color 0.15s, background 0.15s; }
-    .btn-icon:hover { color: #e2e8f0; background: #2d3748; }
-    .preview-pane { width: 440px; min-width: 220px; border-left: 1px solid #2d3748; background: #13151f; display: flex; flex-direction: column; overflow: hidden; }
-    .preview-header { padding: 8px 14px; font-size: 0.78rem; color: #64748b; border-bottom: 1px solid #1e2333; font-weight: 600; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; display: flex; align-items: center; gap: 6px; }
+    td.name { color: var(--name-col); font-weight: 500; }
+    td.path { color: var(--text3); }
+    td.match { color: var(--match-col); font-size: 0.74rem; }
+    td.score { color: var(--text2); font-size: 0.76rem; text-align: right; }
+    td.size { color: var(--text2); text-align: right; }
+    td.actions { width: 70px; text-align: center; white-space: nowrap; }
+    .btn-icon { background: none; border: none; cursor: pointer; padding: 2px 5px; border-radius: 4px; font-size: 0.85rem; color: var(--text2); transition: color 0.15s, background 0.15s; }
+    .btn-icon:hover { color: var(--text); background: var(--btn-sec); }
+
+    /* ── Preview pane ── */
+    .preview-header { padding: 7px 12px; font-size: 0.76rem; color: var(--text2); border-bottom: 1px solid var(--border2); font-weight: 600; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; display: flex; align-items: center; gap: 6px; background: var(--bg2); }
     .preview-header span { flex: 1; overflow: hidden; text-overflow: ellipsis; }
     .preview-body { flex: 1; overflow: hidden; position: relative; }
     #viewerContainer { width: 100%; height: 100%; }
-    .preview-placeholder { padding: 40px 20px; text-align: center; color: #4b5563; font-size: 0.85rem; }
-    .empty-state { text-align: center; padding: 60px 20px; color: #4b5563; }
+    .preview-placeholder { padding: 40px 16px; text-align: center; color: var(--text3); font-size: 0.85rem; }
+    /* Text viewer */
+    #textViewer { display: none; width: 100%; height: 100%; overflow: auto; padding: 12px; background: var(--pre-bg); }
+    #textViewer pre { font-family: 'Cascadia Code','Consolas','Fira Mono','Monaco',monospace; font-size: 0.78rem; line-height: 1.5; color: var(--text-pre); white-space: pre-wrap; word-break: break-all; border: none; background: none; margin: 0; padding: 0; }
+
+    /* ── Loading overlay ── */
+    #previewLoading { display: none; position: absolute; inset: 0; background: rgba(0,0,0,0.55); z-index: 50; align-items: center; justify-content: center; flex-direction: column; gap: 12px; }
+    #previewLoading.active { display: flex; }
+    #previewLoading .ld-spinner { width: 36px; height: 36px; border: 4px solid rgba(255,255,255,0.2); border-top-color: var(--accent2); border-radius: 50%; animation: spin 0.8s linear infinite; }
+    #previewLoading .ld-text { color: #e2e8f0; font-size: 0.82rem; }
+    #previewLoading .ld-cancel { margin-top: 4px; background: rgba(255,255,255,0.15); border: 1px solid rgba(255,255,255,0.3); color: #e2e8f0; border-radius: 5px; padding: 5px 14px; font-size: 0.8rem; cursor: pointer; }
+    #previewLoading .ld-cancel:hover { background: rgba(255,255,255,0.25); }
+
+    /* ── Misc ── */
+    .empty-state { text-align: center; padding: 60px 20px; color: var(--text3); }
     .empty-state .icon { font-size: 2.5rem; margin-bottom: 10px; }
     .empty-state p { font-size: 0.9rem; }
     .dir-icon::before { content: "📁 "; }
     .file-icon::before { content: "📄 "; }
     ::-webkit-scrollbar { width: 6px; height: 6px; }
     ::-webkit-scrollbar-track { background: transparent; }
-    ::-webkit-scrollbar-thumb { background: #374151; border-radius: 3px; }
-    .spinner { display: inline-block; width: 14px; height: 14px; border: 2px solid #3d4a5c; border-top-color: #60a5fa; border-radius: 50%; animation: spin 0.7s linear infinite; vertical-align: middle; margin-right: 6px; }
+    ::-webkit-scrollbar-thumb { background: var(--btn-sec); border-radius: 3px; }
+    .spinner { display: inline-block; width: 13px; height: 13px; border: 2px solid var(--input-bd); border-top-color: var(--accent2); border-radius: 50%; animation: spin 0.7s linear infinite; vertical-align: middle; margin-right: 6px; }
     @keyframes spin { to { transform: rotate(360deg); } }
+
+    /* ── Modal ── */
     .modal-overlay { display: none; position: fixed; inset: 0; background: rgba(0,0,0,0.65); z-index: 1000; align-items: center; justify-content: center; }
     .modal-overlay.active { display: flex; }
-    .modal { background: #1a1d2e; border: 1px solid #2d3748; border-radius: 10px; padding: 24px; min-width: 360px; max-width: 480px; width: 100%; box-shadow: 0 8px 32px rgba(0,0,0,0.5); }
-    .modal h2 { font-size: 1rem; font-weight: 700; color: #e2e8f0; margin-bottom: 16px; }
-    .modal-field { margin-bottom: 12px; }
-    .modal-field label { display: block; font-size: 0.78rem; color: #94a3b8; margin-bottom: 4px; }
-    .modal-field input, .modal-field select { width: 100%; padding: 8px 10px; border-radius: 6px; border: 1px solid #3d4a5c; background: #0f1117; color: #e2e8f0; font-size: 0.85rem; outline: none; }
-    .modal-field input:focus { border-color: #60a5fa; }
-    .modal-actions { display: flex; gap: 8px; justify-content: flex-end; margin-top: 16px; }
-    .modal-actions button { padding: 7px 16px; border-radius: 6px; border: none; font-size: 0.85rem; font-weight: 600; cursor: pointer; }
-    .btn-primary { background: #3b82f6; color: #fff; }
-    .btn-primary:hover { background: #2563eb; }
-    .btn-cancel { background: #374151; color: #e2e8f0; }
-    .btn-cancel:hover { background: #4b5563; }
-    .share-result { display: none; margin-top: 12px; padding: 10px; background: #0f1117; border-radius: 6px; border: 1px solid #2d3748; }
+    .modal { background: var(--bg2); border: 1px solid var(--border); border-radius: 10px; padding: 22px; min-width: 340px; max-width: 460px; width: 100%; box-shadow: 0 8px 32px rgba(0,0,0,0.4); }
+    .modal h2 { font-size: 0.98rem; font-weight: 700; color: var(--text); margin-bottom: 14px; }
+    .modal-field { margin-bottom: 11px; }
+    .modal-field label { display: block; font-size: 0.76rem; color: var(--text2); margin-bottom: 4px; }
+    .modal-field input, .modal-field select { width: 100%; padding: 7px 9px; border-radius: 6px; border: 1px solid var(--input-bd); background: var(--bg); color: var(--text); font-size: 0.83rem; outline: none; }
+    .modal-field input:focus { border-color: var(--accent); }
+    .modal-actions { display: flex; gap: 8px; justify-content: flex-end; margin-top: 14px; }
+    .modal-actions button { padding: 6px 14px; border-radius: 6px; border: none; font-size: 0.83rem; font-weight: 600; cursor: pointer; }
+    .btn-primary { background: var(--accent); color: #fff; }
+    .btn-primary:hover { background: var(--accent3); }
+    .btn-cancel { background: var(--btn-sec); color: var(--text); }
+    .btn-cancel:hover { background: var(--btn-sec2); }
+    .share-result { display: none; margin-top: 10px; padding: 9px; background: var(--bg); border-radius: 6px; border: 1px solid var(--border); }
     .share-result.active { display: block; }
     .share-url-row { display: flex; gap: 6px; align-items: center; }
-    .share-url-row input { flex: 1; font-size: 0.78rem; color: #93c5fd; background: transparent; border: none; outline: none; cursor: pointer; }
-    .share-url-row button { padding: 4px 10px; background: #374151; color: #e2e8f0; border: none; border-radius: 4px; font-size: 0.78rem; cursor: pointer; white-space: nowrap; }
-    .share-url-row button:hover { background: #4b5563; }
+    .share-url-row input { flex: 1; font-size: 0.76rem; color: var(--accent2); background: transparent; border: none; outline: none; cursor: pointer; }
+    .share-url-row button { padding: 4px 9px; background: var(--btn-sec); color: var(--text); border: none; border-radius: 4px; font-size: 0.76rem; cursor: pointer; white-space: nowrap; }
+    .share-url-row button:hover { background: var(--btn-sec2); }
   </style>
 </head>
 <body>
-<header>
+<!-- Header (collapsible) -->
+<div id="appHeader">
   <h1>&#x1F50D; DocFinder</h1>
   <span class="tag">Web Interface</span>
-</header>
+  <button id="themeToggleBtn" title="Toggle dark/light theme">&#x1F319;</button>
+  <button id="collapseHeaderBtn" title="Collapse header">&#x25B2; Collapse</button>
+</div>
 
+<!-- Search bar -->
 <div class="search-bar">
   <input type="text" id="queryInput" placeholder="Search files&hellip; (e.g. kubernetes, name:*.xlsx)" autofocus/>
   <select id="scopeSelect" title="Search scope">
@@ -92,7 +180,7 @@
     <option value="FUZZY">Fuzzy</option>
     <option value="EXACT">Exact</option>
   </select>
-  <input type="text" id="extInput" placeholder="ext: pdf,docx" title="Filter by extension (comma-separated)"/>
+  <input type="text" id="extInput" placeholder="ext: pdf,docx" title="Filter by extension"/>
   <select id="limitSelect" title="Result limit">
     <option value="50">50 results</option>
     <option value="100">100 results</option>
@@ -103,8 +191,9 @@
 
 <div class="status-bar" id="statusBar">Enter a query to search indexed files.</div>
 
-<div class="main">
-  <div class="results-pane">
+<!-- Main area: results + resizer + preview -->
+<div class="main" id="mainArea">
+  <div class="results-pane" id="resultsPane">
     <div id="emptyState" class="empty-state">
       <div class="icon">&#x1F5C2;</div>
       <p>Your search results will appear here.</p>
@@ -123,13 +212,25 @@
       <tbody id="resultsBody"></tbody>
     </table>
   </div>
-  <div class="preview-pane">
+
+  <!-- Drag handle -->
+  <div class="resize-handle" id="resizeHandle" title="Drag to resize"></div>
+
+  <!-- Preview pane -->
+  <div class="preview-pane" id="previewPane">
     <div class="preview-header">
       <span id="previewHeaderText">Preview</span>
       <button class="btn-icon" id="openTabBtn" title="Open in new tab" style="display:none">&#x2197;</button>
     </div>
-    <div class="preview-body">
+    <div class="preview-body" id="previewBody">
+      <!-- Loading overlay with cancel -->
+      <div id="previewLoading">
+        <div class="ld-spinner"></div>
+        <div class="ld-text" id="previewLoadingText">Loading preview…</div>
+        <button class="ld-cancel" id="previewCancelBtn">Cancel</button>
+      </div>
       <div id="viewerContainer" style="display:none;width:100%;height:100%;"></div>
+      <div id="textViewer"><pre id="textContent"></pre></div>
       <div id="previewPlaceholder" class="preview-placeholder">Select a result to preview.</div>
     </div>
   </div>
@@ -163,7 +264,7 @@
       <input type="number" id="shareMaxDownloads" value="0" min="0"/>
     </div>
     <div class="share-result" id="shareResult">
-      <div style="font-size:0.75rem;color:#94a3b8;margin-bottom:6px;">Share link created:</div>
+      <div style="font-size:0.74rem;color:var(--text2);margin-bottom:6px;">Share link created:</div>
       <div class="share-url-row">
         <input type="text" id="shareUrlInput" readonly/>
         <button id="copyLinkBtn">Copy</button>
@@ -182,35 +283,183 @@
 (function() {
   'use strict';
 
-  var queryInput   = document.getElementById('queryInput');
-  var scopeSelect  = document.getElementById('scopeSelect');
-  var modeSelect   = document.getElementById('modeSelect');
-  var extInput     = document.getElementById('extInput');
-  var limitSelect  = document.getElementById('limitSelect');
-  var searchBtn    = document.getElementById('searchBtn');
-  var statusBar    = document.getElementById('statusBar');
-  var emptyState   = document.getElementById('emptyState');
-  var resultsTable = document.getElementById('resultsTable');
-  var resultsBody  = document.getElementById('resultsBody');
+  // ── Theme ────────────────────────────────────────────────────────────────────
+  var THEME_KEY = 'docfinder-theme';
+  var themeToggleBtn = document.getElementById('themeToggleBtn');
+
+  function applyTheme(theme) {
+    if (theme === 'light') {
+      document.body.classList.add('light');
+      themeToggleBtn.textContent = '☀️';
+      themeToggleBtn.title = 'Switch to dark theme';
+    } else {
+      document.body.classList.remove('light');
+      themeToggleBtn.textContent = '🌙';
+      themeToggleBtn.title = 'Switch to light theme';
+    }
+    localStorage.setItem(THEME_KEY, theme);
+  }
+
+  themeToggleBtn.addEventListener('click', function() {
+    applyTheme(document.body.classList.contains('light') ? 'dark' : 'light');
+  });
+
+  // Restore saved theme
+  applyTheme(localStorage.getItem(THEME_KEY) || 'dark');
+
+  // ── Collapsible header ───────────────────────────────────────────────────────
+  var appHeader = document.getElementById('appHeader');
+  var collapseBtn = document.getElementById('collapseHeaderBtn');
+  var mainArea = document.getElementById('mainArea');
+  var HEADER_KEY = 'docfinder-header';
+  var headerCollapsed = localStorage.getItem(HEADER_KEY) === '1';
+
+  function updateHeaderState() {
+    if (headerCollapsed) {
+      appHeader.style.display = 'none';
+      collapseBtn.style.display = 'none';
+      // Show a small expand button in the search bar area
+      showExpandBtn(true);
+    } else {
+      appHeader.style.display = '';
+      collapseBtn.textContent = '▲ Collapse';
+      showExpandBtn(false);
+    }
+    localStorage.setItem(HEADER_KEY, headerCollapsed ? '1' : '0');
+  }
+
+  var expandHeaderBtn = null;
+  function showExpandBtn(show) {
+    if (show) {
+      if (!expandHeaderBtn) {
+        expandHeaderBtn = document.createElement('button');
+        expandHeaderBtn.textContent = '▼ DocFinder';
+        expandHeaderBtn.className = 'btn-icon';
+        expandHeaderBtn.style.cssText = 'position:fixed;top:4px;left:8px;z-index:100;font-size:0.75rem;padding:3px 8px;background:var(--bg2);border:1px solid var(--border);border-radius:4px;color:var(--text2);cursor:pointer;';
+        expandHeaderBtn.addEventListener('click', function() { headerCollapsed = false; updateHeaderState(); });
+        document.body.appendChild(expandHeaderBtn);
+      }
+      expandHeaderBtn.style.display = '';
+    } else if (expandHeaderBtn) {
+      expandHeaderBtn.style.display = 'none';
+    }
+  }
+
+  collapseBtn.addEventListener('click', function() {
+    headerCollapsed = true;
+    updateHeaderState();
+  });
+
+  updateHeaderState();
+
+  // ── Resizable split pane ─────────────────────────────────────────────────────
+  var resizeHandle = document.getElementById('resizeHandle');
+  var previewPane  = document.getElementById('previewPane');
+  var resultsPane  = document.getElementById('resultsPane');
+  var SPLIT_KEY    = 'docfinder-split';
+  var dragging     = false;
+  var startX, startW;
+
+  // Restore saved preview pane width
+  var savedW = parseInt(localStorage.getItem(SPLIT_KEY) || '420', 10);
+  if (savedW > 100 && savedW < window.innerWidth * 0.85) {
+    previewPane.style.width = savedW + 'px';
+  }
+
+  resizeHandle.addEventListener('mousedown', function(e) {
+    dragging = true;
+    startX = e.clientX;
+    startW = previewPane.offsetWidth;
+    resizeHandle.classList.add('dragging');
+    document.body.style.cursor = 'col-resize';
+    document.body.style.userSelect = 'none';
+  });
+
+  document.addEventListener('mousemove', function(e) {
+    if (!dragging) return;
+    var delta = startX - e.clientX;
+    var newW = Math.max(180, Math.min(window.innerWidth * 0.8, startW + delta));
+    previewPane.style.width = newW + 'px';
+  });
+
+  document.addEventListener('mouseup', function() {
+    if (!dragging) return;
+    dragging = false;
+    resizeHandle.classList.remove('dragging');
+    document.body.style.cursor = '';
+    document.body.style.userSelect = '';
+    localStorage.setItem(SPLIT_KEY, previewPane.offsetWidth);
+  });
+
+  // ── State ────────────────────────────────────────────────────────────────────
+  var queryInput        = document.getElementById('queryInput');
+  var scopeSelect       = document.getElementById('scopeSelect');
+  var modeSelect        = document.getElementById('modeSelect');
+  var extInput          = document.getElementById('extInput');
+  var limitSelect       = document.getElementById('limitSelect');
+  var searchBtn         = document.getElementById('searchBtn');
+  var statusBar         = document.getElementById('statusBar');
+  var emptyState        = document.getElementById('emptyState');
+  var resultsTable      = document.getElementById('resultsTable');
+  var resultsBody       = document.getElementById('resultsBody');
   var previewHeaderText = document.getElementById('previewHeaderText');
-  var openTabBtn   = document.getElementById('openTabBtn');
-  var viewerContainer  = document.getElementById('viewerContainer');
-  var previewPlaceholder = document.getElementById('previewPlaceholder');
+  var openTabBtn        = document.getElementById('openTabBtn');
+  var viewerContainer   = document.getElementById('viewerContainer');
+  var textViewer        = document.getElementById('textViewer');
+  var textContent       = document.getElementById('textContent');
+  var previewPlaceholder= document.getElementById('previewPlaceholder');
+  var previewLoading    = document.getElementById('previewLoading');
+  var previewLoadingText= document.getElementById('previewLoadingText');
+  var previewCancelBtn  = document.getElementById('previewCancelBtn');
 
-  var currentResults  = [];
-  var selectedIndex   = -1;
-  var searchToken     = 0;
-  var currentViewer   = null;
-  var currentFilePath = null;
+  var currentResults = [];
+  var selectedIndex  = -1;
+  var searchToken    = 0;
+  var currentViewer  = null;
+  var currentFilePath= null;
+  var previewAbort   = null;  // AbortController for current preview fetch
 
-  // ── jit-viewer ──────────────────────────────────────────────────────────────
+  // ── Text extension list (handled by inline text viewer) ─────────────────────
+  var TEXT_EXTS = ['txt','log','md','markdown','csv','tsv','json','jsonl','xml','yaml','yml',
+                   'toml','ini','cfg','conf','properties','sh','bash','zsh','bat','cmd','ps1',
+                   'py','pyw','js','ts','jsx','tsx','java','kt','go','rs','c','cpp','h','hpp',
+                   'cs','vb','rb','php','html','htm','css','scss','sass','less','sql','r',
+                   'gitignore','dockerfile','makefile','gradle','mvnw'];
+
+  function isTextExt(filename) {
+    if (!filename) return false;
+    var ext = filename.split('.').pop().toLowerCase();
+    return TEXT_EXTS.indexOf(ext) >= 0;
+  }
+
+  // ── Preview loading overlay ──────────────────────────────────────────────────
+  function showLoadingOverlay(msg) {
+    previewLoadingText.textContent = msg || 'Loading preview…';
+    previewLoading.classList.add('active');
+  }
+  function hideLoadingOverlay() {
+    previewLoading.classList.remove('active');
+  }
+  previewCancelBtn.addEventListener('click', function() {
+    if (previewAbort) { previewAbort.abort(); previewAbort = null; }
+    hideLoadingOverlay();
+    destroyViewer();
+    previewPlaceholder.textContent = 'Preview cancelled.';
+    previewPlaceholder.style.display = '';
+  });
+
+  // ── Viewer management ────────────────────────────────────────────────────────
   function destroyViewer() {
+    if (previewAbort) { previewAbort.abort(); previewAbort = null; }
+    hideLoadingOverlay();
     if (currentViewer) {
       try { currentViewer.destroy(); } catch(e) {}
       currentViewer = null;
     }
     viewerContainer.innerHTML = '';
     viewerContainer.style.display = 'none';
+    textViewer.style.display = 'none';
+    textContent.textContent = '';
     previewPlaceholder.style.display = '';
     openTabBtn.style.display = 'none';
     previewHeaderText.textContent = 'Preview';
@@ -222,27 +471,156 @@
     currentFilePath = filePath;
     previewHeaderText.textContent = fileName;
     openTabBtn.style.display = '';
-    viewerContainer.style.display = '';
+
+    // For known text types, use our own text viewer with charset detection
+    if (isTextExt(fileName)) {
+      loadTextViewer(filePath, fileName);
+      return;
+    }
+
+    showLoadingOverlay('Loading preview…');
     previewPlaceholder.style.display = 'none';
+    viewerContainer.style.display = '';
 
     var fileUrl = '/api/file?path=' + encodeURIComponent(filePath);
+    var ac = new AbortController();
+    previewAbort = ac;
+
     try {
       var viewer = JitViewer.createViewer({
         target: viewerContainer,
         file: fileUrl,
         filename: fileName,
-        theme: 'dark',
+        theme: document.body.classList.contains('light') ? 'default' : 'dark',
         toolbar: true,
         width: '100%',
         height: '100%',
+        onReady: function() { hideLoadingOverlay(); previewAbort = null; },
         onError: function(err) {
-          viewerContainer.innerHTML = '<div style="padding:20px;color:#ef4444;font-size:0.8rem;">Preview failed: ' + esc(String(err)) + '</div>';
+          hideLoadingOverlay();
+          previewAbort = null;
+          viewerContainer.innerHTML = '<div style="padding:16px;color:#ef4444;font-size:0.8rem;">Preview failed: ' + esc(String(err)) + '</div>';
         }
       });
       viewer.mount();
       currentViewer = viewer;
+      // Fallback: hide overlay after 30s if onReady never fires
+      var fallbackTimer = setTimeout(function() { hideLoadingOverlay(); }, 30000);
+      if (viewer && typeof viewer.on === 'function') {
+        viewer.on('ready', function() { clearTimeout(fallbackTimer); hideLoadingOverlay(); });
+      }
     } catch(e) {
-      viewerContainer.innerHTML = '<div style="padding:20px;color:#ef4444;font-size:0.8rem;">Viewer error: ' + esc(String(e)) + '</div>';
+      hideLoadingOverlay();
+      previewAbort = null;
+      viewerContainer.innerHTML = '<div style="padding:16px;color:#ef4444;font-size:0.8rem;">Viewer error: ' + esc(String(e)) + '</div>';
+    }
+  }
+
+  // ── Text viewer with charset detection ──────────────────────────────────────
+  function loadTextViewer(filePath, fileName) {
+    showLoadingOverlay('Loading text…');
+    previewPlaceholder.style.display = 'none';
+
+    var ac = new AbortController();
+    previewAbort = ac;
+
+    // Fetch as array buffer so we can detect encoding
+    fetch('/api/file?path=' + encodeURIComponent(filePath), { signal: ac.signal })
+      .then(function(resp) {
+        if (!resp.ok) throw new Error('HTTP ' + resp.status);
+        // Only read up to 512KB to avoid hanging the browser
+        return readLimitedBytes(resp, 512 * 1024);
+      })
+      .then(function(buffer) {
+        if (ac.signal.aborted) return;
+        var decoded = decodeBuffer(buffer);
+        hideLoadingOverlay();
+        previewAbort = null;
+        textContent.textContent = decoded;
+        textViewer.style.display = '';
+        previewPlaceholder.style.display = 'none';
+      })
+      .catch(function(err) {
+        if (err && err.name === 'AbortError') return;
+        hideLoadingOverlay();
+        previewAbort = null;
+        previewPlaceholder.textContent = 'Text preview failed: ' + (err ? err.message : 'unknown error');
+        previewPlaceholder.style.display = '';
+      });
+  }
+
+  // Read at most maxBytes from a Response, return ArrayBuffer
+  function readLimitedBytes(resp, maxBytes) {
+    if (!resp.body) {
+      return resp.arrayBuffer().then(function(buf) {
+        return buf.byteLength > maxBytes ? buf.slice(0, maxBytes) : buf;
+      });
+    }
+    var reader = resp.body.getReader();
+    var chunks = [];
+    var total = 0;
+    function pump() {
+      return reader.read().then(function(result) {
+        if (result.done) {
+          return concatBuffers(chunks);
+        }
+        var chunk = result.value;
+        var remaining = maxBytes - total;
+        if (chunk.length > remaining) {
+          chunks.push(chunk.slice(0, remaining));
+          reader.cancel();
+          return concatBuffers(chunks);
+        }
+        chunks.push(chunk);
+        total += chunk.length;
+        return pump();
+      });
+    }
+    return pump();
+  }
+
+  function concatBuffers(chunks) {
+    var total = chunks.reduce(function(s, c) { return s + c.length; }, 0);
+    var out = new Uint8Array(total);
+    var offset = 0;
+    chunks.forEach(function(c) { out.set(c, offset); offset += c.length; });
+    return out.buffer;
+  }
+
+  // Detect charset from BOM or content, then decode
+  function decodeBuffer(buffer) {
+    var bytes = new Uint8Array(buffer);
+
+    // BOM detection
+    if (bytes.length >= 3 && bytes[0] === 0xEF && bytes[1] === 0xBB && bytes[2] === 0xBF) {
+      return new TextDecoder('utf-8').decode(buffer.slice ? buffer.slice(3) : bytes.slice(3).buffer);
+    }
+    if (bytes.length >= 2 && bytes[0] === 0xFF && bytes[1] === 0xFE) {
+      return new TextDecoder('utf-16le').decode(buffer.slice ? buffer.slice(2) : bytes.slice(2).buffer);
+    }
+    if (bytes.length >= 2 && bytes[0] === 0xFE && bytes[1] === 0xFF) {
+      return new TextDecoder('utf-16be').decode(buffer.slice ? buffer.slice(2) : bytes.slice(2).buffer);
+    }
+
+    // Try UTF-8 first; if it fails (throws), fall back to windows-1252 (latin-1)
+    try {
+      var text = new TextDecoder('utf-8', { fatal: true }).decode(buffer);
+      return text;
+    } catch(e) { /* not valid UTF-8 */ }
+
+    // Attempt GBK for CJK files
+    try {
+      if (typeof TextDecoder !== 'undefined') {
+        var gbk = new TextDecoder('gbk', { fatal: true }).decode(buffer);
+        return gbk;
+      }
+    } catch(e) { /* not GBK */ }
+
+    // Final fallback: windows-1252
+    try {
+      return new TextDecoder('windows-1252').decode(buffer);
+    } catch(e) {
+      return new TextDecoder('iso-8859-1').decode(buffer);
     }
   }
 
@@ -270,7 +648,7 @@
     var ext   = extInput.value.trim();
     var limit = limitSelect.value;
 
-    statusBar.innerHTML = '<span class="spinner"></span>Searching...';
+    statusBar.innerHTML = '<span class="spinner"></span>Searching…';
     destroyViewer();
 
     var url = '/api/search?q=' + encodeURIComponent(q)
@@ -348,7 +726,7 @@
       loadViewer(r.path, r.name);
     } else {
       destroyViewer();
-      previewHeaderText.textContent = '&#x1F4C1; ' + r.name;
+      previewHeaderText.textContent = '\uD83D\uDCC1 ' + r.name;
       previewPlaceholder.textContent = '[Directory: ' + r.path + ']';
       previewPlaceholder.style.display = '';
     }
@@ -389,7 +767,7 @@
 
   shareCreate.addEventListener('click', function() {
     shareCreate.disabled = true;
-    shareCreate.textContent = 'Creating...';
+    shareCreate.textContent = 'Creating…';
     var body = 'path=' + encodeURIComponent(shareFilePath.value)
              + '&expiryHours=' + encodeURIComponent(shareExpiry.value)
              + '&password=' + encodeURIComponent(sharePassword.value)
@@ -415,13 +793,29 @@
 
   copyLinkBtn.addEventListener('click', function() {
     shareUrlInput.select();
-    try { document.execCommand('copy'); } catch(e) {}
+    try {
+      if (navigator.clipboard) { navigator.clipboard.writeText(shareUrlInput.value); }
+      else { document.execCommand('copy'); }
+    } catch(e) {}
     copyLinkBtn.textContent = 'Copied!';
     setTimeout(function() { copyLinkBtn.textContent = 'Copy'; }, 1500);
   });
   openShareBtn.addEventListener('click', function() {
     if (shareUrlInput.value) window.open(shareUrlInput.value, '_blank');
   });
+
+  // ── Handle ?preview= link from Java app ─────────────────────────────────────
+  (function() {
+    var params = new URLSearchParams(window.location.search);
+    var previewPath = params.get('preview');
+    if (previewPath) {
+      var name = previewPath.split(/[/\\]/).pop() || previewPath;
+      previewHeaderText.textContent = name;
+      openTabBtn.style.display = '';
+      currentFilePath = previewPath;
+      loadViewer(previewPath, name);
+    }
+  })();
 
   // ── Keyboard navigation ──────────────────────────────────────────────────────
   searchBtn.addEventListener('click', search);
