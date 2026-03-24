@@ -9,6 +9,7 @@ import java.awt.Toolkit;
 import java.awt.TrayIcon;
 import java.awt.event.KeyEvent;
 import java.beans.PropertyChangeListener;
+import java.io.UnsupportedEncodingException;
 import java.text.SimpleDateFormat;
 import java.util.Collections;
 import java.util.concurrent.ExecutorService;
@@ -2032,8 +2033,13 @@ public class MainWindow extends JFrame implements MenuBarPanel.MenuListener {
 						"Copy Web Link", JOptionPane.INFORMATION_MESSAGE);
 				return;
 			}
-			String link = webServer.getBaseUrl() + "/preview?path=" + java.net.URLEncoder.encode(s.path, java.nio.charset.StandardCharsets.UTF_8);
-			setClipboard(link);
+            String link = null;
+            try {
+                link = webServer.getBaseUrl() + "/preview?path=" + java.net.URLEncoder.encode(s.path, java.nio.charset.StandardCharsets.UTF_8.name());
+            } catch (UnsupportedEncodingException ex) {
+                throw new RuntimeException(ex);
+            }
+            setClipboard(link);
 			statusLabel.setText("Web link copied: " + link);
 		});
 		rowPopup.add(copyWebLink);
