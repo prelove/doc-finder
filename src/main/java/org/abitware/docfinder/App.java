@@ -17,6 +17,7 @@ import org.abitware.docfinder.ui.ThemeUtil;
 import org.abitware.docfinder.util.LegacyMigration;
 import org.abitware.docfinder.util.SingleInstance;
 import org.abitware.docfinder.web.WebServer;
+import org.abitware.docfinder.web.KkFileViewServer;
 
 import org.slf4j.Logger; // ADDED
 import org.slf4j.LoggerFactory; // ADDED
@@ -44,11 +45,35 @@ public class App {
             }, "docfinder-migration").start();
         }
 
-        // 4) Optionally start web interface (before EDT to get config early)
+        // 4) Optionally start kkFileView server (before web interface)
         ConfigManager cfg = new ConfigManager();
+        final KkFileViewServer kkFileViewServer;
+        if (cfg.isKkFileViewEnabled()) {
+            kkFileViewServer = new KkFileViewServer(cfg.getKkFileViewPort());
+            if (kkFileViewServer.isAvailable()) {
+                try {
+                    kkFileViewServer.start();
+                    logger.info("kkFileView server started at {}", kkFileViewServer.getBaseUrl());
+                } catch (IOException ex) {
+                    logger.error("Failed to start kkFileView server", ex);
+                }
+                Runtime.getRuntime().addShutdownHook(new Thread(kkFileViewServer::stop, "docfinder-kkfileview-stop"));
+            } else {
+                logger.warn("kkFileView is enabled but JAR not found at: {}", kkFileViewServer.getJarPath());
+                logger.warn("Please download kkFileView JAR and place it at the above location.");
+            }
+        } else {
+            kkFileViewServer = null;
+        }
+
+        // 5) Optionally start web interface (before EDT to get config early)
         final WebServer webServer;
         if (cfg.isWebEnabled()) {
             webServer = new WebServer(cfg.getWebPort(), cfg.getWebBindAddress());
+            // Pass kkFileView server reference to web server for proxying
+            if (kkFileViewServer != null) {
+                webServer.setKkFileViewServer(kkFileViewServer);
+            }
             try {
                 webServer.start();
             } catch (IOException ex) {
@@ -59,13 +84,14 @@ public class App {
             webServer = null;
         }
 
-        // 5) Show window on the EDT, then open the search index in a background thread to avoid EDT blocking
+        // 6) Show window on the EDT, then open the search index in a background thread to avoid EDT blocking
         SwingUtilities.invokeLater(() -> {
             // Create the window first with a null search service so the UI is immediately responsive
             MainWindow win = new MainWindow(null);
             MAIN = win;
-            // Pass the web server reference so the menu can toggle it
+            // Pass the web server and kkFileView server references so the menu can toggle them
             win.setWebServer(webServer);
+            win.setKkFileViewServer(kkFileViewServer);
             win.setVisible(true);
 
             // Open the Lucene index off the EDT to avoid blocking Swing painting

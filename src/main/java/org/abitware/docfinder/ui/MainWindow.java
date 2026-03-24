@@ -55,6 +55,10 @@ public class MainWindow extends JFrame implements MenuBarPanel.MenuListener {
 	private javax.swing.JCheckBoxMenuItem webServerToggle;
 	private javax.swing.JMenuItem openWebItem;
 
+	// kkFileView server
+	private org.abitware.docfinder.web.KkFileViewServer kkFileViewServer;
+	private javax.swing.JCheckBoxMenuItem kkFileViewToggle;
+
 	// Score column toggle
 	private javax.swing.JCheckBoxMenuItem showScoreToggle;
 	/** Index of the Score column in the DefaultTableModel (fixed at 2). */
@@ -171,11 +175,14 @@ public class MainWindow extends JFrame implements MenuBarPanel.MenuListener {
 		this.netPollToggle = menuBar.getNetPollToggle();
 		this.webServerToggle = menuBar.getWebServerToggle();
 		this.openWebItem = menuBar.getOpenWebItem();
+		this.kkFileViewToggle = menuBar.getKkFileViewToggle();
 		this.showScoreToggle = menuBar.getShowScoreToggle();
 
 		// Restore web server toggle state from config
 		org.abitware.docfinder.index.ConfigManager cfgInit = new org.abitware.docfinder.index.ConfigManager();
 		if (webServerToggle != null) webServerToggle.setSelected(cfgInit.isWebEnabled());
+		// Restore kkFileView toggle state from config
+		if (kkFileViewToggle != null) kkFileViewToggle.setSelected(cfgInit.isKkFileViewEnabled());
 		// Restore score column visibility from config (default hidden)
 		boolean showScore = cfgInit.isShowScoreColumn();
 		if (showScoreToggle != null) showScoreToggle.setSelected(showScore);
@@ -2485,6 +2492,11 @@ public class MainWindow extends JFrame implements MenuBarPanel.MenuListener {
         new org.abitware.docfinder.index.ConfigManager().setShowScoreColumn(visible);
     }
 
+    @Override
+    public void onToggleKkFileView() {
+        toggleKkFileView();
+    }
+
     /** Shows or hides the Score column at index SCORE_COL by setting its min/max/preferred width. */
     private void setScoreColumnVisible(boolean visible) {
         javax.swing.table.TableColumn col = resultTable.getColumnModel().getColumn(SCORE_COL);
@@ -2509,6 +2521,18 @@ public class MainWindow extends JFrame implements MenuBarPanel.MenuListener {
             boolean running = (ws != null && ws.isRunning());
             if (webServerToggle != null) webServerToggle.setSelected(running);
             if (openWebItem != null) openWebItem.setEnabled(running);
+        });
+    }
+
+    /**
+     * Sets the KkFileViewServer instance so the menu can start/stop it.
+     * Call this from App after the kkFileView server is (conditionally) created.
+     */
+    public void setKkFileViewServer(org.abitware.docfinder.web.KkFileViewServer kk) {
+        this.kkFileViewServer = kk;
+        SwingUtilities.invokeLater(() -> {
+            boolean running = (kk != null && kk.isRunning());
+            if (kkFileViewToggle != null) kkFileViewToggle.setSelected(running);
         });
     }
 
@@ -2563,6 +2587,69 @@ public class MainWindow extends JFrame implements MenuBarPanel.MenuListener {
                         statusLabel.setText("Web server started: " + url);
                     } else {
                         statusLabel.setText("Web server stopped.");
+                    }
+                }
+            }
+        }.execute();
+    }
+
+    private void toggleKkFileView() {
+        final boolean enable = kkFileViewToggle != null && kkFileViewToggle.isSelected();
+        if (kkFileViewToggle != null) kkFileViewToggle.setEnabled(false);
+        statusLabel.setText(enable ? "Starting kkFileView server…" : "Stopping kkFileView server…");
+
+        new javax.swing.SwingWorker<Void, Void>() {
+            private String message;
+            private boolean success = false;
+            private String url;
+
+            @Override
+            protected Void doInBackground() {
+                try {
+                    org.abitware.docfinder.index.ConfigManager cm = new org.abitware.docfinder.index.ConfigManager();
+                    if (enable) {
+                        if (kkFileViewServer == null) {
+                            kkFileViewServer = new org.abitware.docfinder.web.KkFileViewServer(cm.getKkFileViewPort());
+                        }
+                        if (!kkFileViewServer.isAvailable()) {
+                            message = "kkFileView JAR not found at: " + kkFileViewServer.getJarPath() +
+                                    "\n\nPlease download and place kkFileView JAR at the above location." +
+                                    "\nSee KKFILEVIEW_INTEGRATION.md for instructions.";
+                            return null;
+                        }
+                        kkFileViewServer.start();
+                        // Update webServer reference if it exists
+                        if (webServer != null) {
+                            webServer.setKkFileViewServer(kkFileViewServer);
+                        }
+                        cm.setKkFileViewEnabled(true);
+                        url = kkFileViewServer.getBaseUrl();
+                    } else {
+                        if (kkFileViewServer != null) kkFileViewServer.stop();
+                        cm.setKkFileViewEnabled(false);
+                    }
+                    success = true;
+                } catch (Exception ex) {
+                    message = (enable ? "Failed to start kkFileView server:\n" : "Failed to stop kkFileView server:\n")
+                            + ex.getMessage();
+                }
+                return null;
+            }
+
+            @Override
+            protected void done() {
+                if (kkFileViewToggle != null) kkFileViewToggle.setEnabled(true);
+                if (!success) {
+                    if (kkFileViewToggle != null) kkFileViewToggle.setSelected(!enable);
+                    if (message != null) {
+                        JOptionPane.showMessageDialog(MainWindow.this, message,
+                                "kkFileView Server", JOptionPane.ERROR_MESSAGE);
+                    }
+                } else {
+                    if (enable) {
+                        statusLabel.setText("kkFileView server started: " + url);
+                    } else {
+                        statusLabel.setText("kkFileView server stopped.");
                     }
                 }
             }
