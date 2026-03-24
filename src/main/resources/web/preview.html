@@ -4,7 +4,6 @@
   <meta charset="UTF-8"/>
   <meta name="viewport" content="width=device-width, initial-scale=1.0"/>
   <title>DocFinder Preview</title>
-  <link rel="stylesheet" href="/web/jit-viewer.min.css"/>
   <style>
     *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
 
@@ -84,83 +83,6 @@
   <div id="placeholder" class="placeholder" style="display:none"></div>
 </div>
 
-<script src="/web/jit-viewer.min.js"></script>
-<script>
-// Suppress JitViewer license notice dialogs - Enhanced version
-(function() {
-  var originalAlert = window.alert;
-  var originalConfirm = window.confirm;
-
-  window.alert = function(msg) {
-    if (msg && (msg.includes('JitViewer') || msg.includes('License') || msg.includes('attribution') ||
-                msg.includes('jit-viewer-sdk') || msg.includes('jitOffice') ||
-                msg.includes('retain') || msg.includes('provides document preview'))) {
-      console.log('Suppressed JitViewer license notice:', msg);
-      return;
-    }
-    return originalAlert.apply(this, arguments);
-  };
-
-  window.confirm = function(msg) {
-    if (msg && (msg.includes('JitViewer') || msg.includes('License') || msg.includes('attribution') ||
-                msg.includes('jit-viewer-sdk') || msg.includes('jitOffice') ||
-                msg.includes('retain') || msg.includes('provides document preview'))) {
-      console.log('Suppressed JitViewer license notice:', msg);
-      return true;
-    }
-    return originalConfirm.apply(this, arguments);
-  };
-
-  var checkAndRemoveLicenseModals = function() {
-    var fixedElements = document.querySelectorAll('[style*="position: fixed"], [style*="position:fixed"]');
-    fixedElements.forEach(function(el) {
-      var text = el.textContent || el.innerText || '';
-      if (text.includes('License notice') || text.includes('Please retain attribution') ||
-          text.includes('JitViewer') || text.includes('jitOffice') ||
-          (text.includes('provides document preview') && text.includes('github.com'))) {
-        console.log('Removing JitViewer license modal (fixed element)');
-        el.style.display = 'none';
-        el.remove();
-      }
-    });
-
-    var modals = document.querySelectorAll('[class*="modal"], [class*="dialog"], [class*="overlay"], [class*="popup"]');
-    modals.forEach(function(el) {
-      var text = el.textContent || el.innerText || '';
-      if ((text.includes('License') || text.includes('attribution')) &&
-          (text.includes('JitViewer') || text.includes('jitOffice'))) {
-        console.log('Removing JitViewer license modal (class pattern)');
-        el.style.display = 'none';
-        el.remove();
-      }
-    });
-  };
-
-  setInterval(checkAndRemoveLicenseModals, 100);
-
-  var observer = new MutationObserver(function(mutations) {
-    mutations.forEach(function(mutation) {
-      mutation.addedNodes.forEach(function(node) {
-        if (node.nodeType === 1) {
-          var text = node.textContent || node.innerText || '';
-          if ((text.includes('License notice') || text.includes('Please retain attribution') ||
-               text.includes('JitViewer') || text.includes('jitOffice') ||
-               (text.includes('provides document preview') && text.includes('github.com'))) &&
-              (node.style && (node.style.position === 'fixed' || node.style.position === 'absolute') ||
-               node.className && (node.className.includes('modal') || node.className.includes('dialog') ||
-                                  node.className.includes('overlay') || node.className.includes('popup')))) {
-            console.log('Removing JitViewer license dialog (mutation)');
-            node.style.display = 'none';
-            setTimeout(function() { try { node.remove(); } catch(e) {} }, 10);
-          }
-        }
-      });
-    });
-  });
-
-  observer.observe(document.body, { childList: true, subtree: true });
-})();
-</script>
 <script>
 (function() {
   'use strict';
@@ -200,7 +122,6 @@
   var placeholder = document.getElementById('placeholder');
   var downloadBtn = document.getElementById('downloadBtn');
 
-  var currentViewer = null;
   var fileName = '';
 
   // ── Text extension list (handled by inline text viewer) ───────────────────
@@ -315,33 +236,48 @@
       });
   }
 
-  // ── Load JitViewer ─────────────────────────────────────────────────────────
-  function loadViewer(filePath, fileName) {
-    viewerContainer.style.display = '';
-    var fileUrl = '/api/file?path=' + encodeURIComponent(filePath);
+  var PREVIEW_LOAD_TIMEOUT_MS = 30000; // 30 s fallback to clear loading overlay
 
-    try {
-      var viewer = JitViewer.createViewer({
-        target: viewerContainer,
-        file: fileUrl,
-        filename: fileName,
-        theme: document.body.classList.contains('light') ? 'default' : 'dark',
-        toolbar: true,
-        width: '100%',
-        height: '100%',
-        onReady: function() { hideLoading(); },
-        onError: function(err) {
-          hideLoading();
-          showError('Preview failed: ' + String(err));
-        }
-      });
-      viewer.mount();
-      currentViewer = viewer;
-      setTimeout(hideLoading, 30000);
-    } catch(e) {
-      hideLoading();
-      showError('Viewer error: ' + String(e));
+  // ── Load kkFileView (primary viewer for all file types) ───────────────────
+  function loadViewer(filePath, fileName) {
+    var fileUrl = '/api/file?path=' + encodeURIComponent(filePath);
+    var fullFileUrl = window.location.origin + fileUrl;
+    var kkUrl = '/api/kkfileview/onlinePreview?url=' + encodeURIComponent(fullFileUrl) + '&locale=en';
+
+    function useKkFileViewIframe() {
+      viewerContainer.style.display = '';
+      var iframe = document.createElement('iframe');
+      iframe.style.width = '100%';
+      iframe.style.height = '100%';
+      iframe.style.border = 'none';
+      iframe.onload = function() { hideLoading(); };
+      viewerContainer.appendChild(iframe);
+      iframe.src = kkUrl;
+      setTimeout(hideLoading, PREVIEW_LOAD_TIMEOUT_MS);
     }
+
+    function useFallback() {
+      viewerContainer.style.display = 'none';
+      if (isTextExt(fileName)) {
+        loadTextViewer(filePath, fileName);
+      } else {
+        hideLoading();
+        showError('Preview requires kkFileView server to be running. Enable it in the File menu.');
+      }
+    }
+
+    // Check kkFileView availability before creating iframe
+    fetch('/api/kkfileview/', { method: 'HEAD' })
+      .then(function(resp) {
+        if (resp.ok) {
+          useKkFileViewIframe();
+        } else {
+          useFallback();
+        }
+      })
+      .catch(function() {
+        useFallback();
+      });
   }
 
   // ── Initialize ─────────────────────────────────────────────────────────────
@@ -363,12 +299,8 @@
     document.body.removeChild(a);
   });
 
-  // Load preview
-  if (isTextExt(fileName)) {
-    loadTextViewer(filePath, fileName);
-  } else {
-    loadViewer(filePath, fileName);
-  }
+  // Load preview via kkFileView for all file types
+  loadViewer(filePath, fileName);
 })();
 </script>
 </body>
