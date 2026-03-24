@@ -70,6 +70,10 @@ public class App {
         final WebServer webServer;
         if (cfg.isWebEnabled()) {
             webServer = new WebServer(cfg.getWebPort(), cfg.getWebBindAddress());
+            // Pass kkFileView server reference to web server for proxying
+            if (kkFileViewServer != null) {
+                webServer.setKkFileViewServer(kkFileViewServer);
+            }
             try {
                 webServer.start();
             } catch (IOException ex) {

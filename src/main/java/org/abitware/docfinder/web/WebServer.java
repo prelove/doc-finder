@@ -20,6 +20,7 @@ import java.util.concurrent.Executors;
  *   GET  /api/search              – JSON search results
  *   GET  /api/preview             – text snippet preview (legacy)
  *   GET  /api/file                – serve raw file for jit-viewer preview
+ *   GET  /api/kkfileview/*        – proxy to embedded kkFileView server
  *   POST /api/share/create        – create a share link
  *   GET  /api/share/list          – list all shares
  *   POST /api/share/revoke        – revoke a share
@@ -35,6 +36,7 @@ public class WebServer {
     private final String bindAddress;
     private volatile HttpServer server;
     private volatile SearchService searchService;
+    private volatile KkFileViewServer kkFileViewServer;
     private final ShareManager shareManager = new ShareManager();
 
     public WebServer(int port, String bindAddress) {
@@ -45,6 +47,11 @@ public class WebServer {
     /** Updates the search-service reference (called by App after the index is ready). */
     public void setSearchService(SearchService svc) {
         this.searchService = svc;
+    }
+
+    /** Updates the kkFileView server reference (called by App after kkFileView is started). */
+    public void setKkFileViewServer(KkFileViewServer kk) {
+        this.kkFileViewServer = kk;
     }
 
     /** Starts the server; no-op if already running. */
@@ -64,6 +71,7 @@ public class WebServer {
         s.createContext("/api/search",  new SearchHandler(() -> searchService));
         s.createContext("/api/preview", new PreviewHandler());
         s.createContext("/api/file",    new FileServeHandler());
+        s.createContext("/api/kkfileview", new KkFileViewProxyHandler(() -> kkFileViewServer));
         s.createContext("/api/share",   shareHandler);
         s.createContext("/share/",      new StaticHandler()); // public share pages → share.html
         s.createContext("/web/",        new StaticHandler()); // bundled JS / CSS
