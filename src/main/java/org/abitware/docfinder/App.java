@@ -64,6 +64,8 @@ public class App {
             // Create the window first with a null search service so the UI is immediately responsive
             MainWindow win = new MainWindow(null);
             MAIN = win;
+            // Pass the web server reference so the menu can toggle it
+            win.setWebServer(webServer);
             win.setVisible(true);
 
             // Open the Lucene index off the EDT to avoid blocking Swing painting

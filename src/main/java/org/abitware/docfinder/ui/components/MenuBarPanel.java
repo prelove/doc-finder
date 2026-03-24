@@ -17,6 +17,8 @@ public class MenuBarPanel extends JMenuBar {
     private MenuListener menuListener;
     private JCheckBoxMenuItem liveWatchToggle;
     private JCheckBoxMenuItem netPollToggle;
+    private JCheckBoxMenuItem webServerToggle;
+    private JMenuItem openWebItem;
 
     public interface MenuListener {
         void onManageSources();
@@ -41,6 +43,12 @@ public class MenuBarPanel extends JMenuBar {
 
         void onExit();
         void onShowLogViewer();
+
+        /** Called when the user toggles the web server menu item. */
+        void onToggleWebServer();
+
+        /** Called when the user clicks "Open Web Interface…". */
+        void onOpenWebInterface();
     }
 
     public MenuBarPanel() {
@@ -122,6 +130,23 @@ public class MenuBarPanel extends JMenuBar {
 
         file.addSeparator();
 
+        webServerToggle = new JCheckBoxMenuItem("Enable Web Server");
+        webServerToggle.setToolTipText("Start or stop the embedded HTTP server for browser-based search");
+        webServerToggle.addActionListener(e -> {
+            if (menuListener != null) menuListener.onToggleWebServer();
+        });
+        file.add(webServerToggle);
+
+        openWebItem = new JMenuItem("Open Web Interface…");
+        openWebItem.setToolTipText("Open the web search interface in the default browser");
+        openWebItem.setEnabled(false);
+        openWebItem.addActionListener(e -> {
+            if (menuListener != null) menuListener.onOpenWebInterface();
+        });
+        file.add(openWebItem);
+
+        file.addSeparator();
+
         JMenuItem exitItem = new JMenuItem("Exit");
         // Java 8：使用 getMenuShortcutKeyMask()（Win=Ctrl, macOS=Cmd）
         exitItem.setAccelerator(
@@ -179,5 +204,15 @@ public class MenuBarPanel extends JMenuBar {
     /** Returns the Network Polling toggle menu item so callers can read/set its state. */
     public JCheckBoxMenuItem getNetPollToggle() {
         return netPollToggle;
+    }
+
+    /** Returns the Web Server toggle menu item so callers can read/set its state. */
+    public JCheckBoxMenuItem getWebServerToggle() {
+        return webServerToggle;
+    }
+
+    /** Returns the "Open Web Interface…" menu item so callers can enable/disable it. */
+    public JMenuItem getOpenWebItem() {
+        return openWebItem;
     }
 }
