@@ -422,7 +422,7 @@
 
   // ── Viewer Toggle (JitViewer / kkFileView) ──────────────────────────────────
   var viewerToggleBtn = document.getElementById('viewerToggleBtn');
-  var currentViewerPreference = 'jitviewer'; // default
+  var currentViewerPreference = 'kkfileview'; // default
 
   function fetchViewerPreference() {
     fetch('/api/viewer')
@@ -685,8 +685,8 @@
     previewHeaderText.textContent = fileName;
     openTabBtn.style.display = '';
 
-    // For known text types, use our own text viewer with charset detection
-    if (isTextExt(fileName)) {
+    // For known text types, use our own text viewer (only when JitViewer is selected)
+    if (isTextExt(fileName) && currentViewerPreference !== 'kkfileview') {
       loadTextViewer(filePath, fileName);
       return;
     }
@@ -748,7 +748,7 @@
 
       // kkFileView expects a full URL for the file
       var fullFileUrl = window.location.origin + fileUrl;
-      var kkFileViewUrl = '/api/kkfileview/onlinePreview?url=' + encodeURIComponent(fullFileUrl);
+      var kkFileViewUrl = '/api/kkfileview/onlinePreview?url=' + encodeURIComponent(fullFileUrl) + '&locale=en';
 
       iframe.onload = function() {
         hideLoadingOverlay();

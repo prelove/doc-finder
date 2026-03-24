@@ -217,10 +217,10 @@ public class ConfigManager {
 
 	/**
 	 * Get preferred document viewer for web UI.
-	 * @return "kkfileview" or "jitviewer" (default)
+	 * @return "kkfileview" (default) or "jitviewer"
 	 */
 	public String getPreferredViewer() {
-	    return loadAll().getProperty("web.preferredViewer", "jitviewer");
+	    return loadAll().getProperty("web.preferredViewer", "kkfileview");
 	}
 
 	/**
