@@ -60,29 +60,29 @@
 
     body { font-family: system-ui, -apple-system, sans-serif; background: var(--bg); color: var(--text); min-height: 100vh; }
 
-    /* ── Header ── */
-    #appHeader { background: var(--bg2); border-bottom: 1px solid var(--border); padding: 10px 16px; display: flex; align-items: center; gap: 10px; }
-    #appHeader h1 { font-size: 1.1rem; font-weight: 700; color: var(--accent2); letter-spacing: 0.02em; flex: 1; }
-    #appHeader span.tag { font-size: 0.68rem; background: var(--bg); color: var(--text2); border-radius: 4px; padding: 2px 6px; border: 1px solid var(--border); }
-    #collapseHeaderBtn { background: none; border: none; cursor: pointer; color: var(--text3); font-size: 0.8rem; padding: 4px 8px; border-radius: 4px; white-space: nowrap; }
-    #collapseHeaderBtn:hover { background: var(--bg); color: var(--text); }
-    #themeToggleBtn { background: none; border: none; cursor: pointer; color: var(--text2); font-size: 1rem; padding: 4px 8px; border-radius: 4px; }
-    #themeToggleBtn:hover { background: var(--bg); color: var(--text); }
-
     /* ── Search bar ── */
     .search-bar { display: flex; gap: 8px; padding: 12px 16px; background: var(--bg3); border-bottom: 1px solid var(--border); flex-wrap: wrap; align-items: center; }
+    #themeToggleBtn { background: var(--btn-sec); border: 1px solid var(--input-bd); cursor: pointer; color: var(--text2); font-size: 0.95rem; padding: 6px 10px; border-radius: 6px; white-space: nowrap; flex-shrink: 0; }
+    #themeToggleBtn:hover { background: var(--btn-sec2); color: var(--text); }
     .search-bar input[type=text] { flex: 1; min-width: 200px; padding: 7px 11px; border-radius: 6px; border: 1px solid var(--input-bd); background: var(--input-bg); color: var(--text); font-size: 0.92rem; outline: none; }
     .search-bar input[type=text]:focus { border-color: var(--accent); }
     .search-bar select { padding: 7px 9px; border-radius: 6px; border: 1px solid var(--input-bd); background: var(--input-bg); color: var(--text); font-size: 0.82rem; cursor: pointer; outline: none; }
     .search-bar input[type=text]#extInput { min-width: 0; flex: 0 0 110px; }
     .search-bar button { padding: 7px 16px; border-radius: 6px; border: none; background: var(--accent); color: #fff; font-size: 0.88rem; font-weight: 600; cursor: pointer; white-space: nowrap; }
     .search-bar button:hover { background: var(--accent3); }
+    .history-dropdown { position: absolute; top: 100%; left: 0; right: 0; background: var(--bg2); border: 1px solid var(--border); border-top: none; border-radius: 0 0 6px 6px; max-height: 300px; overflow-y: auto; z-index: 1000; box-shadow: 0 4px 12px rgba(0,0,0,0.3); }
+    .history-item { padding: 8px 12px; cursor: pointer; font-size: 0.85rem; color: var(--text); border-bottom: 1px solid var(--border2); display: flex; align-items: center; justify-content: space-between; }
+    .history-item:last-child { border-bottom: none; }
+    .history-item:hover { background: var(--hover); }
+    .history-item .query-text { flex: 1; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+    .history-item .remove-btn { color: var(--text3); padding: 2px 6px; font-size: 0.75rem; opacity: 0.7; }
+    .history-item .remove-btn:hover { color: var(--text); opacity: 1; }
 
     /* ── Status bar ── */
     .status-bar { padding: 5px 16px; font-size: 0.76rem; color: var(--text3); background: var(--bg); border-bottom: 1px solid var(--border2); min-height: 26px; }
 
     /* ── Main: resizable split ── */
-    .main { display: flex; height: calc(100vh - var(--main-offset, 110px)); overflow: hidden; }
+    .main { display: flex; height: calc(100vh - 75px); overflow: hidden; }
     .results-pane { flex: 1; overflow-y: auto; min-width: 0; }
     .resize-handle { width: 6px; cursor: col-resize; background: var(--border); flex-shrink: 0; transition: background 0.15s; }
     .resize-handle:hover, .resize-handle.dragging { background: var(--accent); }
@@ -91,7 +91,10 @@
     /* ── Table ── */
     table { width: 100%; border-collapse: collapse; font-size: 0.82rem; }
     thead th { position: sticky; top: 0; background: var(--bg2); padding: 8px 12px; text-align: left; font-weight: 600; color: var(--text2); border-bottom: 1px solid var(--border); white-space: nowrap; cursor: pointer; user-select: none; }
-    thead th:hover { color: var(--text); }
+    thead th:hover { color: var(--text); background: var(--hover); }
+    thead th.sortable::after { content: ' ⇅'; opacity: 0.3; }
+    thead th.sort-asc::after { content: ' ↑'; opacity: 1; }
+    thead th.sort-desc::after { content: ' ↓'; opacity: 1; }
     tbody tr { border-bottom: 1px solid var(--border2); cursor: pointer; transition: background 0.1s; }
     tbody tr:hover { background: var(--hover); }
     tbody tr.selected { background: var(--sel); }
@@ -159,17 +162,13 @@
   </style>
 </head>
 <body>
-<!-- Header (collapsible) -->
-<div id="appHeader">
-  <h1>&#x1F50D; DocFinder</h1>
-  <span class="tag">Web Interface</span>
-  <button id="themeToggleBtn" title="Toggle dark/light theme">&#x1F319;</button>
-  <button id="collapseHeaderBtn" title="Collapse header">&#x25B2; Collapse</button>
-</div>
-
 <!-- Search bar -->
 <div class="search-bar">
-  <input type="text" id="queryInput" placeholder="Search files&hellip; (e.g. kubernetes, name:*.xlsx)" autofocus/>
+  <button id="themeToggleBtn" title="Toggle dark/light theme">&#x1F319;</button>
+  <div style="position: relative; flex: 1; min-width: 200px;">
+    <input type="text" id="queryInput" placeholder="Search files&hellip; (e.g. kubernetes, name:*.xlsx)" autofocus style="width: 100%;"/>
+    <div id="historyDropdown" class="history-dropdown" style="display: none;"></div>
+  </div>
   <select id="scopeSelect" title="Search scope">
     <option value="ALL">All Fields</option>
     <option value="NAME">Name Only</option>
@@ -201,11 +200,11 @@
     <table id="resultsTable" style="display:none">
       <thead>
         <tr>
-          <th data-col="name">Name</th>
-          <th data-col="path">Path</th>
-          <th data-col="match">Match</th>
-          <th data-col="size">Size</th>
-          <th data-col="score">Score</th>
+          <th class="sortable" data-col="name">Name</th>
+          <th class="sortable" data-col="path">Path</th>
+          <th class="sortable" data-col="match">Match</th>
+          <th class="sortable" data-col="size">Size</th>
+          <th class="sortable" data-col="score">Score</th>
           <th></th>
         </tr>
       </thead>
@@ -280,6 +279,51 @@
 
 <script src="/web/jit-viewer.min.js"></script>
 <script>
+// Suppress JitViewer license notice dialogs
+(function() {
+  // Override window.alert, window.confirm to suppress license notices
+  var originalAlert = window.alert;
+  var originalConfirm = window.confirm;
+
+  window.alert = function(msg) {
+    if (msg && (msg.includes('JitViewer') || msg.includes('License') || msg.includes('attribution') || msg.includes('jit-viewer-sdk'))) {
+      console.log('Suppressed license notice:', msg);
+      return;
+    }
+    return originalAlert.apply(this, arguments);
+  };
+
+  window.confirm = function(msg) {
+    if (msg && (msg.includes('JitViewer') || msg.includes('License') || msg.includes('attribution') || msg.includes('jit-viewer-sdk'))) {
+      console.log('Suppressed license notice:', msg);
+      return true;
+    }
+    return originalConfirm.apply(this, arguments);
+  };
+
+  // Monitor and remove any modal dialogs that appear with license text
+  var observer = new MutationObserver(function(mutations) {
+    mutations.forEach(function(mutation) {
+      mutation.addedNodes.forEach(function(node) {
+        if (node.nodeType === 1) {
+          var text = node.textContent || node.innerText || '';
+          if ((text.includes('License notice') || text.includes('Please retain attribution') ||
+               text.includes('JitViewer') && text.includes('github.com/jitOffice')) &&
+              (node.style && node.style.position === 'fixed' ||
+               node.className && (node.className.includes('modal') || node.className.includes('dialog')))) {
+            console.log('Removing JitViewer license dialog');
+            node.style.display = 'none';
+            node.remove();
+          }
+        }
+      });
+    });
+  });
+
+  observer.observe(document.body, { childList: true, subtree: true });
+})();
+</script>
+<script>
 (function() {
   'use strict';
 
@@ -307,50 +351,96 @@
   // Restore saved theme
   applyTheme(localStorage.getItem(THEME_KEY) || 'dark');
 
-  // ── Collapsible header ───────────────────────────────────────────────────────
-  var appHeader = document.getElementById('appHeader');
-  var collapseBtn = document.getElementById('collapseHeaderBtn');
-  var mainArea = document.getElementById('mainArea');
-  var HEADER_KEY = 'docfinder-header';
-  var headerCollapsed = localStorage.getItem(HEADER_KEY) === '1';
+  // ── Search History ───────────────────────────────────────────────────────────
+  var HISTORY_KEY = 'docfinder-search-history';
+  var MAX_HISTORY = 20;
+  var queryInput = document.getElementById('queryInput');
+  var historyDropdown = document.getElementById('historyDropdown');
+  var searchHistory = [];
 
-  function updateHeaderState() {
-    if (headerCollapsed) {
-      appHeader.style.display = 'none';
-      collapseBtn.style.display = 'none';
-      // Show a small expand button in the search bar area
-      showExpandBtn(true);
-    } else {
-      appHeader.style.display = '';
-      collapseBtn.textContent = '▲ Collapse';
-      showExpandBtn(false);
-    }
-    localStorage.setItem(HEADER_KEY, headerCollapsed ? '1' : '0');
-  }
-
-  var expandHeaderBtn = null;
-  function showExpandBtn(show) {
-    if (show) {
-      if (!expandHeaderBtn) {
-        expandHeaderBtn = document.createElement('button');
-        expandHeaderBtn.textContent = '▼ DocFinder';
-        expandHeaderBtn.className = 'btn-icon';
-        expandHeaderBtn.style.cssText = 'position:fixed;top:4px;left:8px;z-index:100;font-size:0.75rem;padding:3px 8px;background:var(--bg2);border:1px solid var(--border);border-radius:4px;color:var(--text2);cursor:pointer;';
-        expandHeaderBtn.addEventListener('click', function() { headerCollapsed = false; updateHeaderState(); });
-        document.body.appendChild(expandHeaderBtn);
-      }
-      expandHeaderBtn.style.display = '';
-    } else if (expandHeaderBtn) {
-      expandHeaderBtn.style.display = 'none';
+  function loadSearchHistory() {
+    try {
+      var stored = localStorage.getItem(HISTORY_KEY);
+      searchHistory = stored ? JSON.parse(stored) : [];
+    } catch(e) {
+      searchHistory = [];
     }
   }
 
-  collapseBtn.addEventListener('click', function() {
-    headerCollapsed = true;
-    updateHeaderState();
+  function saveSearchHistory() {
+    try {
+      localStorage.setItem(HISTORY_KEY, JSON.stringify(searchHistory));
+    } catch(e) {}
+  }
+
+  function addToHistory(query) {
+    if (!query || !query.trim()) return;
+    query = query.trim();
+    // Remove if already exists
+    var idx = searchHistory.indexOf(query);
+    if (idx >= 0) searchHistory.splice(idx, 1);
+    // Add to front
+    searchHistory.unshift(query);
+    // Limit size
+    if (searchHistory.length > MAX_HISTORY) {
+      searchHistory = searchHistory.slice(0, MAX_HISTORY);
+    }
+    saveSearchHistory();
+  }
+
+  function removeFromHistory(query) {
+    var idx = searchHistory.indexOf(query);
+    if (idx >= 0) {
+      searchHistory.splice(idx, 1);
+      saveSearchHistory();
+      renderHistoryDropdown();
+    }
+  }
+
+  function renderHistoryDropdown() {
+    historyDropdown.innerHTML = '';
+    if (searchHistory.length === 0) {
+      historyDropdown.style.display = 'none';
+      return;
+    }
+    searchHistory.forEach(function(q) {
+      var item = document.createElement('div');
+      item.className = 'history-item';
+      var text = document.createElement('span');
+      text.className = 'query-text';
+      text.textContent = q;
+      text.addEventListener('click', function() {
+        queryInput.value = q;
+        historyDropdown.style.display = 'none';
+        queryInput.focus();
+      });
+      var removeBtn = document.createElement('span');
+      removeBtn.className = 'remove-btn';
+      removeBtn.textContent = '✕';
+      removeBtn.title = 'Remove from history';
+      removeBtn.addEventListener('click', function(e) {
+        e.stopPropagation();
+        removeFromHistory(q);
+      });
+      item.appendChild(text);
+      item.appendChild(removeBtn);
+      historyDropdown.appendChild(item);
+    });
+    historyDropdown.style.display = '';
+  }
+
+  queryInput.addEventListener('focus', function() {
+    if (searchHistory.length > 0) {
+      renderHistoryDropdown();
+    }
   });
 
-  updateHeaderState();
+  queryInput.addEventListener('blur', function() {
+    // Delay to allow clicks on dropdown
+    setTimeout(function() { historyDropdown.style.display = 'none'; }, 200);
+  });
+
+  loadSearchHistory();
 
   // ── Resizable split pane ─────────────────────────────────────────────────────
   var resizeHandle = document.getElementById('resizeHandle');
@@ -392,7 +482,6 @@
   });
 
   // ── State ────────────────────────────────────────────────────────────────────
-  var queryInput        = document.getElementById('queryInput');
   var scopeSelect       = document.getElementById('scopeSelect');
   var modeSelect        = document.getElementById('modeSelect');
   var extInput          = document.getElementById('extInput');
@@ -418,6 +507,8 @@
   var currentViewer  = null;
   var currentFilePath= null;
   var previewAbort   = null;  // AbortController for current preview fetch
+  var sortColumn     = null;  // Current sort column
+  var sortDirection  = 'asc'; // Current sort direction
 
   // ── Text extension list (handled by inline text viewer) ─────────────────────
   var TEXT_EXTS = ['txt','log','md','markdown','csv','tsv','json','jsonl','xml','yaml','yml',
@@ -642,6 +733,11 @@
   function search() {
     var q = queryInput.value.trim();
     if (!q) return;
+
+    // Add to search history
+    addToHistory(q);
+    historyDropdown.style.display = 'none';
+
     var token = ++searchToken;
     var scope = scopeSelect.value;
     var mode  = modeSelect.value;
@@ -683,6 +779,16 @@
     }
     emptyState.style.display = 'none';
     resultsTable.style.display = '';
+
+    // Update sort indicators
+    var headers = resultsTable.querySelectorAll('thead th[data-col]');
+    headers.forEach(function(th) {
+      th.classList.remove('sort-asc', 'sort-desc');
+      if (th.dataset.col === sortColumn) {
+        th.classList.add(sortDirection === 'asc' ? 'sort-asc' : 'sort-desc');
+      }
+    });
+
     currentResults.forEach(function(r, idx) {
       var tr = document.createElement('tr');
       var actionsHtml = r.directory ? '' :
@@ -715,6 +821,63 @@
       });
     });
   }
+
+  function sortResults(column) {
+    if (sortColumn === column) {
+      // Toggle direction
+      sortDirection = sortDirection === 'asc' ? 'desc' : 'asc';
+    } else {
+      sortColumn = column;
+      sortDirection = 'asc';
+    }
+
+    currentResults.sort(function(a, b) {
+      var valA, valB;
+      switch(column) {
+        case 'name':
+          valA = (a.name || '').toLowerCase();
+          valB = (b.name || '').toLowerCase();
+          break;
+        case 'path':
+          valA = (a.path || '').toLowerCase();
+          valB = (b.path || '').toLowerCase();
+          break;
+        case 'match':
+          valA = (a.match || '').toLowerCase();
+          valB = (b.match || '').toLowerCase();
+          break;
+        case 'size':
+          valA = a.size || 0;
+          valB = b.size || 0;
+          break;
+        case 'score':
+          valA = a.score || 0;
+          valB = b.score || 0;
+          break;
+        default:
+          return 0;
+      }
+
+      var cmp = 0;
+      if (typeof valA === 'string') {
+        cmp = valA.localeCompare(valB);
+      } else {
+        cmp = valA < valB ? -1 : valA > valB ? 1 : 0;
+      }
+
+      return sortDirection === 'asc' ? cmp : -cmp;
+    });
+
+    selectedIndex = -1; // Reset selection after sorting
+    renderResults();
+  }
+
+  // Add click handlers to table headers
+  resultsTable.querySelectorAll('thead th[data-col]').forEach(function(th) {
+    th.addEventListener('click', function() {
+      sortResults(th.dataset.col);
+    });
+  });
 
   function selectRow(idx) {
     var rows = resultsBody.querySelectorAll('tr');
