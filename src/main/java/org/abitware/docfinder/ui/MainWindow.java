@@ -2032,7 +2032,7 @@ public class MainWindow extends JFrame implements MenuBarPanel.MenuListener {
 						"Copy Web Link", JOptionPane.INFORMATION_MESSAGE);
 				return;
 			}
-			String link = webServer.getBaseUrl() + "/?preview=" + java.net.URLEncoder.encode(s.path, java.nio.charset.StandardCharsets.UTF_8);
+			String link = webServer.getBaseUrl() + "/preview?path=" + java.net.URLEncoder.encode(s.path, java.nio.charset.StandardCharsets.UTF_8);
 			setClipboard(link);
 			statusLabel.setText("Web link copied: " + link);
 		});
