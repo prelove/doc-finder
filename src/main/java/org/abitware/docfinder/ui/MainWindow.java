@@ -77,7 +77,7 @@ public class MainWindow extends JFrame implements MenuBarPanel.MenuListener {
 
 	// Center: results + preview
 	private final DefaultTableModel model = new DefaultTableModel(
-			new Object[] { "Name", "Path", "Size", "Created", "Accessed", "Match" }, 0) {
+			new Object[] { "Name", "Path", "Score", "Size", "Created", "Accessed", "Match" }, 0) {
 		@Override
 		public boolean isCellEditable(int r, int c) {
 			return false;
@@ -86,6 +86,9 @@ public class MainWindow extends JFrame implements MenuBarPanel.MenuListener {
 		@Override
 		public Class<?> getColumnClass(int columnIndex) {
 			if (columnIndex == 2) {
+				return Float.class;
+			}
+			if (columnIndex == 3) {
 				return Long.class;
 			}
 			return String.class;
@@ -327,10 +330,24 @@ public class MainWindow extends JFrame implements MenuBarPanel.MenuListener {
 
 		resultTable.getColumnModel().getColumn(0).setPreferredWidth(240); // Name
 		resultTable.getColumnModel().getColumn(1).setPreferredWidth(480); // Path
-		resultTable.getColumnModel().getColumn(2).setPreferredWidth(90);  // Size ✅
-		resultTable.getColumnModel().getColumn(3).setPreferredWidth(130); // Created
-		resultTable.getColumnModel().getColumn(4).setPreferredWidth(130); // Accessed
-		resultTable.getColumnModel().getColumn(5).setPreferredWidth(110); // Match
+		resultTable.getColumnModel().getColumn(2).setPreferredWidth(70);  // Score
+		resultTable.getColumnModel().getColumn(3).setPreferredWidth(90);  // Size
+		resultTable.getColumnModel().getColumn(4).setPreferredWidth(130); // Created
+		resultTable.getColumnModel().getColumn(5).setPreferredWidth(130); // Accessed
+		resultTable.getColumnModel().getColumn(6).setPreferredWidth(110); // Match
+
+		javax.swing.table.DefaultTableCellRenderer scoreRenderer = new javax.swing.table.DefaultTableCellRenderer() {
+			@Override
+			public void setValue(Object value) {
+				if (value instanceof Number) {
+					super.setValue(String.format("%.3f", ((Number) value).floatValue()));
+				} else {
+					super.setValue(value);
+				}
+			}
+		};
+		scoreRenderer.setHorizontalAlignment(javax.swing.SwingConstants.RIGHT);
+		resultTable.getColumnModel().getColumn(2).setCellRenderer(scoreRenderer);
 
 		javax.swing.table.DefaultTableCellRenderer sizeRenderer = new javax.swing.table.DefaultTableCellRenderer() {
 			@Override
@@ -344,7 +361,7 @@ public class MainWindow extends JFrame implements MenuBarPanel.MenuListener {
 			}
 		};
 		sizeRenderer.setHorizontalAlignment(javax.swing.SwingConstants.RIGHT);
-		resultTable.getColumnModel().getColumn(2).setCellRenderer(sizeRenderer);
+		resultTable.getColumnModel().getColumn(3).setCellRenderer(sizeRenderer);
 
 		JScrollPane center = new JScrollPane(resultTable);
 
@@ -900,7 +917,7 @@ public class MainWindow extends JFrame implements MenuBarPanel.MenuListener {
 					return "(" + reason + ")";
 				}
 
-				String q = (lastQuery == null) ? "" : lastQuery.trim();
+				String q = (currentQuery == null) ? "" : currentQuery.trim();
 				String[] terms = tokenizeForHighlight(q);
 				String snippet = makeSnippet(text, terms, 300);
 				String html = toHtml(snippet, terms);
@@ -1782,7 +1799,7 @@ public class MainWindow extends JFrame implements MenuBarPanel.MenuListener {
 
 		for (SearchResult r : list) {
 
-			model.addRow(new Object[] { r.name, r.path, Long.valueOf(r.sizeBytes),
+			model.addRow(new Object[] { r.name, r.path, r.score, Long.valueOf(r.sizeBytes),
 
 				fmtTime(r.ctime), fmtTime(r.atime),
 
@@ -2160,7 +2177,7 @@ public class MainWindow extends JFrame implements MenuBarPanel.MenuListener {
 				List<String> cells = new java.util.ArrayList<>();
 				for (int c = 0; c < cols; c++) {
 					Object val = resultTable.getValueAt(r, c);
-					if (c == 2 && val instanceof Number) {
+					if (c == 3 && val instanceof Number) {
 						cells.add(csvQuote(fmtSize(((Number) val).longValue())));
 					} else {
 						cells.add(csvQuote(val == null ? "" : val.toString()));
