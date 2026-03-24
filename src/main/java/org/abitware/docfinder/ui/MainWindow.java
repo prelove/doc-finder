@@ -49,6 +49,11 @@ public class MainWindow extends JFrame implements MenuBarPanel.MenuListener {
 	private javax.swing.JCheckBoxMenuItem netPollToggle;
 	private org.abitware.docfinder.watch.NetPollerService netPoller;
 
+	// Web server
+	private org.abitware.docfinder.web.WebServer webServer;
+	private javax.swing.JCheckBoxMenuItem webServerToggle;
+	private javax.swing.JMenuItem openWebItem;
+
 	// ========= Fields =========
 	private SearchService searchService;
 
@@ -155,6 +160,12 @@ public class MainWindow extends JFrame implements MenuBarPanel.MenuListener {
 		// can read and update their checked state without NPE.
 		this.liveWatchToggle = menuBar.getLiveWatchToggle();
 		this.netPollToggle = menuBar.getNetPollToggle();
+		this.webServerToggle = menuBar.getWebServerToggle();
+		this.openWebItem = menuBar.getOpenWebItem();
+
+		// Restore web server toggle state from config
+		org.abitware.docfinder.index.ConfigManager cfgInit = new org.abitware.docfinder.index.ConfigManager();
+		if (webServerToggle != null) webServerToggle.setSelected(cfgInit.isWebEnabled());
 
 		// 5) Right-click menu, shortcuts, table selection listener
 		installTablePopupActions(); // Right-click: Open / Reveal / Copy
@@ -2398,6 +2409,109 @@ public class MainWindow extends JFrame implements MenuBarPanel.MenuListener {
         showUsageDialog();
     }
 
+    @Override
+    public void onToggleWebServer() {
+        toggleWebServer();
+    }
+
+    @Override
+    public void onOpenWebInterface() {
+        openWebInterface();
+    }
+
+    /**
+     * Sets the WebServer instance so the menu can start/stop it.
+     * Call this from App after the web server is (conditionally) created.
+     */
+    public void setWebServer(org.abitware.docfinder.web.WebServer ws) {
+        this.webServer = ws;
+        SwingUtilities.invokeLater(() -> {
+            boolean running = (ws != null && ws.isRunning());
+            if (webServerToggle != null) webServerToggle.setSelected(running);
+            if (openWebItem != null) openWebItem.setEnabled(running);
+        });
+    }
+
+    private void toggleWebServer() {
+        final boolean enable = webServerToggle != null && webServerToggle.isSelected();
+        if (webServerToggle != null) webServerToggle.setEnabled(false);
+        statusLabel.setText(enable ? "Starting web server…" : "Stopping web server…");
+
+        new javax.swing.SwingWorker<Void, Void>() {
+            private String message;
+            private boolean success = false;
+            private String url;
+
+            @Override
+            protected Void doInBackground() {
+                try {
+                    org.abitware.docfinder.index.ConfigManager cm = new org.abitware.docfinder.index.ConfigManager();
+                    if (enable) {
+                        if (webServer == null) {
+                            webServer = new org.abitware.docfinder.web.WebServer(
+                                    cm.getWebPort(), cm.getWebBindAddress());
+                            // pass current search service if already available
+                            if (searchService != null) webServer.setSearchService(searchService);
+                        }
+                        webServer.start();
+                        cm.setWebEnabled(true);
+                        url = webServer.getBaseUrl() + "/";
+                    } else {
+                        if (webServer != null) webServer.stop();
+                        cm.setWebEnabled(false);
+                    }
+                    success = true;
+                } catch (Exception ex) {
+                    message = (enable ? "Failed to start web server:\n" : "Failed to stop web server:\n")
+                            + ex.getMessage();
+                }
+                return null;
+            }
+
+            @Override
+            protected void done() {
+                if (webServerToggle != null) webServerToggle.setEnabled(true);
+                if (!success) {
+                    if (webServerToggle != null) webServerToggle.setSelected(!enable);
+                    if (message != null) {
+                        JOptionPane.showMessageDialog(MainWindow.this, message,
+                                enable ? "Web Server" : "Web Server", JOptionPane.ERROR_MESSAGE);
+                    }
+                } else {
+                    if (openWebItem != null) openWebItem.setEnabled(enable);
+                    if (enable) {
+                        statusLabel.setText("Web server started: " + url);
+                    } else {
+                        statusLabel.setText("Web server stopped.");
+                    }
+                }
+            }
+        }.execute();
+    }
+
+    private void openWebInterface() {
+        if (webServer == null || !webServer.isRunning()) {
+            JOptionPane.showMessageDialog(this, "Web server is not running.",
+                    "Open Web Interface", JOptionPane.INFORMATION_MESSAGE);
+            return;
+        }
+        String url = webServer.getBaseUrl() + "/";
+        try {
+            if (Desktop.isDesktopSupported() && Desktop.getDesktop().isSupported(Desktop.Action.BROWSE)) {
+                Desktop.getDesktop().browse(new java.net.URI(url));
+            } else {
+                // Fallback: show URL so user can copy-paste
+                JOptionPane.showMessageDialog(this,
+                        "Open the following URL in your browser:\n" + url,
+                        "Open Web Interface", JOptionPane.INFORMATION_MESSAGE);
+            }
+        } catch (Exception ex) {
+            JOptionPane.showMessageDialog(this,
+                    "Could not open browser:\n" + ex.getMessage(),
+                    "Open Web Interface", JOptionPane.ERROR_MESSAGE);
+        }
+    }
+
 	private static String fmtTime(long epochMs) {
 		if (epochMs <= 0)
 			return "";
@@ -2461,6 +2575,8 @@ public class MainWindow extends JFrame implements MenuBarPanel.MenuListener {
 			this.searchService.close(); // Close the old service
 		}
 		this.searchService = newSvc;
+		// Keep the web server in sync with the latest search service
+		if (webServer != null) webServer.setSearchService(newSvc);
 		if (newSvc == null) {
 			statusLabel.setText("Search index is initializing...");
 		} else {

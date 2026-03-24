@@ -4,6 +4,7 @@
   <meta charset="UTF-8"/>
   <meta name="viewport" content="width=device-width, initial-scale=1.0"/>
   <title>DocFinder Web</title>
+  <link rel="stylesheet" href="/web/jit-viewer.min.css"/>
   <style>
     *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
     body { font-family: system-ui, -apple-system, sans-serif; background: #0f1117; color: #e2e8f0; min-height: 100vh; }
@@ -17,7 +18,7 @@
     .search-bar input[type=text]#extInput { min-width: 0; flex: 0 0 110px; }
     .search-bar button { padding: 8px 18px; border-radius: 6px; border: none; background: #3b82f6; color: #fff; font-size: 0.9rem; font-weight: 600; cursor: pointer; white-space: nowrap; }
     .search-bar button:hover { background: #2563eb; }
-    .main { display: flex; height: calc(100vh - 106px); overflow: hidden; }
+    .main { display: flex; height: calc(100vh - 110px); overflow: hidden; }
     .results-pane { flex: 1; overflow-y: auto; }
     .status-bar { padding: 6px 20px; font-size: 0.78rem; color: #64748b; background: #0f1117; border-bottom: 1px solid #1e2333; min-height: 28px; }
     table { width: 100%; border-collapse: collapse; font-size: 0.82rem; }
@@ -32,9 +33,15 @@
     td.match { color: #6ee7b7; font-size: 0.75rem; }
     td.score { color: #94a3b8; font-size: 0.78rem; }
     td.size { color: #94a3b8; text-align: right; }
-    .preview-pane { width: 340px; min-width: 200px; border-left: 1px solid #2d3748; background: #13151f; display: flex; flex-direction: column; overflow: hidden; }
-    .preview-header { padding: 8px 14px; font-size: 0.78rem; color: #64748b; border-bottom: 1px solid #1e2333; font-weight: 600; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
-    .preview-body { flex: 1; overflow-y: auto; padding: 12px 14px; font-family: 'JetBrains Mono', Consolas, monospace; font-size: 0.72rem; line-height: 1.6; color: #cbd5e1; white-space: pre-wrap; word-break: break-word; }
+    td.actions { width: 80px; text-align: center; white-space: nowrap; }
+    .btn-icon { background: none; border: none; cursor: pointer; padding: 2px 5px; border-radius: 4px; font-size: 0.85rem; color: #94a3b8; transition: color 0.15s, background 0.15s; }
+    .btn-icon:hover { color: #e2e8f0; background: #2d3748; }
+    .preview-pane { width: 440px; min-width: 220px; border-left: 1px solid #2d3748; background: #13151f; display: flex; flex-direction: column; overflow: hidden; }
+    .preview-header { padding: 8px 14px; font-size: 0.78rem; color: #64748b; border-bottom: 1px solid #1e2333; font-weight: 600; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; display: flex; align-items: center; gap: 6px; }
+    .preview-header span { flex: 1; overflow: hidden; text-overflow: ellipsis; }
+    .preview-body { flex: 1; overflow: hidden; position: relative; }
+    #viewerContainer { width: 100%; height: 100%; }
+    .preview-placeholder { padding: 40px 20px; text-align: center; color: #4b5563; font-size: 0.85rem; }
     .empty-state { text-align: center; padding: 60px 20px; color: #4b5563; }
     .empty-state .icon { font-size: 2.5rem; margin-bottom: 10px; }
     .empty-state p { font-size: 0.9rem; }
@@ -45,16 +52,36 @@
     ::-webkit-scrollbar-thumb { background: #374151; border-radius: 3px; }
     .spinner { display: inline-block; width: 14px; height: 14px; border: 2px solid #3d4a5c; border-top-color: #60a5fa; border-radius: 50%; animation: spin 0.7s linear infinite; vertical-align: middle; margin-right: 6px; }
     @keyframes spin { to { transform: rotate(360deg); } }
+    .modal-overlay { display: none; position: fixed; inset: 0; background: rgba(0,0,0,0.65); z-index: 1000; align-items: center; justify-content: center; }
+    .modal-overlay.active { display: flex; }
+    .modal { background: #1a1d2e; border: 1px solid #2d3748; border-radius: 10px; padding: 24px; min-width: 360px; max-width: 480px; width: 100%; box-shadow: 0 8px 32px rgba(0,0,0,0.5); }
+    .modal h2 { font-size: 1rem; font-weight: 700; color: #e2e8f0; margin-bottom: 16px; }
+    .modal-field { margin-bottom: 12px; }
+    .modal-field label { display: block; font-size: 0.78rem; color: #94a3b8; margin-bottom: 4px; }
+    .modal-field input, .modal-field select { width: 100%; padding: 8px 10px; border-radius: 6px; border: 1px solid #3d4a5c; background: #0f1117; color: #e2e8f0; font-size: 0.85rem; outline: none; }
+    .modal-field input:focus { border-color: #60a5fa; }
+    .modal-actions { display: flex; gap: 8px; justify-content: flex-end; margin-top: 16px; }
+    .modal-actions button { padding: 7px 16px; border-radius: 6px; border: none; font-size: 0.85rem; font-weight: 600; cursor: pointer; }
+    .btn-primary { background: #3b82f6; color: #fff; }
+    .btn-primary:hover { background: #2563eb; }
+    .btn-cancel { background: #374151; color: #e2e8f0; }
+    .btn-cancel:hover { background: #4b5563; }
+    .share-result { display: none; margin-top: 12px; padding: 10px; background: #0f1117; border-radius: 6px; border: 1px solid #2d3748; }
+    .share-result.active { display: block; }
+    .share-url-row { display: flex; gap: 6px; align-items: center; }
+    .share-url-row input { flex: 1; font-size: 0.78rem; color: #93c5fd; background: transparent; border: none; outline: none; cursor: pointer; }
+    .share-url-row button { padding: 4px 10px; background: #374151; color: #e2e8f0; border: none; border-radius: 4px; font-size: 0.78rem; cursor: pointer; white-space: nowrap; }
+    .share-url-row button:hover { background: #4b5563; }
   </style>
 </head>
 <body>
 <header>
-  <h1>🔍 DocFinder</h1>
+  <h1>&#x1F50D; DocFinder</h1>
   <span class="tag">Web Interface</span>
 </header>
 
 <div class="search-bar">
-  <input type="text" id="queryInput" placeholder="Search files… (e.g. kubernetes, name:*.xlsx)" autofocus/>
+  <input type="text" id="queryInput" placeholder="Search files&hellip; (e.g. kubernetes, name:*.xlsx)" autofocus/>
   <select id="scopeSelect" title="Search scope">
     <option value="ALL">All Fields</option>
     <option value="NAME">Name Only</option>
@@ -79,7 +106,7 @@
 <div class="main">
   <div class="results-pane">
     <div id="emptyState" class="empty-state">
-      <div class="icon">🗂</div>
+      <div class="icon">&#x1F5C2;</div>
       <p>Your search results will appear here.</p>
     </div>
     <table id="resultsTable" style="display:none">
@@ -90,40 +117,144 @@
           <th data-col="match">Match</th>
           <th data-col="size">Size</th>
           <th data-col="score">Score</th>
+          <th></th>
         </tr>
       </thead>
       <tbody id="resultsBody"></tbody>
     </table>
   </div>
   <div class="preview-pane">
-    <div class="preview-header" id="previewHeader">Preview</div>
-    <div class="preview-body" id="previewBody">Select a result to preview.</div>
+    <div class="preview-header">
+      <span id="previewHeaderText">Preview</span>
+      <button class="btn-icon" id="openTabBtn" title="Open in new tab" style="display:none">&#x2197;</button>
+    </div>
+    <div class="preview-body">
+      <div id="viewerContainer" style="display:none;width:100%;height:100%;"></div>
+      <div id="previewPlaceholder" class="preview-placeholder">Select a result to preview.</div>
+    </div>
   </div>
 </div>
 
+<!-- Share modal -->
+<div class="modal-overlay" id="shareModal">
+  <div class="modal">
+    <h2>&#x1F517; Share File</h2>
+    <div class="modal-field">
+      <label>File</label>
+      <input type="text" id="shareFilePath" readonly/>
+    </div>
+    <div class="modal-field">
+      <label>Expires in</label>
+      <select id="shareExpiry">
+        <option value="1">1 hour</option>
+        <option value="6">6 hours</option>
+        <option value="24" selected>24 hours</option>
+        <option value="72">3 days</option>
+        <option value="168">7 days</option>
+        <option value="0">Never</option>
+      </select>
+    </div>
+    <div class="modal-field">
+      <label>Password (optional)</label>
+      <input type="password" id="sharePassword" placeholder="Leave blank for no password"/>
+    </div>
+    <div class="modal-field">
+      <label>Max downloads (0 = unlimited)</label>
+      <input type="number" id="shareMaxDownloads" value="0" min="0"/>
+    </div>
+    <div class="share-result" id="shareResult">
+      <div style="font-size:0.75rem;color:#94a3b8;margin-bottom:6px;">Share link created:</div>
+      <div class="share-url-row">
+        <input type="text" id="shareUrlInput" readonly/>
+        <button id="copyLinkBtn">Copy</button>
+        <button id="openShareBtn">Open</button>
+      </div>
+    </div>
+    <div class="modal-actions">
+      <button class="btn-cancel" id="shareCancel">Close</button>
+      <button class="btn-primary" id="shareCreate">Create Link</button>
+    </div>
+  </div>
+</div>
+
+<script src="/web/jit-viewer.min.js"></script>
 <script>
 (function() {
   'use strict';
 
-  var queryInput = document.getElementById('queryInput');
-  var scopeSelect = document.getElementById('scopeSelect');
-  var modeSelect  = document.getElementById('modeSelect');
-  var extInput    = document.getElementById('extInput');
-  var limitSelect = document.getElementById('limitSelect');
-  var searchBtn   = document.getElementById('searchBtn');
-  var statusBar   = document.getElementById('statusBar');
-  var emptyState  = document.getElementById('emptyState');
-  var resultsTable= document.getElementById('resultsTable');
-  var resultsBody = document.getElementById('resultsBody');
-  var previewHeader = document.getElementById('previewHeader');
-  var previewBody   = document.getElementById('previewBody');
+  var queryInput   = document.getElementById('queryInput');
+  var scopeSelect  = document.getElementById('scopeSelect');
+  var modeSelect   = document.getElementById('modeSelect');
+  var extInput     = document.getElementById('extInput');
+  var limitSelect  = document.getElementById('limitSelect');
+  var searchBtn    = document.getElementById('searchBtn');
+  var statusBar    = document.getElementById('statusBar');
+  var emptyState   = document.getElementById('emptyState');
+  var resultsTable = document.getElementById('resultsTable');
+  var resultsBody  = document.getElementById('resultsBody');
+  var previewHeaderText = document.getElementById('previewHeaderText');
+  var openTabBtn   = document.getElementById('openTabBtn');
+  var viewerContainer  = document.getElementById('viewerContainer');
+  var previewPlaceholder = document.getElementById('previewPlaceholder');
 
-  var currentResults = [];
-  var selectedIndex  = -1;
-  var searchToken    = 0;
+  var currentResults  = [];
+  var selectedIndex   = -1;
+  var searchToken     = 0;
+  var currentViewer   = null;
+  var currentFilePath = null;
 
+  // ── jit-viewer ──────────────────────────────────────────────────────────────
+  function destroyViewer() {
+    if (currentViewer) {
+      try { currentViewer.destroy(); } catch(e) {}
+      currentViewer = null;
+    }
+    viewerContainer.innerHTML = '';
+    viewerContainer.style.display = 'none';
+    previewPlaceholder.style.display = '';
+    openTabBtn.style.display = 'none';
+    previewHeaderText.textContent = 'Preview';
+    currentFilePath = null;
+  }
+
+  function loadViewer(filePath, fileName) {
+    destroyViewer();
+    currentFilePath = filePath;
+    previewHeaderText.textContent = fileName;
+    openTabBtn.style.display = '';
+    viewerContainer.style.display = '';
+    previewPlaceholder.style.display = 'none';
+
+    var fileUrl = '/api/file?path=' + encodeURIComponent(filePath);
+    try {
+      var viewer = JitViewer.createViewer({
+        target: viewerContainer,
+        file: fileUrl,
+        filename: fileName,
+        theme: 'dark',
+        toolbar: true,
+        width: '100%',
+        height: '100%',
+        onError: function(err) {
+          viewerContainer.innerHTML = '<div style="padding:20px;color:#ef4444;font-size:0.8rem;">Preview failed: ' + esc(String(err)) + '</div>';
+        }
+      });
+      viewer.mount();
+      currentViewer = viewer;
+    } catch(e) {
+      viewerContainer.innerHTML = '<div style="padding:20px;color:#ef4444;font-size:0.8rem;">Viewer error: ' + esc(String(e)) + '</div>';
+    }
+  }
+
+  openTabBtn.addEventListener('click', function() {
+    if (currentFilePath) {
+      window.open('/api/file?path=' + encodeURIComponent(currentFilePath), '_blank');
+    }
+  });
+
+  // ── Search ───────────────────────────────────────────────────────────────────
   function formatSize(bytes) {
-    if (bytes <= 0) return '–';
+    if (bytes <= 0) return '-';
     if (bytes < 1024) return bytes + ' B';
     if (bytes < 1048576) return (bytes / 1024).toFixed(1) + ' KB';
     if (bytes < 1073741824) return (bytes / 1048576).toFixed(1) + ' MB';
@@ -139,7 +270,8 @@
     var ext   = extInput.value.trim();
     var limit = limitSelect.value;
 
-    statusBar.innerHTML = '<span class="spinner"></span>Searching…';
+    statusBar.innerHTML = '<span class="spinner"></span>Searching...';
+    destroyViewer();
 
     var url = '/api/search?q=' + encodeURIComponent(q)
             + '&scope=' + scope + '&mode=' + mode
@@ -150,18 +282,13 @@
     fetch(url)
       .then(function(r) { return r.json(); })
       .then(function(data) {
-        if (token !== searchToken) return; // 过期响应
+        if (token !== searchToken) return;
         var elapsed = Date.now() - t0;
-        if (data.error) {
-          statusBar.textContent = 'Error: ' + data.error;
-          return;
-        }
+        if (data.error) { statusBar.textContent = 'Error: ' + data.error; return; }
         currentResults = data.results || [];
         selectedIndex = -1;
         renderResults();
         statusBar.textContent = currentResults.length + ' result(s) in ' + elapsed + ' ms';
-        previewBody.textContent = 'Select a result to preview.';
-        previewHeader.textContent = 'Preview';
       })
       .catch(function(e) {
         if (token !== searchToken) return;
@@ -180,42 +307,51 @@
     resultsTable.style.display = '';
     currentResults.forEach(function(r, idx) {
       var tr = document.createElement('tr');
+      var actionsHtml = r.directory ? '' :
+        '<button class="btn-icon share-btn" title="Share file" data-idx="' + idx + '">&#x1F517;</button>' +
+        '<button class="btn-icon preview-btn" title="Open in new tab" data-idx="' + idx + '">&#x2197;</button>';
       tr.innerHTML =
         '<td class="name">' + (r.directory ? '<span class="dir-icon"></span>' : '<span class="file-icon"></span>') + esc(r.name) + '</td>' +
         '<td class="path" title="' + esc(r.path) + '">' + esc(r.path) + '</td>' +
         '<td class="match">' + esc(r.match || '') + '</td>' +
         '<td class="size">' + formatSize(r.size) + '</td>' +
-        '<td class="score">' + (r.score || 0).toFixed(3) + '</td>';
-      tr.addEventListener('click', function() { selectRow(idx); });
+        '<td class="score">' + (r.score || 0).toFixed(3) + '</td>' +
+        '<td class="actions">' + actionsHtml + '</td>';
+      tr.addEventListener('click', function(e) {
+        if (e.target.classList.contains('btn-icon')) return;
+        selectRow(idx);
+      });
       resultsBody.appendChild(tr);
+    });
+    resultsBody.querySelectorAll('.share-btn').forEach(function(btn) {
+      btn.addEventListener('click', function(e) {
+        e.stopPropagation();
+        openShareModal(currentResults[+btn.dataset.idx]);
+      });
+    });
+    resultsBody.querySelectorAll('.preview-btn').forEach(function(btn) {
+      btn.addEventListener('click', function(e) {
+        e.stopPropagation();
+        var r = currentResults[+btn.dataset.idx];
+        window.open('/api/file?path=' + encodeURIComponent(r.path), '_blank');
+      });
     });
   }
 
   function selectRow(idx) {
-    if (selectedIndex === idx) return;
-    // 更新高亮
     var rows = resultsBody.querySelectorAll('tr');
     if (selectedIndex >= 0 && rows[selectedIndex]) rows[selectedIndex].classList.remove('selected');
     selectedIndex = idx;
     if (rows[idx]) rows[idx].classList.add('selected');
-    loadPreview(currentResults[idx]);
-  }
-
-  function loadPreview(r) {
-    if (r.directory) {
-      previewHeader.textContent = '📁 ' + r.name;
-      previewBody.textContent = '[Directory: ' + r.path + ']';
-      return;
+    var r = currentResults[idx];
+    if (!r.directory) {
+      loadViewer(r.path, r.name);
+    } else {
+      destroyViewer();
+      previewHeaderText.textContent = '&#x1F4C1; ' + r.name;
+      previewPlaceholder.textContent = '[Directory: ' + r.path + ']';
+      previewPlaceholder.style.display = '';
     }
-    previewHeader.textContent = r.name;
-    previewBody.innerHTML = '<span class="spinner"></span>Loading…';
-    fetch('/api/preview?path=' + encodeURIComponent(r.path))
-      .then(function(res) { return res.json(); })
-      .then(function(data) {
-        if (data.error) { previewBody.textContent = 'Error: ' + data.error; return; }
-        previewBody.textContent = (data.text || '') + (data.truncated ? '\n…[truncated]' : '');
-      })
-      .catch(function(e) { previewBody.textContent = 'Failed: ' + e.message; });
   }
 
   function esc(s) {
@@ -223,11 +359,75 @@
     return s.replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;').replace(/"/g,'&quot;');
   }
 
-  // 事件绑定
+  // ── Share modal ──────────────────────────────────────────────────────────────
+  var shareModal    = document.getElementById('shareModal');
+  var shareFilePath = document.getElementById('shareFilePath');
+  var shareExpiry   = document.getElementById('shareExpiry');
+  var sharePassword = document.getElementById('sharePassword');
+  var shareMaxDL    = document.getElementById('shareMaxDownloads');
+  var shareResult   = document.getElementById('shareResult');
+  var shareUrlInput = document.getElementById('shareUrlInput');
+  var shareCreate   = document.getElementById('shareCreate');
+  var shareCancel   = document.getElementById('shareCancel');
+  var copyLinkBtn   = document.getElementById('copyLinkBtn');
+  var openShareBtn  = document.getElementById('openShareBtn');
+
+  function openShareModal(r) {
+    shareFilePath.value = r.path;
+    sharePassword.value = '';
+    shareMaxDL.value = '0';
+    shareExpiry.value = '24';
+    shareResult.classList.remove('active');
+    shareUrlInput.value = '';
+    shareCreate.disabled = false;
+    shareCreate.textContent = 'Create Link';
+    shareModal.classList.add('active');
+  }
+
+  shareCancel.addEventListener('click', function() { shareModal.classList.remove('active'); });
+  shareModal.addEventListener('click', function(e) { if (e.target === shareModal) shareModal.classList.remove('active'); });
+
+  shareCreate.addEventListener('click', function() {
+    shareCreate.disabled = true;
+    shareCreate.textContent = 'Creating...';
+    var body = 'path=' + encodeURIComponent(shareFilePath.value)
+             + '&expiryHours=' + encodeURIComponent(shareExpiry.value)
+             + '&password=' + encodeURIComponent(sharePassword.value)
+             + '&maxDownloads=' + encodeURIComponent(shareMaxDL.value);
+    fetch('/api/share/create', {
+        method: 'POST',
+        headers: {'Content-Type': 'application/x-www-form-urlencoded'},
+        body: body })
+      .then(function(r) { return r.json(); })
+      .then(function(data) {
+        shareCreate.disabled = false;
+        shareCreate.textContent = 'Create Link';
+        if (data.error) { alert('Error: ' + data.error); return; }
+        shareUrlInput.value = data.url;
+        shareResult.classList.add('active');
+      })
+      .catch(function(e) {
+        shareCreate.disabled = false;
+        shareCreate.textContent = 'Create Link';
+        alert('Request failed: ' + e.message);
+      });
+  });
+
+  copyLinkBtn.addEventListener('click', function() {
+    shareUrlInput.select();
+    try { document.execCommand('copy'); } catch(e) {}
+    copyLinkBtn.textContent = 'Copied!';
+    setTimeout(function() { copyLinkBtn.textContent = 'Copy'; }, 1500);
+  });
+  openShareBtn.addEventListener('click', function() {
+    if (shareUrlInput.value) window.open(shareUrlInput.value, '_blank');
+  });
+
+  // ── Keyboard navigation ──────────────────────────────────────────────────────
   searchBtn.addEventListener('click', search);
   queryInput.addEventListener('keydown', function(e) { if (e.key === 'Enter') search(); });
-  // 键盘导航
   document.addEventListener('keydown', function(e) {
+    if (shareModal.classList.contains('active')) return;
     if (currentResults.length === 0) return;
     if (e.key === 'ArrowDown') { e.preventDefault(); selectRow(Math.min(selectedIndex + 1, currentResults.length - 1)); }
     else if (e.key === 'ArrowUp') { e.preventDefault(); selectRow(Math.max(selectedIndex - 1, 0)); }

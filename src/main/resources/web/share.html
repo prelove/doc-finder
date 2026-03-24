@@ -1,0 +1,220 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8"/>
+  <meta name="viewport" content="width=device-width, initial-scale=1.0"/>
+  <title>DocFinder &ndash; Shared File</title>
+  <link rel="stylesheet" href="/web/jit-viewer.min.css"/>
+  <style>
+    *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
+    body { font-family: system-ui, -apple-system, sans-serif; background: #0f1117; color: #e2e8f0; min-height: 100vh; display: flex; flex-direction: column; }
+    header { background: #1a1d2e; border-bottom: 1px solid #2d3748; padding: 10px 20px; display: flex; align-items: center; gap: 12px; }
+    header h1 { font-size: 1.1rem; font-weight: 700; color: #60a5fa; }
+    header .file-name { font-size: 0.9rem; color: #94a3b8; flex: 1; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+    .toolbar { display: flex; gap: 8px; align-items: center; }
+    .toolbar button { padding: 5px 14px; border-radius: 6px; border: none; font-size: 0.82rem; font-weight: 600; cursor: pointer; }
+    .btn-download { background: #3b82f6; color: #fff; }
+    .btn-download:hover { background: #2563eb; }
+    .btn-fullscreen { background: #374151; color: #e2e8f0; }
+    .btn-fullscreen:hover { background: #4b5563; }
+    #viewer-wrap { flex: 1; overflow: hidden; position: relative; }
+    #viewerContainer { width: 100%; height: 100%; }
+    /* Password / error gates */
+    .gate { display: flex; flex: 1; align-items: center; justify-content: center; }
+    .gate-card { background: #1a1d2e; border: 1px solid #2d3748; border-radius: 10px; padding: 32px; min-width: 320px; text-align: center; }
+    .gate-card h2 { font-size: 1rem; color: #e2e8f0; margin-bottom: 16px; }
+    .gate-card p { font-size: 0.85rem; color: #94a3b8; margin-bottom: 16px; }
+    .gate-card input { width: 100%; padding: 9px 12px; border-radius: 6px; border: 1px solid #3d4a5c; background: #0f1117; color: #e2e8f0; font-size: 0.9rem; outline: none; margin-bottom: 12px; }
+    .gate-card input:focus { border-color: #60a5fa; }
+    .gate-card button { padding: 8px 24px; border-radius: 6px; border: none; background: #3b82f6; color: #fff; font-size: 0.9rem; font-weight: 600; cursor: pointer; }
+    .gate-card button:hover { background: #2563eb; }
+    .gate-card .err { color: #ef4444; font-size: 0.8rem; margin-top: 8px; }
+    .expiry-tag { font-size: 0.7rem; background: #2d3748; color: #94a3b8; border-radius: 4px; padding: 2px 7px; }
+  </style>
+</head>
+<body>
+<header>
+  <h1>&#x1F50D; DocFinder</h1>
+  <span class="file-name" id="fileNameLabel">Loading...</span>
+  <span class="expiry-tag" id="expiryTag" style="display:none"></span>
+  <div class="toolbar" id="toolbar" style="display:none">
+    <button class="btn-download" id="downloadBtn">&#x2B07; Download</button>
+    <button class="btn-fullscreen" id="fullscreenBtn">&#x26F6; Fullscreen</button>
+  </div>
+</header>
+
+<div id="passwordGate" class="gate" style="display:none">
+  <div class="gate-card">
+    <h2>&#x1F512; Password Required</h2>
+    <p>This file is protected. Enter the password to continue.</p>
+    <input type="password" id="pwInput" placeholder="Password" autocomplete="off"/>
+    <button id="pwSubmit">Access File</button>
+    <div class="err" id="pwErr"></div>
+  </div>
+</div>
+
+<div id="errorGate" class="gate" style="display:none">
+  <div class="gate-card">
+    <h2>&#x26A0; Unavailable</h2>
+    <p id="errorMsg">This shared link is no longer available.</p>
+  </div>
+</div>
+
+<div id="viewer-wrap" style="display:none">
+  <div id="viewerContainer"></div>
+</div>
+
+<script src="/web/jit-viewer.min.js"></script>
+<script>
+(function() {
+  'use strict';
+
+  // Extract token from path: /share/{token}
+  var token = location.pathname.replace(/^\/share\/?/, '').replace(/\/.*$/, '');
+
+  var fileNameLabel = document.getElementById('fileNameLabel');
+  var expiryTag     = document.getElementById('expiryTag');
+  var toolbar       = document.getElementById('toolbar');
+  var passwordGate  = document.getElementById('passwordGate');
+  var errorGate     = document.getElementById('errorGate');
+  var errorMsg      = document.getElementById('errorMsg');
+  var viewerWrap    = document.getElementById('viewer-wrap');
+  var viewerContainer = document.getElementById('viewerContainer');
+  var pwInput       = document.getElementById('pwInput');
+  var pwSubmit      = document.getElementById('pwSubmit');
+  var pwErr         = document.getElementById('pwErr');
+  var downloadBtn   = document.getElementById('downloadBtn');
+  var fullscreenBtn = document.getElementById('fullscreenBtn');
+
+  var currentViewer = null;
+  var shareInfo     = null;
+  var passwordValue = '';
+
+  function showError(msg) {
+    fileNameLabel.textContent = 'Unavailable';
+    errorMsg.textContent = msg || 'This shared link is no longer available.';
+    errorGate.style.display = 'flex';
+    passwordGate.style.display = 'none';
+    viewerWrap.style.display = 'none';
+  }
+
+  function fmtExpiry(ms) {
+    if (!ms) return 'Never expires';
+    var diff = ms - Date.now();
+    if (diff <= 0) return 'Expired';
+    var h = Math.floor(diff / 3600000);
+    var m = Math.floor((diff % 3600000) / 60000);
+    if (h >= 24) return 'Expires in ' + Math.floor(h/24) + 'd ' + (h%24) + 'h';
+    if (h > 0) return 'Expires in ' + h + 'h ' + m + 'm';
+    return 'Expires in ' + m + 'm';
+  }
+
+  function mountViewer(fileName, password) {
+    if (currentViewer) { try { currentViewer.destroy(); } catch(e) {} currentViewer = null; }
+    var fileUrl = '/api/share/' + encodeURIComponent(token) + '/file'
+                + (password ? '?password=' + encodeURIComponent(password) : '');
+
+    passwordGate.style.display = 'none';
+    errorGate.style.display = 'none';
+    viewerWrap.style.display = '';
+    toolbar.style.display = 'flex';
+    fileNameLabel.textContent = fileName;
+
+    try {
+      var viewer = JitViewer.createViewer({
+        target: viewerContainer,
+        file: fileUrl,
+        filename: fileName,
+        theme: 'dark',
+        toolbar: true,
+        width: '100%',
+        height: '100%',
+        onError: function(err) {
+          viewerContainer.innerHTML = '<div style="padding:30px;color:#ef4444;font-size:0.85rem;">Preview error: ' + String(err) + '</div>';
+        }
+      });
+      viewer.mount();
+      currentViewer = viewer;
+    } catch(e) {
+      viewerContainer.innerHTML = '<div style="padding:30px;color:#ef4444;font-size:0.85rem;">Viewer error: ' + String(e) + '</div>';
+    }
+  }
+
+  function init() {
+    if (!token) { showError('Invalid share link.'); return; }
+    fetch('/api/share/' + encodeURIComponent(token) + '/info')
+      .then(function(r) { return r.json(); })
+      .then(function(data) {
+        if (data.error) { showError(data.error); return; }
+        shareInfo = data;
+        fileNameLabel.textContent = data.name || 'Shared File';
+
+        if (data.expiry) {
+          expiryTag.textContent = fmtExpiry(data.expiry);
+          expiryTag.style.display = '';
+        }
+
+        if (data.passwordRequired) {
+          passwordGate.style.display = 'flex';
+          pwInput.focus();
+        } else {
+          mountViewer(data.name, '');
+        }
+      })
+      .catch(function() { showError('Could not load share information.'); });
+  }
+
+  pwSubmit.addEventListener('click', function() {
+    var pw = pwInput.value;
+    if (!pw) { pwErr.textContent = 'Please enter a password.'; return; }
+    pwErr.textContent = '';
+    pwSubmit.disabled = true;
+    pwSubmit.textContent = 'Verifying...';
+    // Verify by attempting to load info; the file endpoint will return 401 if wrong
+    fetch('/api/share/' + encodeURIComponent(token) + '/file?password=' + encodeURIComponent(pw), { method: 'HEAD' })
+      .then(function(r) {
+        pwSubmit.disabled = false;
+        pwSubmit.textContent = 'Access File';
+        if (r.status === 401) {
+          pwErr.textContent = 'Incorrect password. Please try again.';
+        } else if (r.status === 200 || r.status === 204) {
+          passwordValue = pw;
+          mountViewer(shareInfo ? shareInfo.name : 'File', pw);
+        } else {
+          pwErr.textContent = 'Access denied (' + r.status + ').';
+        }
+      })
+      .catch(function() {
+        pwSubmit.disabled = false;
+        pwSubmit.textContent = 'Access File';
+        pwErr.textContent = 'Request failed.';
+      });
+  });
+  pwInput.addEventListener('keydown', function(e) { if (e.key === 'Enter') pwSubmit.click(); });
+
+  downloadBtn.addEventListener('click', function() {
+    if (!token) return;
+    var url = '/api/share/' + encodeURIComponent(token) + '/file'
+            + (passwordValue ? '?password=' + encodeURIComponent(passwordValue) : '');
+    var a = document.createElement('a');
+    a.href = url;
+    a.download = shareInfo ? shareInfo.name : 'file';
+    document.body.appendChild(a);
+    a.click();
+    document.body.removeChild(a);
+  });
+
+  fullscreenBtn.addEventListener('click', function() {
+    var el = document.documentElement;
+    if (!document.fullscreenElement) {
+      (el.requestFullscreen || el.webkitRequestFullscreen || el.mozRequestFullScreen || function(){}).call(el);
+    } else {
+      (document.exitFullscreen || document.webkitExitFullscreen || document.mozCancelFullScreen || function(){}).call(document);
+    }
+  });
+
+  init();
+})();
+</script>
+</body>
+</html>

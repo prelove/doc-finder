@@ -10,14 +10,22 @@ import java.net.InetSocketAddress;
 import java.util.concurrent.Executors;
 
 /**
- * 嵌入式 HTTP 服务器（可选），通过 REST API 暴露搜索功能。
- * 默认绑定 localhost:7070，仅在配置启用时才启动。
- * <p>
- * 端点：
- *   GET /            – 内嵌 HTML 搜索界面
- *   GET /api/search  – JSON 搜索结果（参数: q, scope, mode, ext, limit）
- *   GET /api/preview – 文本预览（参数: path）
- * </p>
+ * Embedded HTTP server that exposes the DocFinder web interface.
+ *
+ * <p>Endpoints:
+ * <pre>
+ *   GET  /                        – main search UI (index.html)
+ *   GET  /web/<asset>             – bundled static assets (JS, CSS)
+ *   GET  /share/{token}           – public file-share page (share.html)
+ *   GET  /api/search              – JSON search results
+ *   GET  /api/preview             – text snippet preview (legacy)
+ *   GET  /api/file                – serve raw file for jit-viewer preview
+ *   POST /api/share/create        – create a share link
+ *   GET  /api/share/list          – list all shares
+ *   POST /api/share/revoke        – revoke a share
+ *   GET  /api/share/{token}/info  – share metadata
+ *   GET  /api/share/{token}/file  – download / stream shared file
+ * </pre>
  */
 public class WebServer {
 
@@ -27,36 +35,45 @@ public class WebServer {
     private final String bindAddress;
     private volatile HttpServer server;
     private volatile SearchService searchService;
+    private final ShareManager shareManager = new ShareManager();
 
     public WebServer(int port, String bindAddress) {
         this.port = port;
         this.bindAddress = (bindAddress == null || bindAddress.isEmpty()) ? "127.0.0.1" : bindAddress;
     }
 
-    /** 更新搜索服务引用（在 index 打开后被 App 调用） */
+    /** Updates the search-service reference (called by App after the index is ready). */
     public void setSearchService(SearchService svc) {
         this.searchService = svc;
     }
 
-    /** 启动服务器；若已在运行则为 no-op */
+    /** Starts the server; no-op if already running. */
     public void start() throws IOException {
         if (server != null) return;
         InetSocketAddress addr = new InetSocketAddress(bindAddress, port);
-        HttpServer s = HttpServer.create(addr, 16);
-        s.setExecutor(Executors.newFixedThreadPool(4, r -> {
+        HttpServer s = HttpServer.create(addr, 32);
+        s.setExecutor(Executors.newFixedThreadPool(8, r -> {
             Thread t = new Thread(r, "docfinder-web");
             t.setDaemon(true);
             return t;
         }));
-        s.createContext("/api/search", new SearchHandler(() -> searchService));
+
+        String base = "http://" + bindAddress + ":" + port;
+        ShareHandler shareHandler = new ShareHandler(shareManager, base);
+
+        s.createContext("/api/search",  new SearchHandler(() -> searchService));
         s.createContext("/api/preview", new PreviewHandler());
-        s.createContext("/", new StaticHandler());
+        s.createContext("/api/file",    new FileServeHandler());
+        s.createContext("/api/share",   shareHandler);
+        s.createContext("/share/",      new StaticHandler()); // public share pages → share.html
+        s.createContext("/web/",        new StaticHandler()); // bundled JS / CSS
+        s.createContext("/",            new StaticHandler()); // root → index.html
         s.start();
         server = s;
         log.info("Web interface started at http://{}:{}/", bindAddress, port);
     }
 
-    /** 停止服务器（1 s 延迟） */
+    /** Stops the server (1 s drain). */
     public void stop() {
         HttpServer s = server;
         if (s != null) {
@@ -66,11 +83,12 @@ public class WebServer {
         }
     }
 
-    public boolean isRunning() {
-        return server != null;
-    }
+    public boolean isRunning() { return server != null; }
+    public int getPort()       { return port; }
+    public String getBindAddress() { return bindAddress; }
 
-    public int getPort() {
-        return port;
+    /** Returns the base URL, e.g. {@code http://127.0.0.1:7070}. */
+    public String getBaseUrl() {
+        return "http://" + bindAddress + ":" + port;
     }
 }
