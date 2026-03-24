@@ -19,6 +19,7 @@ public class MenuBarPanel extends JMenuBar {
     private JCheckBoxMenuItem netPollToggle;
     private JCheckBoxMenuItem webServerToggle;
     private JMenuItem openWebItem;
+    private JCheckBoxMenuItem kkFileViewToggle;
     private JCheckBoxMenuItem showScoreToggle;
 
     public interface MenuListener {
@@ -53,6 +54,9 @@ public class MenuBarPanel extends JMenuBar {
 
         /** Called when the user toggles the Score column visibility. */
         void onToggleScoreColumn(boolean visible);
+
+        /** Called when the user toggles kkFileView server. */
+        void onToggleKkFileView();
     }
 
     public MenuBarPanel() {
@@ -152,6 +156,15 @@ public class MenuBarPanel extends JMenuBar {
 
         file.addSeparator();
 
+        kkFileViewToggle = new JCheckBoxMenuItem("Enable kkFileView Server");
+        kkFileViewToggle.setToolTipText("Start or stop the kkFileView document preview server");
+        kkFileViewToggle.addActionListener(e -> {
+            if (menuListener != null) menuListener.onToggleKkFileView();
+        });
+        file.add(kkFileViewToggle);
+
+        file.addSeparator();
+
         JMenuItem exitItem = new JMenuItem("Exit");
         // Java 8：使用 getMenuShortcutKeyMask()（Win=Ctrl, macOS=Cmd）
         exitItem.setAccelerator(
@@ -238,5 +251,10 @@ public class MenuBarPanel extends JMenuBar {
     /** Returns the Show Score Column toggle so callers can read/set its state. */
     public JCheckBoxMenuItem getShowScoreToggle() {
         return showScoreToggle;
+    }
+
+    /** Returns the kkFileView toggle menu item so callers can read/set its state. */
+    public JCheckBoxMenuItem getKkFileViewToggle() {
+        return kkFileViewToggle;
     }
 }
