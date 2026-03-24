@@ -74,7 +74,7 @@ class ShareHandler implements HttpHandler {
                 handleInfo(exchange, token);
                 return;
             }
-            if ("file".equals(action) && "GET".equals(method)) {
+            if ("file".equals(action) && ("GET".equals(method) || "HEAD".equals(method))) {
                 handleFile(exchange, token);
                 return;
             }
@@ -202,6 +202,14 @@ class ShareHandler implements HttpHandler {
         Path filePath = Paths.get(e.filePath).toAbsolutePath().normalize();
         if (!Files.exists(filePath) || Files.isDirectory(filePath)) {
             SearchHandler.sendJson(exchange, 404, "{\"error\":\"File no longer available\"}");
+            return;
+        }
+
+        // HEAD: validate credentials and return headers only (no body, no download count increment)
+        if ("HEAD".equals(exchange.getRequestMethod().toUpperCase())) {
+            exchange.getResponseHeaders().add("Content-Type", FileServeHandler.guessMime(filePath.getFileName().toString()));
+            exchange.getResponseHeaders().add("Access-Control-Allow-Origin", "*");
+            exchange.sendResponseHeaders(200, -1);
             return;
         }
 
