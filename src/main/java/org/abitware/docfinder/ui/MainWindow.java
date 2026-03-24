@@ -54,6 +54,11 @@ public class MainWindow extends JFrame implements MenuBarPanel.MenuListener {
 	private javax.swing.JCheckBoxMenuItem webServerToggle;
 	private javax.swing.JMenuItem openWebItem;
 
+	// Score column toggle
+	private javax.swing.JCheckBoxMenuItem showScoreToggle;
+	/** Index of the Score column in the DefaultTableModel (fixed at 2). */
+	private static final int SCORE_COL = 2;
+
 	// ========= Fields =========
 	private SearchService searchService;
 
@@ -165,10 +170,15 @@ public class MainWindow extends JFrame implements MenuBarPanel.MenuListener {
 		this.netPollToggle = menuBar.getNetPollToggle();
 		this.webServerToggle = menuBar.getWebServerToggle();
 		this.openWebItem = menuBar.getOpenWebItem();
+		this.showScoreToggle = menuBar.getShowScoreToggle();
 
 		// Restore web server toggle state from config
 		org.abitware.docfinder.index.ConfigManager cfgInit = new org.abitware.docfinder.index.ConfigManager();
 		if (webServerToggle != null) webServerToggle.setSelected(cfgInit.isWebEnabled());
+		// Restore score column visibility from config (default hidden)
+		boolean showScore = cfgInit.isShowScoreColumn();
+		if (showScoreToggle != null) showScoreToggle.setSelected(showScore);
+		setScoreColumnVisible(showScore);
 
 		// 5) Right-click menu, shortcuts, table selection listener
 		installTablePopupActions(); // Right-click: Open / Reveal / Copy
@@ -440,6 +450,7 @@ public class MainWindow extends JFrame implements MenuBarPanel.MenuListener {
 		queryBox.setEnabled(enabled);
 		scopeBox.setEnabled(enabled);
 		matchModeBox.setEnabled(enabled);
+		if (webServerToggle != null) webServerToggle.setEnabled(enabled);
 	}
 
 	private JLabel buildHintLabel(String text) {
@@ -2009,6 +2020,32 @@ public class MainWindow extends JFrame implements MenuBarPanel.MenuListener {
 		rowPopup.addSeparator();
 		rowPopup.add(copyMenu);
 
+		// Copy Web Link (only enabled when web server is running)
+		JMenuItem copyWebLink = new JMenuItem("Copy Web Link");
+		copyWebLink.setToolTipText("Copy a shareable web preview link (requires web server to be running)");
+		copyWebLink.addActionListener(e -> {
+			RowSel s = getSelectedRow();
+			if (s == null) return;
+			if (webServer == null || !webServer.isRunning()) {
+				JOptionPane.showMessageDialog(this,
+						"Web server is not running.\nEnable it via File → Enable Web Server first.",
+						"Copy Web Link", JOptionPane.INFORMATION_MESSAGE);
+				return;
+			}
+			String link = webServer.getBaseUrl() + "/?preview=" + java.net.URLEncoder.encode(s.path, java.nio.charset.StandardCharsets.UTF_8);
+			setClipboard(link);
+			statusLabel.setText("Web link copied: " + link);
+		});
+		rowPopup.add(copyWebLink);
+		// Dynamically enable/disable copyWebLink based on web server state when the popup opens
+		rowPopup.addPopupMenuListener(new javax.swing.event.PopupMenuListener() {
+			@Override public void popupMenuWillBecomeVisible(javax.swing.event.PopupMenuEvent ev) {
+				copyWebLink.setEnabled(webServer != null && webServer.isRunning());
+			}
+			@Override public void popupMenuWillBecomeInvisible(javax.swing.event.PopupMenuEvent ev) {}
+			@Override public void popupMenuCanceled(javax.swing.event.PopupMenuEvent ev) {}
+		});
+
         // 选择程序并记住
 		chooseProg.addActionListener(e -> {
 			RowSel s = getSelectedRow();
@@ -2434,6 +2471,26 @@ public class MainWindow extends JFrame implements MenuBarPanel.MenuListener {
     @Override
     public void onOpenWebInterface() {
         openWebInterface();
+    }
+
+    @Override
+    public void onToggleScoreColumn(boolean visible) {
+        setScoreColumnVisible(visible);
+        new org.abitware.docfinder.index.ConfigManager().setShowScoreColumn(visible);
+    }
+
+    /** Shows or hides the Score column at index SCORE_COL by setting its min/max/preferred width. */
+    private void setScoreColumnVisible(boolean visible) {
+        javax.swing.table.TableColumn col = resultTable.getColumnModel().getColumn(SCORE_COL);
+        if (visible) {
+            col.setMinWidth(15);
+            col.setMaxWidth(Integer.MAX_VALUE);
+            col.setPreferredWidth(70);
+        } else {
+            col.setMinWidth(0);
+            col.setMaxWidth(0);
+            col.setPreferredWidth(0);
+        }
     }
 
     /**
