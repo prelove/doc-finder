@@ -62,8 +62,8 @@
 
     /* ── Search bar ── */
     .search-bar { display: flex; gap: 8px; padding: 12px 16px; background: var(--bg3); border-bottom: 1px solid var(--border); flex-wrap: wrap; align-items: center; }
-    #themeToggleBtn, #previewToggleBtn { background: var(--btn-sec); border: 1px solid var(--input-bd); cursor: pointer; color: var(--text2); font-size: 0.95rem; padding: 6px 10px; border-radius: 6px; white-space: nowrap; flex-shrink: 0; }
-    #themeToggleBtn:hover, #previewToggleBtn:hover { background: var(--btn-sec2); color: var(--text); }
+    #themeToggleBtn, #previewToggleBtn, #viewerToggleBtn { background: var(--btn-sec); border: 1px solid var(--input-bd); cursor: pointer; color: var(--text2); font-size: 0.95rem; padding: 6px 10px; border-radius: 6px; white-space: nowrap; flex-shrink: 0; }
+    #themeToggleBtn:hover, #previewToggleBtn:hover, #viewerToggleBtn:hover { background: var(--btn-sec2); color: var(--text); }
     #previewToggleBtn.active { background: var(--accent); color: #fff; border-color: var(--accent); }
     .search-bar input[type=text] { flex: 1; min-width: 200px; padding: 7px 11px; border-radius: 6px; border: 1px solid var(--input-bd); background: var(--input-bg); color: var(--text); font-size: 0.92rem; outline: none; }
     .search-bar input[type=text]:focus { border-color: var(--accent); }
@@ -167,6 +167,7 @@
 <div class="search-bar">
   <button id="themeToggleBtn" title="Toggle dark/light theme">&#x1F319;</button>
   <button id="previewToggleBtn" class="active" title="Toggle preview panel">&#x1F441;</button>
+  <button id="viewerToggleBtn" title="Switch document viewer">&#x1F4C4;</button>
   <div style="position: relative; flex: 1; min-width: 200px;">
     <input type="text" id="queryInput" placeholder="Search files&hellip; (e.g. kubernetes, name:*.xlsx)" autofocus style="width: 100%;"/>
     <div id="historyDropdown" class="history-dropdown" style="display: none;"></div>
@@ -419,6 +420,61 @@
   var savedPreview = localStorage.getItem(PREVIEW_KEY);
   setPreviewEnabled(savedPreview === null || savedPreview === 'true');
 
+  // ── Viewer Toggle (JitViewer / kkFileView) ──────────────────────────────────
+  var viewerToggleBtn = document.getElementById('viewerToggleBtn');
+  var currentViewerPreference = 'jitviewer'; // default
+
+  function fetchViewerPreference() {
+    fetch('/api/viewer')
+      .then(function(resp) { return resp.ok ? resp.json() : null; })
+      .then(function(data) {
+        if (data && data.viewer) {
+          currentViewerPreference = data.viewer;
+          updateViewerToggleButton();
+        }
+      })
+      .catch(function(err) {
+        console.log('Could not fetch viewer preference:', err);
+      });
+  }
+
+  function updateViewerToggleButton() {
+    if (currentViewerPreference === 'kkfileview') {
+      viewerToggleBtn.textContent = '📄K';
+      viewerToggleBtn.title = 'Using kkFileView (click to switch to JitViewer)';
+    } else {
+      viewerToggleBtn.textContent = '📄J';
+      viewerToggleBtn.title = 'Using JitViewer (click to switch to kkFileView)';
+    }
+  }
+
+  viewerToggleBtn.addEventListener('click', function() {
+    var newViewer = (currentViewerPreference === 'kkfileview') ? 'jitviewer' : 'kkfileview';
+    fetch('/api/viewer', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ viewer: newViewer })
+    })
+      .then(function(resp) { return resp.ok ? resp.json() : null; })
+      .then(function(data) {
+        if (data && data.viewer) {
+          currentViewerPreference = data.viewer;
+          updateViewerToggleButton();
+          // Reload current preview if a file is loaded
+          if (currentFilePath) {
+            var fileName = currentFilePath.split(/[\/\\]/).pop();
+            loadViewer(currentFilePath, fileName);
+          }
+        }
+      })
+      .catch(function(err) {
+        alert('Failed to switch viewer: ' + err.message);
+      });
+  });
+
+  // Fetch viewer preference on load
+  fetchViewerPreference();
+
   // ── Search History ───────────────────────────────────────────────────────────
   var HISTORY_KEY = 'docfinder-search-history';
   var MAX_HISTORY = 20;
@@ -643,6 +699,15 @@
     var ac = new AbortController();
     previewAbort = ac;
 
+    // Choose viewer based on preference
+    if (currentViewerPreference === 'kkfileview') {
+      loadKkFileView(fileUrl, fileName, ac);
+    } else {
+      loadJitViewer(fileUrl, fileName, ac);
+    }
+  }
+
+  function loadJitViewer(fileUrl, fileName, ac) {
     try {
       var viewer = JitViewer.createViewer({
         target: viewerContainer,
@@ -670,6 +735,42 @@
       hideLoadingOverlay();
       previewAbort = null;
       viewerContainer.innerHTML = '<div style="padding:16px;color:#ef4444;font-size:0.8rem;">Viewer error: ' + esc(String(e)) + '</div>';
+    }
+  }
+
+  function loadKkFileView(fileUrl, fileName, ac) {
+    try {
+      // Create iframe for kkFileView
+      var iframe = document.createElement('iframe');
+      iframe.style.width = '100%';
+      iframe.style.height = '100%';
+      iframe.style.border = 'none';
+
+      // kkFileView expects a full URL for the file
+      var fullFileUrl = window.location.origin + fileUrl;
+      var kkFileViewUrl = '/api/kkfileview/onlinePreview?url=' + encodeURIComponent(fullFileUrl);
+
+      iframe.onload = function() {
+        hideLoadingOverlay();
+        previewAbort = null;
+      };
+
+      iframe.onerror = function(err) {
+        hideLoadingOverlay();
+        previewAbort = null;
+        viewerContainer.innerHTML = '<div style="padding:16px;color:#ef4444;font-size:0.8rem;">kkFileView preview failed. Make sure kkFileView server is enabled in File menu.</div>';
+      };
+
+      viewerContainer.appendChild(iframe);
+      iframe.src = kkFileViewUrl;
+      currentViewer = { element: iframe, destroy: function() { iframe.remove(); } };
+
+      // Fallback: hide overlay after 30s if onload never fires
+      setTimeout(function() { hideLoadingOverlay(); }, 30000);
+    } catch(e) {
+      hideLoadingOverlay();
+      previewAbort = null;
+      viewerContainer.innerHTML = '<div style="padding:16px;color:#ef4444;font-size:0.8rem;">kkFileView error: ' + esc(String(e)) + '</div>';
     }
   }
 
