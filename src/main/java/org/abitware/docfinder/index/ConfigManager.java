@@ -193,5 +193,27 @@ public class ConfigManager {
 	    saveAll(p);
 	}
 
-	
+	// --- kkFileView settings ---
+	public boolean isKkFileViewEnabled() {
+	    return Boolean.parseBoolean(loadAll().getProperty("kkfileview.enabled", "false"));
+	}
+
+	public void setKkFileViewEnabled(boolean on) {
+	    java.util.Properties p = loadAll();
+	    p.setProperty("kkfileview.enabled", String.valueOf(on));
+	    saveAll(p);
+	}
+
+	public int getKkFileViewPort() {
+	    try { return Integer.parseInt(loadAll().getProperty("kkfileview.port", "8012")); }
+	    catch (Exception e) { return 8012; }
+	}
+
+	public void setKkFileViewPort(int port) {
+	    java.util.Properties p = loadAll();
+	    p.setProperty("kkfileview.port", String.valueOf(Math.max(1024, Math.min(65535, port))));
+	    saveAll(p);
+	}
+
+
 }

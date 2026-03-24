@@ -55,6 +55,10 @@ public class MainWindow extends JFrame implements MenuBarPanel.MenuListener {
 	private javax.swing.JCheckBoxMenuItem webServerToggle;
 	private javax.swing.JMenuItem openWebItem;
 
+	// kkFileView server
+	private org.abitware.docfinder.web.KkFileViewServer kkFileViewServer;
+	private javax.swing.JCheckBoxMenuItem kkFileViewToggle;
+
 	// Score column toggle
 	private javax.swing.JCheckBoxMenuItem showScoreToggle;
 	/** Index of the Score column in the DefaultTableModel (fixed at 2). */
@@ -2509,6 +2513,18 @@ public class MainWindow extends JFrame implements MenuBarPanel.MenuListener {
             boolean running = (ws != null && ws.isRunning());
             if (webServerToggle != null) webServerToggle.setSelected(running);
             if (openWebItem != null) openWebItem.setEnabled(running);
+        });
+    }
+
+    /**
+     * Sets the KkFileViewServer instance so the menu can start/stop it.
+     * Call this from App after the kkFileView server is (conditionally) created.
+     */
+    public void setKkFileViewServer(org.abitware.docfinder.web.KkFileViewServer kk) {
+        this.kkFileViewServer = kk;
+        SwingUtilities.invokeLater(() -> {
+            boolean running = (kk != null && kk.isRunning());
+            if (kkFileViewToggle != null) kkFileViewToggle.setSelected(running);
         });
     }
 
