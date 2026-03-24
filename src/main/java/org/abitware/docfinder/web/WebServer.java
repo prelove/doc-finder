@@ -71,6 +71,7 @@ public class WebServer {
         s.createContext("/api/search",  new SearchHandler(() -> searchService));
         s.createContext("/api/preview", new PreviewHandler());
         s.createContext("/api/file",    new FileServeHandler());
+        s.createContext("/api/viewer",  new ViewerPreferenceHandler());
         s.createContext("/api/kkfileview", new KkFileViewProxyHandler(() -> kkFileViewServer));
         s.createContext("/api/share",   shareHandler);
         s.createContext("/share/",      new StaticHandler()); // public share pages → share.html

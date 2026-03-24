@@ -215,5 +215,23 @@ public class ConfigManager {
 	    saveAll(p);
 	}
 
+	/**
+	 * Get preferred document viewer for web UI.
+	 * @return "kkfileview" or "jitviewer" (default)
+	 */
+	public String getPreferredViewer() {
+	    return loadAll().getProperty("web.preferredViewer", "jitviewer");
+	}
+
+	/**
+	 * Set preferred document viewer for web UI.
+	 * @param viewer "kkfileview" or "jitviewer"
+	 */
+	public void setPreferredViewer(String viewer) {
+	    java.util.Properties p = loadAll();
+	    p.setProperty("web.preferredViewer", viewer);
+	    saveAll(p);
+	}
+
 
 }
