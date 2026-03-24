@@ -96,7 +96,71 @@ _Local file name & content search. Fast, read‑only, and multilingual._
 
 ---
 
-## 9) Tips & Notes（贴士）
+## 9) Web Interface & Document Preview（网页界面与文档预览）
+
+### 9.1) Web Server
+
+DocFinder 提供了内置的 HTTP 服务器，允许通过浏览器访问搜索界面。
+
+- **启用 Web Server**：`File → Enable Web Server`（勾选菜单项即启动服务器）
+- **打开 Web 界面**：`File → Open Web Interface…`（在默认浏览器中打开）
+- **默认端口**：`7070`（可在配置文件中修改）
+- **访问地址**：http://127.0.0.1:7070
+
+Web 界面功能与桌面应用基本一致，支持搜索、过滤、预览等核心功能。
+
+### 9.2) Document Preview Engines
+
+DocFinder 支持两种文档预览引擎，可在 Web 界面中切换：
+
+#### JitViewer (默认)
+- 轻量级 JavaScript 文档预览库
+- 支持常见格式：PDF、Office 文档（Word、Excel、PowerPoint）、图片等
+- 纯客户端渲染，无需额外服务器
+- 适合快速预览简单文档
+
+#### kkFileView
+- 功能强大的 Java 文档预览服务器
+- 支持更多文档格式和更好的渲染质量
+- 支持复杂文档：加密 PDF、复杂 Office 文档、CAD 文件等
+- 需要单独启动 kkFileView 服务器
+
+### 9.3) Using kkFileView
+
+1. **下载 kkFileView JAR**：
+   - 从 https://github.com/jiangchuanso/kkFileView-arm64-jdk1.8/releases 下载适用于 Java 8 的版本
+   - 将 JAR 文件放置在 `~/.docfinder/kkfileview/kkFileView.jar`
+   - 或者：编译源码并将生成的 JAR 放入上述路径
+
+2. **启用 kkFileView**：
+   - `File → Enable kkFileView Server`（勾选菜单项即启动服务器）
+   - 默认端口：`8012`（可在配置文件中修改）
+   - 启动需要几秒钟时间
+
+3. **在 Web 界面中切换预览引擎**：
+   - 点击搜索栏中的 **📄J**（JitViewer）或 **📄K**（kkFileView）按钮切换
+   - 切换后当前预览会自动刷新
+   - 设置会自动保存
+
+**注意事项**：
+- kkFileView 需要较多内存（建议 2GB+ 可用内存）
+- 首次预览某类文档时可能需要加载额外的依赖
+- 如果预览失败，请确保 kkFileView 服务器已启动（查看日志）
+- 支持的文档格式详见 kkFileView 官方文档
+
+### 9.4) API Endpoints
+
+Web Server 提供以下 API 端点：
+
+- `GET /api/search` - 搜索查询
+- `GET /api/file` - 获取文件内容
+- `GET /api/viewer` - 获取当前预览引擎设置
+- `POST /api/viewer` - 设置预览引擎（`{"viewer":"kkfileview"}` 或 `{"viewer":"jitviewer"}`）
+- `GET /api/kkfileview/*` - kkFileView 代理端点
+
+---
+
+## 10) Tips & Notes（贴士）
 
 - **Japanese Windows（¥ 路径）**：内部路径已规范化；打开前会转换为 Explorer 可识别的形式。
 - 文件名中的全角斜杠 `／` 会被保留，不会被替换成目录分隔符。
@@ -107,7 +171,7 @@ _Local file name & content search. Fast, read‑only, and multilingual._
 
 ---
 
-## 10) Troubleshooting（排障）
+## 11) Troubleshooting（排障）
 
 - `name:チェックリスト_07.xlsx` 无结果：
   - 确认索引包含 `name_raw` 字段；执行 **Rebuild Index (Full)**。
@@ -117,10 +181,14 @@ _Local file name & content search. Fast, read‑only, and multilingual._
   - 确认该源被标记为 **Network**，并具备访问权限；网络设备可能存在索引延迟。
 - 内容预览为空：
   - 可能超时/文件过大/格式不受支持；可提升超时或加入扩展名白名单。
+- kkFileView 预览失败：
+  - 确认 kkFileView JAR 已放置在正确位置（`~/.docfinder/kkfileview/kkFileView.jar`）
+  - 确认 kkFileView 服务器已启动（查看 **Help → View Log**）
+  - 检查系统内存是否充足（kkFileView 需要 2GB+ 可用内存）
 
 ---
 
-## 11) Keyboard Shortcuts（快捷键总览）
+## 12) Keyboard Shortcuts（快捷键总览）
 
 - **Enter**：Open selected item
 - **Ctrl+C**：Copy Path
@@ -129,15 +197,16 @@ _Local file name & content search. Fast, read‑only, and multilingual._
 
 ---
 
-## 12) Data Locations（数据位置）
+## 13) Data Locations（数据位置）
 
 - Index: `./.docfinder/index/`
 - Sources: `./.docfinder/sources.txt`（`path|0/1`）
 - Query history & app settings: `./.docfinder/…`
+- kkFileView JAR: `~/.docfinder/kkfileview/kkFileView.jar`
 
 ---
 
-## 13) FAQ
+## 14) FAQ
 
 **Q: 会修改文件吗？**
 > 不会。索引读取使用只读句柄，Tika 解析有超时保护，不会触碰内容或修改时间戳。
@@ -159,7 +228,7 @@ _Local file name & content search. Fast, read‑only, and multilingual._
 _Enjoy lightning‑fast local search!_
 
 
-## 12) Logs
+## 15) Logs
 
 - Use **Help → View Log** to open a live, auto-scrolling log viewer.
 - Viewer defaults to **tail -f 1000 lines** for readability/performance.
