@@ -12,6 +12,7 @@ import java.io.OutputStream;
  *
  * <ul>
  *   <li>{@code /} and {@code /index.html} → {@code /web/index.html}</li>
+ *   <li>{@code /preview} → {@code /web/preview.html} (file preview without search)</li>
  *   <li>{@code /share/*} → {@code /web/share.html} (token read by JS from URL)</li>
  *   <li>{@code /web/<file>} → {@code /web/<file>} directly from classpath</li>
  *   <li>anything else → 404</li>
@@ -26,6 +27,8 @@ class StaticHandler implements HttpHandler {
         String resource;
         if ("/".equals(path) || "/index.html".equals(path)) {
             resource = "/web/index.html";
+        } else if ("/preview".equals(path) || "/preview.html".equals(path)) {
+            resource = "/web/preview.html";
         } else if (path.startsWith("/share/")) {
             resource = "/web/share.html";
         } else if (path.startsWith("/web/")) {

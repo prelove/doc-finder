@@ -62,8 +62,9 @@
 
     /* ── Search bar ── */
     .search-bar { display: flex; gap: 8px; padding: 12px 16px; background: var(--bg3); border-bottom: 1px solid var(--border); flex-wrap: wrap; align-items: center; }
-    #themeToggleBtn { background: var(--btn-sec); border: 1px solid var(--input-bd); cursor: pointer; color: var(--text2); font-size: 0.95rem; padding: 6px 10px; border-radius: 6px; white-space: nowrap; flex-shrink: 0; }
-    #themeToggleBtn:hover { background: var(--btn-sec2); color: var(--text); }
+    #themeToggleBtn, #previewToggleBtn { background: var(--btn-sec); border: 1px solid var(--input-bd); cursor: pointer; color: var(--text2); font-size: 0.95rem; padding: 6px 10px; border-radius: 6px; white-space: nowrap; flex-shrink: 0; }
+    #themeToggleBtn:hover, #previewToggleBtn:hover { background: var(--btn-sec2); color: var(--text); }
+    #previewToggleBtn.active { background: var(--accent); color: #fff; border-color: var(--accent); }
     .search-bar input[type=text] { flex: 1; min-width: 200px; padding: 7px 11px; border-radius: 6px; border: 1px solid var(--input-bd); background: var(--input-bg); color: var(--text); font-size: 0.92rem; outline: none; }
     .search-bar input[type=text]:focus { border-color: var(--accent); }
     .search-bar select { padding: 7px 9px; border-radius: 6px; border: 1px solid var(--input-bd); background: var(--input-bg); color: var(--text); font-size: 0.82rem; cursor: pointer; outline: none; }
@@ -165,6 +166,7 @@
 <!-- Search bar -->
 <div class="search-bar">
   <button id="themeToggleBtn" title="Toggle dark/light theme">&#x1F319;</button>
+  <button id="previewToggleBtn" class="active" title="Toggle preview panel">&#x1F441;</button>
   <div style="position: relative; flex: 1; min-width: 200px;">
     <input type="text" id="queryInput" placeholder="Search files&hellip; (e.g. kubernetes, name:*.xlsx)" autofocus style="width: 100%;"/>
     <div id="historyDropdown" class="history-dropdown" style="display: none;"></div>
@@ -279,41 +281,78 @@
 
 <script src="/web/jit-viewer.min.js"></script>
 <script>
-// Suppress JitViewer license notice dialogs
+// Suppress JitViewer license notice dialogs - Enhanced version
 (function() {
   // Override window.alert, window.confirm to suppress license notices
   var originalAlert = window.alert;
   var originalConfirm = window.confirm;
 
   window.alert = function(msg) {
-    if (msg && (msg.includes('JitViewer') || msg.includes('License') || msg.includes('attribution') || msg.includes('jit-viewer-sdk'))) {
-      console.log('Suppressed license notice:', msg);
+    if (msg && (msg.includes('JitViewer') || msg.includes('License') || msg.includes('attribution') ||
+                msg.includes('jit-viewer-sdk') || msg.includes('jitOffice') ||
+                msg.includes('retain') || msg.includes('provides document preview'))) {
+      console.log('Suppressed JitViewer license notice:', msg);
       return;
     }
     return originalAlert.apply(this, arguments);
   };
 
   window.confirm = function(msg) {
-    if (msg && (msg.includes('JitViewer') || msg.includes('License') || msg.includes('attribution') || msg.includes('jit-viewer-sdk'))) {
-      console.log('Suppressed license notice:', msg);
+    if (msg && (msg.includes('JitViewer') || msg.includes('License') || msg.includes('attribution') ||
+                msg.includes('jit-viewer-sdk') || msg.includes('jitOffice') ||
+                msg.includes('retain') || msg.includes('provides document preview'))) {
+      console.log('Suppressed JitViewer license notice:', msg);
       return true;
     }
     return originalConfirm.apply(this, arguments);
   };
 
-  // Monitor and remove any modal dialogs that appear with license text
+  // Enhanced modal detection - check more aggressively
+  var checkAndRemoveLicenseModals = function() {
+    // Check for any fixed-position elements that might be modals
+    var fixedElements = document.querySelectorAll('[style*="position: fixed"], [style*="position:fixed"]');
+    fixedElements.forEach(function(el) {
+      var text = el.textContent || el.innerText || '';
+      if (text.includes('License notice') || text.includes('Please retain attribution') ||
+          text.includes('JitViewer') || text.includes('jitOffice') ||
+          (text.includes('provides document preview') && text.includes('github.com'))) {
+        console.log('Removing JitViewer license modal (fixed element)');
+        el.style.display = 'none';
+        el.remove();
+      }
+    });
+
+    // Check for modal/dialog class patterns
+    var modals = document.querySelectorAll('[class*="modal"], [class*="dialog"], [class*="overlay"], [class*="popup"]');
+    modals.forEach(function(el) {
+      var text = el.textContent || el.innerText || '';
+      if ((text.includes('License') || text.includes('attribution')) &&
+          (text.includes('JitViewer') || text.includes('jitOffice'))) {
+        console.log('Removing JitViewer license modal (class pattern)');
+        el.style.display = 'none';
+        el.remove();
+      }
+    });
+  };
+
+  // Run check periodically and on mutations
+  setInterval(checkAndRemoveLicenseModals, 100);
+
+  // Monitor DOM changes
   var observer = new MutationObserver(function(mutations) {
     mutations.forEach(function(mutation) {
       mutation.addedNodes.forEach(function(node) {
         if (node.nodeType === 1) {
           var text = node.textContent || node.innerText || '';
           if ((text.includes('License notice') || text.includes('Please retain attribution') ||
-               text.includes('JitViewer') && text.includes('github.com/jitOffice')) &&
-              (node.style && node.style.position === 'fixed' ||
-               node.className && (node.className.includes('modal') || node.className.includes('dialog')))) {
-            console.log('Removing JitViewer license dialog');
+               text.includes('JitViewer') || text.includes('jitOffice') ||
+               (text.includes('provides document preview') && text.includes('github.com'))) &&
+              (node.style && (node.style.position === 'fixed' || node.style.position === 'absolute') ||
+               node.className && (node.className.includes('modal') || node.className.includes('dialog') ||
+                                  node.className.includes('overlay') || node.className.includes('popup')))) {
+            console.log('Removing JitViewer license dialog (mutation)');
             node.style.display = 'none';
-            node.remove();
+            setTimeout(function() { try { node.remove(); } catch(e) {} }, 10);
           }
         }
       });
@@ -350,6 +389,35 @@
 
   // Restore saved theme
   applyTheme(localStorage.getItem(THEME_KEY) || 'dark');
+
+  // ── Preview Toggle ───────────────────────────────────────────────────────────
+  var PREVIEW_KEY = 'docfinder-preview-enabled';
+  var previewToggleBtn = document.getElementById('previewToggleBtn');
+  var resizeHandle = document.getElementById('resizeHandle');
+  var previewPane = document.getElementById('previewPane');
+
+  function setPreviewEnabled(enabled) {
+    if (enabled) {
+      previewToggleBtn.classList.add('active');
+      previewToggleBtn.title = 'Hide preview panel';
+      resizeHandle.style.display = '';
+      previewPane.style.display = '';
+    } else {
+      previewToggleBtn.classList.remove('active');
+      previewToggleBtn.title = 'Show preview panel';
+      resizeHandle.style.display = 'none';
+      previewPane.style.display = 'none';
+    }
+    localStorage.setItem(PREVIEW_KEY, enabled ? 'true' : 'false');
+  }
+
+  previewToggleBtn.addEventListener('click', function() {
+    setPreviewEnabled(!previewToggleBtn.classList.contains('active'));
+  });
+
+  // Restore saved preview state (default: enabled)
+  var savedPreview = localStorage.getItem(PREVIEW_KEY);
+  setPreviewEnabled(savedPreview === null || savedPreview === 'true');
 
   // ── Search History ───────────────────────────────────────────────────────────
   var HISTORY_KEY = 'docfinder-search-history';
@@ -443,8 +511,6 @@
   loadSearchHistory();
 
   // ── Resizable split pane ─────────────────────────────────────────────────────
-  var resizeHandle = document.getElementById('resizeHandle');
-  var previewPane  = document.getElementById('previewPane');
   var resultsPane  = document.getElementById('resultsPane');
   var SPLIT_KEY    = 'docfinder-split';
   var dragging     = false;
@@ -966,19 +1032,6 @@
   openShareBtn.addEventListener('click', function() {
     if (shareUrlInput.value) window.open(shareUrlInput.value, '_blank');
   });
-
-  // ── Handle ?preview= link from Java app ─────────────────────────────────────
-  (function() {
-    var params = new URLSearchParams(window.location.search);
-    var previewPath = params.get('preview');
-    if (previewPath) {
-      var name = previewPath.split(/[/\\]/).pop() || previewPath;
-      previewHeaderText.textContent = name;
-      openTabBtn.style.display = '';
-      currentFilePath = previewPath;
-      loadViewer(previewPath, name);
-    }
-  })();
 
   // ── Keyboard navigation ──────────────────────────────────────────────────────
   searchBtn.addEventListener('click', search);

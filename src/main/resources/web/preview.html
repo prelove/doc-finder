@@ -1,0 +1,375 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8"/>
+  <meta name="viewport" content="width=device-width, initial-scale=1.0"/>
+  <title>DocFinder Preview</title>
+  <link rel="stylesheet" href="/web/jit-viewer.min.css"/>
+  <style>
+    *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
+
+    /* ── CSS variables for theming ── */
+    :root {
+      --bg:       #0f1117;
+      --bg2:      #1a1d2e;
+      --bg3:      #13151f;
+      --border:   #2d3748;
+      --border2:  #1e2333;
+      --text:     #e2e8f0;
+      --text2:    #94a3b8;
+      --text3:    #64748b;
+      --accent:   #3b82f6;
+      --accent2:  #60a5fa;
+      --btn-sec:  #374151;
+      --btn-sec2: #4b5563;
+      --text-pre: #e2e8f0;
+      --pre-bg:   #0d1117;
+    }
+    body.light {
+      --bg:       #f8fafc;
+      --bg2:      #ffffff;
+      --bg3:      #f1f5f9;
+      --border:   #e2e8f0;
+      --border2:  #cbd5e1;
+      --text:     #1e293b;
+      --text2:    #475569;
+      --text3:    #94a3b8;
+      --accent:   #2563eb;
+      --accent2:  #1d4ed8;
+      --btn-sec:  #e2e8f0;
+      --btn-sec2: #cbd5e1;
+      --text-pre: #1e293b;
+      --pre-bg:   #f8fafc;
+    }
+
+    body { font-family: system-ui, -apple-system, sans-serif; background: var(--bg); color: var(--text); min-height: 100vh; display: flex; flex-direction: column; }
+
+    /* ── Header ── */
+    .header { display: flex; gap: 8px; padding: 10px 16px; background: var(--bg3); border-bottom: 1px solid var(--border); align-items: center; }
+    .header .file-name { flex: 1; font-size: 0.9rem; color: var(--text); font-weight: 500; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+    .header button { padding: 5px 12px; border-radius: 6px; border: none; background: var(--btn-sec); color: var(--text2); font-size: 0.82rem; cursor: pointer; white-space: nowrap; }
+    .header button:hover { background: var(--btn-sec2); color: var(--text); }
+
+    /* ── Viewer ── */
+    .viewer-wrap { flex: 1; overflow: hidden; position: relative; }
+    #viewerContainer { width: 100%; height: 100%; }
+    #textViewer { display: none; width: 100%; height: 100%; overflow: auto; padding: 12px; background: var(--pre-bg); }
+    #textViewer pre { font-family: 'Cascadia Code','Consolas','Fira Mono','Monaco',monospace; font-size: 0.78rem; line-height: 1.5; color: var(--text-pre); white-space: pre-wrap; word-break: break-all; }
+
+    /* ── Loading overlay ── */
+    #loadingOverlay { display: flex; position: absolute; inset: 0; background: rgba(0,0,0,0.55); z-index: 50; align-items: center; justify-content: center; flex-direction: column; gap: 12px; }
+    #loadingOverlay.hidden { display: none; }
+    #loadingOverlay .spinner { width: 36px; height: 36px; border: 4px solid rgba(255,255,255,0.2); border-top-color: var(--accent2); border-radius: 50%; animation: spin 0.8s linear infinite; }
+    #loadingOverlay .text { color: #e2e8f0; font-size: 0.82rem; }
+    @keyframes spin { to { transform: rotate(360deg); } }
+
+    .placeholder { padding: 40px 20px; text-align: center; color: var(--text3); font-size: 0.85rem; }
+    .error { color: #ef4444; }
+  </style>
+</head>
+<body>
+<div class="header">
+  <span class="file-name" id="fileNameLabel">Loading...</span>
+  <button id="themeToggle" title="Toggle theme">🌙</button>
+  <button id="downloadBtn" title="Download file">⬇️ Download</button>
+</div>
+
+<div class="viewer-wrap">
+  <div id="loadingOverlay">
+    <div class="spinner"></div>
+    <div class="text">Loading preview...</div>
+  </div>
+  <div id="viewerContainer" style="display:none"></div>
+  <div id="textViewer"><pre id="textContent"></pre></div>
+  <div id="placeholder" class="placeholder" style="display:none"></div>
+</div>
+
+<script src="/web/jit-viewer.min.js"></script>
+<script>
+// Suppress JitViewer license notice dialogs - Enhanced version
+(function() {
+  var originalAlert = window.alert;
+  var originalConfirm = window.confirm;
+
+  window.alert = function(msg) {
+    if (msg && (msg.includes('JitViewer') || msg.includes('License') || msg.includes('attribution') ||
+                msg.includes('jit-viewer-sdk') || msg.includes('jitOffice') ||
+                msg.includes('retain') || msg.includes('provides document preview'))) {
+      console.log('Suppressed JitViewer license notice:', msg);
+      return;
+    }
+    return originalAlert.apply(this, arguments);
+  };
+
+  window.confirm = function(msg) {
+    if (msg && (msg.includes('JitViewer') || msg.includes('License') || msg.includes('attribution') ||
+                msg.includes('jit-viewer-sdk') || msg.includes('jitOffice') ||
+                msg.includes('retain') || msg.includes('provides document preview'))) {
+      console.log('Suppressed JitViewer license notice:', msg);
+      return true;
+    }
+    return originalConfirm.apply(this, arguments);
+  };
+
+  var checkAndRemoveLicenseModals = function() {
+    var fixedElements = document.querySelectorAll('[style*="position: fixed"], [style*="position:fixed"]');
+    fixedElements.forEach(function(el) {
+      var text = el.textContent || el.innerText || '';
+      if (text.includes('License notice') || text.includes('Please retain attribution') ||
+          text.includes('JitViewer') || text.includes('jitOffice') ||
+          (text.includes('provides document preview') && text.includes('github.com'))) {
+        console.log('Removing JitViewer license modal (fixed element)');
+        el.style.display = 'none';
+        el.remove();
+      }
+    });
+
+    var modals = document.querySelectorAll('[class*="modal"], [class*="dialog"], [class*="overlay"], [class*="popup"]');
+    modals.forEach(function(el) {
+      var text = el.textContent || el.innerText || '';
+      if ((text.includes('License') || text.includes('attribution')) &&
+          (text.includes('JitViewer') || text.includes('jitOffice'))) {
+        console.log('Removing JitViewer license modal (class pattern)');
+        el.style.display = 'none';
+        el.remove();
+      }
+    });
+  };
+
+  setInterval(checkAndRemoveLicenseModals, 100);
+
+  var observer = new MutationObserver(function(mutations) {
+    mutations.forEach(function(mutation) {
+      mutation.addedNodes.forEach(function(node) {
+        if (node.nodeType === 1) {
+          var text = node.textContent || node.innerText || '';
+          if ((text.includes('License notice') || text.includes('Please retain attribution') ||
+               text.includes('JitViewer') || text.includes('jitOffice') ||
+               (text.includes('provides document preview') && text.includes('github.com'))) &&
+              (node.style && (node.style.position === 'fixed' || node.style.position === 'absolute') ||
+               node.className && (node.className.includes('modal') || node.className.includes('dialog') ||
+                                  node.className.includes('overlay') || node.className.includes('popup')))) {
+            console.log('Removing JitViewer license dialog (mutation)');
+            node.style.display = 'none';
+            setTimeout(function() { try { node.remove(); } catch(e) {} }, 10);
+          }
+        }
+      });
+    });
+  });
+
+  observer.observe(document.body, { childList: true, subtree: true });
+})();
+</script>
+<script>
+(function() {
+  'use strict';
+
+  // ── Theme ──────────────────────────────────────────────────────────────────
+  var THEME_KEY = 'docfinder-theme';
+  var themeToggle = document.getElementById('themeToggle');
+
+  function applyTheme(theme) {
+    if (theme === 'light') {
+      document.body.classList.add('light');
+      themeToggle.textContent = '☀️';
+      themeToggle.title = 'Switch to dark theme';
+    } else {
+      document.body.classList.remove('light');
+      themeToggle.textContent = '🌙';
+      themeToggle.title = 'Switch to light theme';
+    }
+    localStorage.setItem(THEME_KEY, theme);
+  }
+
+  themeToggle.addEventListener('click', function() {
+    applyTheme(document.body.classList.contains('light') ? 'dark' : 'light');
+  });
+
+  applyTheme(localStorage.getItem(THEME_KEY) || 'dark');
+
+  // ── Parse URL parameters ───────────────────────────────────────────────────
+  var params = new URLSearchParams(window.location.search);
+  var filePath = params.get('path');
+
+  var fileNameLabel = document.getElementById('fileNameLabel');
+  var viewerContainer = document.getElementById('viewerContainer');
+  var textViewer = document.getElementById('textViewer');
+  var textContent = document.getElementById('textContent');
+  var loadingOverlay = document.getElementById('loadingOverlay');
+  var placeholder = document.getElementById('placeholder');
+  var downloadBtn = document.getElementById('downloadBtn');
+
+  var currentViewer = null;
+  var fileName = '';
+
+  // ── Text extension list (handled by inline text viewer) ───────────────────
+  var TEXT_EXTS = ['txt','log','md','markdown','csv','tsv','json','jsonl','xml','yaml','yml',
+                   'toml','ini','cfg','conf','properties','sh','bash','zsh','bat','cmd','ps1',
+                   'py','pyw','js','ts','jsx','tsx','java','kt','go','rs','c','cpp','h','hpp',
+                   'cs','vb','rb','php','html','htm','css','scss','sass','less','sql','r',
+                   'gitignore','dockerfile','makefile','gradle','mvnw'];
+
+  function isTextExt(filename) {
+    if (!filename) return false;
+    var ext = filename.split('.').pop().toLowerCase();
+    return TEXT_EXTS.indexOf(ext) >= 0;
+  }
+
+  function showError(msg) {
+    loadingOverlay.classList.add('hidden');
+    placeholder.textContent = msg;
+    placeholder.classList.add('error');
+    placeholder.style.display = '';
+  }
+
+  function hideLoading() {
+    loadingOverlay.classList.add('hidden');
+  }
+
+  // ── Read limited bytes from stream ─────────────────────────────────────────
+  function readLimitedBytes(resp, maxBytes) {
+    if (!resp.body) {
+      return resp.arrayBuffer().then(function(buf) {
+        return buf.byteLength > maxBytes ? buf.slice(0, maxBytes) : buf;
+      });
+    }
+    var reader = resp.body.getReader();
+    var chunks = [];
+    var total = 0;
+    function pump() {
+      return reader.read().then(function(result) {
+        if (result.done) {
+          return concatBuffers(chunks);
+        }
+        var chunk = result.value;
+        var remaining = maxBytes - total;
+        if (chunk.length > remaining) {
+          chunks.push(chunk.slice(0, remaining));
+          reader.cancel();
+          return concatBuffers(chunks);
+        }
+        chunks.push(chunk);
+        total += chunk.length;
+        return pump();
+      });
+    }
+    return pump();
+  }
+
+  function concatBuffers(chunks) {
+    var total = chunks.reduce(function(s, c) { return s + c.length; }, 0);
+    var out = new Uint8Array(total);
+    var offset = 0;
+    chunks.forEach(function(c) { out.set(c, offset); offset += c.length; });
+    return out.buffer;
+  }
+
+  // ── Charset detection ──────────────────────────────────────────────────────
+  function decodeBuffer(buffer) {
+    var bytes = new Uint8Array(buffer);
+
+    // BOM detection
+    if (bytes.length >= 3 && bytes[0] === 0xEF && bytes[1] === 0xBB && bytes[2] === 0xBF) {
+      return new TextDecoder('utf-8').decode(buffer.slice ? buffer.slice(3) : bytes.slice(3).buffer);
+    }
+    if (bytes.length >= 2 && bytes[0] === 0xFF && bytes[1] === 0xFE) {
+      return new TextDecoder('utf-16le').decode(buffer.slice ? buffer.slice(2) : bytes.slice(2).buffer);
+    }
+    if (bytes.length >= 2 && bytes[0] === 0xFE && bytes[1] === 0xFF) {
+      return new TextDecoder('utf-16be').decode(buffer.slice ? buffer.slice(2) : bytes.slice(2).buffer);
+    }
+
+    try {
+      return new TextDecoder('utf-8', { fatal: true }).decode(buffer);
+    } catch(e) { /* not valid UTF-8 */ }
+
+    try {
+      if (typeof TextDecoder !== 'undefined') {
+        return new TextDecoder('gbk', { fatal: true }).decode(buffer);
+      }
+    } catch(e) { /* not GBK */ }
+
+    try {
+      return new TextDecoder('windows-1252').decode(buffer);
+    } catch(e) {
+      return new TextDecoder('iso-8859-1').decode(buffer);
+    }
+  }
+
+  // ── Load text viewer ───────────────────────────────────────────────────────
+  function loadTextViewer(filePath, fileName) {
+    fetch('/api/file?path=' + encodeURIComponent(filePath))
+      .then(function(resp) {
+        if (!resp.ok) throw new Error('HTTP ' + resp.status);
+        return readLimitedBytes(resp, 512 * 1024);
+      })
+      .then(function(buffer) {
+        var decoded = decodeBuffer(buffer);
+        hideLoading();
+        textContent.textContent = decoded;
+        textViewer.style.display = '';
+      })
+      .catch(function(err) {
+        showError('Text preview failed: ' + (err ? err.message : 'unknown error'));
+      });
+  }
+
+  // ── Load JitViewer ─────────────────────────────────────────────────────────
+  function loadViewer(filePath, fileName) {
+    viewerContainer.style.display = '';
+    var fileUrl = '/api/file?path=' + encodeURIComponent(filePath);
+
+    try {
+      var viewer = JitViewer.createViewer({
+        target: viewerContainer,
+        file: fileUrl,
+        filename: fileName,
+        theme: document.body.classList.contains('light') ? 'default' : 'dark',
+        toolbar: true,
+        width: '100%',
+        height: '100%',
+        onReady: function() { hideLoading(); },
+        onError: function(err) {
+          hideLoading();
+          showError('Preview failed: ' + String(err));
+        }
+      });
+      viewer.mount();
+      currentViewer = viewer;
+      setTimeout(hideLoading, 30000);
+    } catch(e) {
+      hideLoading();
+      showError('Viewer error: ' + String(e));
+    }
+  }
+
+  // ── Initialize ─────────────────────────────────────────────────────────────
+  if (!filePath) {
+    showError('No file path specified. Add ?path=<file-path> to the URL.');
+    return;
+  }
+
+  fileName = filePath.split(/[/\\]/).pop() || filePath;
+  fileNameLabel.textContent = fileName;
+
+  // Download button
+  downloadBtn.addEventListener('click', function() {
+    var a = document.createElement('a');
+    a.href = '/api/file?path=' + encodeURIComponent(filePath);
+    a.download = fileName;
+    document.body.appendChild(a);
+    a.click();
+    document.body.removeChild(a);
+  });
+
+  // Load preview
+  if (isTextExt(fileName)) {
+    loadTextViewer(filePath, fileName);
+  } else {
+    loadViewer(filePath, fileName);
+  }
+})();
+</script>
+</body>
+</html>
