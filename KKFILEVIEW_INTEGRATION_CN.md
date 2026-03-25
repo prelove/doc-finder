@@ -91,7 +91,7 @@ ConfigManager cfg = new ConfigManager();
 
 // 2. 如果启用，启动 kkFileView 服务器
 if (cfg.isKkFileViewEnabled()) {
-    kkFileViewServer = new KkFileViewServer(cfg.getKkFileViewPort());
+    kkFileViewServer = new KkFileViewServer(cfg.getKkFileViewPort(), cfg);
     if (kkFileViewServer.isAvailable()) {
         kkFileViewServer.start();
     }
