@@ -91,7 +91,7 @@ class FileServeHandler implements HttpHandler {
         if (lower.endsWith(".pptx")) return "application/vnd.openxmlformats-officedocument.presentationml.presentation";
         if (lower.endsWith(".ppt"))  return "application/vnd.ms-powerpoint";
         if (lower.endsWith(".ofd"))  return "application/ofd";
-        if (lower.endsWith(".txt"))  return "text/plain; charset=utf-8";
+        if (lower.endsWith(".txt"))  return "text/plain";
         if (lower.endsWith(".md") || lower.endsWith(".markdown")) return "text/markdown; charset=utf-8";
         if (lower.endsWith(".html") || lower.endsWith(".htm")) return "text/html; charset=utf-8";
         if (lower.endsWith(".css"))  return "text/css; charset=utf-8";

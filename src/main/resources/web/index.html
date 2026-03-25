@@ -665,7 +665,7 @@
 
         // Apply simple syntax highlighting
         textContent.innerHTML = applySyntaxHighlighting(decoded, ext);
-        textViewer.style.display = '';
+        textViewer.style.display = 'block';
         previewPlaceholder.style.display = 'none';
 
         // Show truncation notice if needed
@@ -715,7 +715,8 @@
   function readLimitedBytes(resp, maxBytes) {
     if (!resp.body) {
       return resp.arrayBuffer().then(function(buf) {
-        return buf.byteLength > maxBytes ? buf.slice(0, maxBytes) : buf;
+        var truncated = buf.byteLength > maxBytes;
+        return { buffer: truncated ? buf.slice(0, maxBytes) : buf, truncated: truncated };
       });
     }
     var reader = resp.body.getReader();
