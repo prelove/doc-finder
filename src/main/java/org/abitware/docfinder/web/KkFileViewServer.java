@@ -77,6 +77,8 @@ public class KkFileViewServer {
         command.add(getJavaExecutable());
         command.add("-Dserver.port=" + port);
         command.add("-Dfile.dir=" + workDir.resolve("files").toString());
+        command.add("-Duser.language=en");
+        command.add("-Duser.country=US");
         command.add("-jar");
         command.add(jarPath.toString());
 

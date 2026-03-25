@@ -105,7 +105,7 @@
     td.match { color: var(--match-col); font-size: 0.74rem; }
     td.score { color: var(--text2); font-size: 0.76rem; text-align: right; }
     td.size { color: var(--text2); text-align: right; }
-    td.actions { width: 70px; text-align: center; white-space: nowrap; }
+    td.actions { min-width: 80px; text-align: center; white-space: nowrap; overflow: visible; max-width: unset; }
     .btn-icon { background: none; border: none; cursor: pointer; padding: 2px 5px; border-radius: 4px; font-size: 0.85rem; color: var(--text2); transition: color 0.15s, background 0.15s; }
     .btn-icon:hover { color: var(--text); background: var(--btn-sec); }
 
@@ -746,9 +746,15 @@
       iframe.style.height = '100%';
       iframe.style.border = 'none';
 
-      // kkFileView expects a full URL for the file
-      var fullFileUrl = window.location.origin + fileUrl;
-      var kkFileViewUrl = '/api/kkfileview/onlinePreview?url=' + encodeURIComponent(fullFileUrl) + '&locale=en';
+      // kkFileView requires the file URL to be Base64-encoded (it calls Base64.decode internally).
+      // Also append fullfilename so kkFileView can detect the file type from the extension,
+      // since the /api/file path segment itself has no extension.
+      var fullFileUrl = window.location.origin + fileUrl + '&fullfilename=' + encodeURIComponent(fileName);
+      // filePath and fileName are percent-encoded by encodeURIComponent(), making fullFileUrl
+      // ASCII-safe. Guard against any unexpected non-Latin1 chars before calling btoa().
+      var safeUrl = fullFileUrl.replace(/[\u0080-\uFFFF]/g, function(c) { return encodeURIComponent(c); });
+      var base64Url = btoa(safeUrl);
+      var kkFileViewUrl = '/api/kkfileview/onlinePreview?url=' + encodeURIComponent(base64Url) + '&locale=en';
 
       iframe.onload = function() {
         hideLoadingOverlay();

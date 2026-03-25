@@ -241,8 +241,14 @@
   // ── Load kkFileView (primary viewer for all file types) ───────────────────
   function loadViewer(filePath, fileName) {
     var fileUrl = '/api/file?path=' + encodeURIComponent(filePath);
-    var fullFileUrl = window.location.origin + fileUrl;
-    var kkUrl = '/api/kkfileview/onlinePreview?url=' + encodeURIComponent(fullFileUrl) + '&locale=en';
+    // kkFileView requires the file URL to be Base64-encoded (it calls Base64.decode internally).
+    // Also append fullfilename so kkFileView can detect the file type from the extension.
+    var fullFileUrl = window.location.origin + fileUrl + '&fullfilename=' + encodeURIComponent(fileName);
+    // filePath and fileName are percent-encoded by encodeURIComponent(), making fullFileUrl
+    // ASCII-safe. Guard against any unexpected non-Latin1 chars before calling btoa().
+    var safeUrl = fullFileUrl.replace(/[\u0080-\uFFFF]/g, function(c) { return encodeURIComponent(c); });
+    var base64Url = btoa(safeUrl);
+    var kkUrl = '/api/kkfileview/onlinePreview?url=' + encodeURIComponent(base64Url) + '&locale=en';
 
     function useKkFileViewIframe() {
       viewerContainer.style.display = '';
