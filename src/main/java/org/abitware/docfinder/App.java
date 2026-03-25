@@ -17,7 +17,6 @@ import org.abitware.docfinder.ui.ThemeUtil;
 import org.abitware.docfinder.util.LegacyMigration;
 import org.abitware.docfinder.util.SingleInstance;
 import org.abitware.docfinder.web.WebServer;
-import org.abitware.docfinder.web.KkFileViewServer;
 
 import org.slf4j.Logger; // ADDED
 import org.slf4j.LoggerFactory; // ADDED
@@ -45,45 +44,11 @@ public class App {
             }, "docfinder-migration").start();
         }
 
-        // 4) Set up kkFileView server – probe the configured port first so that a
-        //    manually started kkFileView instance is reused automatically.
+        // 4) Optionally start web interface (before EDT to get config early)
         ConfigManager cfg = new ConfigManager();
-        final int kkPort = cfg.getKkFileViewPort();
-        KkFileViewServer _kkServer = null;
-        if (KkFileViewServer.probePort(kkPort)) {
-            // Something is already listening on that port – attach without starting.
-            _kkServer = new KkFileViewServer(kkPort, cfg);
-            _kkServer.attachToExternal();
-            logger.info("Detected existing kkFileView instance on port {}, attaching", kkPort);
-        } else if (cfg.isKkFileViewEnabled()) {
-            _kkServer = new KkFileViewServer(kkPort, cfg);
-            if (_kkServer.isAvailable()) {
-                if (KkFileViewServer.getCurrentJavaMajorVersion() < 21) {
-                    logger.warn("Current JVM ({}) is below Java 21. The latest kkFileView requires Java 21 – startup may fail.",
-                            System.getProperty("java.version"));
-                }
-                Runtime.getRuntime().addShutdownHook(new Thread(_kkServer::stop, "docfinder-kkfileview-stop"));
-                try {
-                    _kkServer.start();
-                    logger.info("kkFileView server started at {}", _kkServer.getBaseUrl());
-                } catch (IOException ex) {
-                    logger.error("Failed to start kkFileView server", ex);
-                }
-            } else {
-                logger.warn("kkFileView is enabled but JAR not found at: {}", _kkServer.getJarPath());
-                logger.warn("Please download kkFileView JAR and place it at the above location.");
-            }
-        }
-        final KkFileViewServer kkFileViewServer = _kkServer;
-
-        // 5) Optionally start web interface (before EDT to get config early)
         final WebServer webServer;
         if (cfg.isWebEnabled()) {
             webServer = new WebServer(cfg.getWebPort(), cfg.getWebBindAddress());
-            // Pass kkFileView server reference to web server for proxying
-            if (kkFileViewServer != null) {
-                webServer.setKkFileViewServer(kkFileViewServer);
-            }
             try {
                 webServer.start();
             } catch (IOException ex) {
@@ -94,14 +59,13 @@ public class App {
             webServer = null;
         }
 
-        // 6) Show window on the EDT, then open the search index in a background thread to avoid EDT blocking
+        // 5) Show window on the EDT, then open the search index in a background thread to avoid EDT blocking
         SwingUtilities.invokeLater(() -> {
             // Create the window first with a null search service so the UI is immediately responsive
             MainWindow win = new MainWindow(null);
             MAIN = win;
-            // Pass the web server and kkFileView server references so the menu can toggle them
+            // Pass the web server reference so the menu can toggle it
             win.setWebServer(webServer);
-            win.setKkFileViewServer(kkFileViewServer);
             win.setVisible(true);
 
             // Open the Lucene index off the EDT to avoid blocking Swing painting

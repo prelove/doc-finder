@@ -144,9 +144,32 @@ DocFinder is a desktop utility that lets you search **file names and file conten
   - `File → Manage Sources…` (manage sources with Local/Network type)
   - `File → Index All Sources` and `File → Rebuild Index (Full)`
   - `File → Indexing Settings…`
+  - `File → Enable Web Server` (toggle web interface, default port 7070)
   - `Help → Usage Guide`, `Help → About DocFinder`
 - **Tray icon** with context menu; **Global hotkey** toggles window.
 - **Icons**: load multi‑size PNGs from `src/main/resources/icons/`; Taskbar/Dock icon set via `Taskbar` (Java 9+) or `com.apple.eawt` on macOS.
+
+### Web Interface
+- **Built-in web server** provides browser-based access (default: `http://localhost:7070`)
+- **Self-contained preview system** for viewing files directly in the browser:
+  - **PDF files**: Native browser PDF viewer (via iframe)
+  - **Text/Code files**: 50+ formats with syntax highlighting (txt, log, md, json, xml, yaml, py, js, java, go, rs, c, cpp, sh, etc.)
+  - **Images**: JPG, PNG, GIF, BMP, SVG, WebP, ICO
+  - **Charset detection**: Automatic detection for UTF-8, GBK, windows-1252, UTF-16
+  - **File size limits**: 512KB preview limit for text files
+  - **Download fallback**: All unsupported formats (Office docs, archives, media) provide download button
+- **Features**:
+  - Dark/light theme toggle
+  - Resizable split pane
+  - Search history
+  - Share links to files
+  - Completely offline (no external dependencies)
+- **Supported preview formats**:
+  - ✅ PDF (native browser viewer)
+  - ✅ Text/code files (50+ extensions with syntax highlighting)
+  - ✅ Images (common formats)
+  - ❌ Office documents (.doc, .docx, .xls, .xlsx, .ppt, .pptx) - download only
+  - ❌ Specialized formats (OFD, CAD, archives, media files) - download only
 
 ---
 
@@ -235,20 +258,30 @@ java -jar target/docfinder-1.0.0.jar
 - `textExts` — text/source extensions (txt, md, json, yaml, xml, java, go, rs, py, js, ts, sh, properties…)
 - `excludeGlob` — glob patterns to skip (e.g., `**/.git/**`, `**/node_modules/**`)
 
+`ConfigManager` web server settings:
+- `web.enabled` — enable/disable web server (default: false)
+- `web.port` — web server port (default: 7070)
+- `web.bindAddress` — bind address (default: 127.0.0.1)
+
 ---
 
 ## Data Locations
-- **Index**: `./.docfinder/index/`
-- **Sources**: `./.docfinder/sources.txt` (`path|0/1` where `1 = Network`)
-- **History & settings**: `./.docfinder/…`
+- **Index**: `~/.docfinder/index/`
+- **Sources**: `~/.docfinder/sources.txt` (`path|0/1` where `1 = Network`)
+- **History & settings**: `~/.docfinder/config.properties`
+- **Logs**: `~/.docfinder/logs/docfinder.log`
+- **Web shares**: `~/.docfinder/shares.properties` (when using web interface)
 
 ---
 
 ## Troubleshooting
 - **`name:チェックリスト_07.xlsx` returns nothing** → reindex with **Rebuild Index (Full)** to ensure all docs have `name_raw`.
-- **“Manage Sources…” seems slow** → detection runs in background; upgrade to latest build if you still see blocking.
-- **“Poll Network Sources Now” shows no changes** → verify the folder is marked **Network** and reachable; NAS may reflect updates with delay.
-- **Preview empty** → file too large/timeout/unsupported; increase timeout or extend allowlist.
+- **"Manage Sources…" seems slow** → detection runs in background; upgrade to latest build if you still see blocking.
+- **"Poll Network Sources Now" shows no changes** → verify the folder is marked **Network** and reachable; NAS may reflect updates with delay.
+- **Preview empty in desktop app** → file too large/timeout/unsupported; increase timeout or extend allowlist.
+- **Web preview not working** → ensure web server is enabled (`File → Enable Web Server`); check browser console for errors; verify file permissions.
+- **Web preview shows encoding issues** → charset detection attempts UTF-8, GBK, windows-1252, and UTF-16; some rare encodings may not display correctly.
+- **Large text files don't preview** → files over 512KB are truncated for browser performance; download the file to view completely.
 - **POI WARN logs (`XSSFDrawing` / `DataFormatter`)** → usually non-fatal format warnings from Office parsing; indexing can still succeed. Default logging suppresses these noisy categories.
 - **Windows yen sign (¥)** → internal normalization handles it; opening uses Explorer‑friendly paths.
 

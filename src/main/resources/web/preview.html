@@ -23,6 +23,11 @@
       --btn-sec2: #4b5563;
       --text-pre: #e2e8f0;
       --pre-bg:   #0d1117;
+      --code-keyword:  #ff79c6;
+      --code-string:   #f1fa8c;
+      --code-comment:  #6272a4;
+      --code-number:   #bd93f9;
+      --code-function: #50fa7b;
     }
     body.light {
       --bg:       #f8fafc;
@@ -39,6 +44,11 @@
       --btn-sec2: #cbd5e1;
       --text-pre: #1e293b;
       --pre-bg:   #f8fafc;
+      --code-keyword:  #d73a49;
+      --code-string:   #032f62;
+      --code-comment:  #6a737d;
+      --code-number:   #005cc5;
+      --code-function: #6f42c1;
     }
 
     body { font-family: system-ui, -apple-system, sans-serif; background: var(--bg); color: var(--text); min-height: 100vh; display: flex; flex-direction: column; }
@@ -49,21 +59,48 @@
     .header button { padding: 5px 12px; border-radius: 6px; border: none; background: var(--btn-sec); color: var(--text2); font-size: 0.82rem; cursor: pointer; white-space: nowrap; }
     .header button:hover { background: var(--btn-sec2); color: var(--text); }
 
-    /* ── Viewer ── */
-    .viewer-wrap { flex: 1; overflow: hidden; position: relative; }
-    #viewerContainer { width: 100%; height: 100%; }
-    #textViewer { display: none; width: 100%; height: 100%; overflow: auto; padding: 12px; background: var(--pre-bg); }
-    #textViewer pre { font-family: 'Cascadia Code','Consolas','Fira Mono','Monaco',monospace; font-size: 0.78rem; line-height: 1.5; color: var(--text-pre); white-space: pre-wrap; word-break: break-all; }
+    /* ── Content area ── */
+    .content { flex: 1; overflow: hidden; position: relative; display: flex; flex-direction: column; }
+
+    /* ── Preview container ── */
+    #previewPane { flex: 1; overflow: auto; background: var(--bg2); position: relative; }
+    #previewPane.text-mode { background: var(--pre-bg); padding: 16px; }
+    #previewPane pre { font-family: 'Cascadia Code','Consolas','Fira Mono','Monaco',monospace; font-size: 0.78rem; line-height: 1.6; color: var(--text-pre); white-space: pre-wrap; word-break: break-word; margin: 0; }
+
+    /* Syntax highlighting */
+    .code-keyword  { color: var(--code-keyword);  font-weight: 500; }
+    .code-string   { color: var(--code-string); }
+    .code-comment  { color: var(--code-comment); font-style: italic; }
+    .code-number   { color: var(--code-number); }
+    .code-function { color: var(--code-function); }
+
+    /* Image preview */
+    #previewPane img { max-width: 100%; height: auto; display: block; margin: 20px auto; }
+
+    /* PDF preview */
+    #previewPane iframe { width: 100%; height: 100%; border: none; display: block; }
+
+    /* Messages */
+    .message-box { padding: 40px 20px; text-align: center; max-width: 500px; margin: 40px auto; }
+    .message-box h3 { font-size: 1.1rem; margin-bottom: 12px; color: var(--text); }
+    .message-box p { font-size: 0.85rem; color: var(--text2); margin-bottom: 8px; line-height: 1.5; }
+    .message-box .file-info { font-weight: 500; color: var(--text); }
+    .message-box .format-badge { display: inline-block; background: var(--bg3); color: var(--text2); padding: 2px 8px; border-radius: 4px; font-size: 0.75rem; margin: 0 4px; font-family: monospace; }
+    .message-box button { margin-top: 16px; padding: 8px 20px; background: var(--accent); color: white; border: none; border-radius: 6px; font-size: 0.85rem; cursor: pointer; }
+    .message-box button:hover { background: var(--accent2); }
+    .error-message { border: 1px solid #ef4444; background: rgba(239, 68, 68, 0.1); border-radius: 8px; }
+    .error-message h3 { color: #ef4444; }
+    .error-details { font-size: 0.75rem; color: var(--text3); margin-top: 8px; font-family: monospace; }
+    .unsupported-format { border: 1px solid var(--border); background: var(--bg3); border-radius: 8px; }
+    .download-only { border: 1px solid #f59e0b; background: rgba(245, 158, 11, 0.1); border-radius: 8px; }
+    .download-only h3 { color: #f59e0b; }
 
     /* ── Loading overlay ── */
-    #loadingOverlay { display: flex; position: absolute; inset: 0; background: rgba(0,0,0,0.55); z-index: 50; align-items: center; justify-content: center; flex-direction: column; gap: 12px; }
+    #loadingOverlay { display: flex; position: absolute; inset: 0; background: rgba(0,0,0,0.6); z-index: 50; align-items: center; justify-content: center; flex-direction: column; gap: 12px; }
     #loadingOverlay.hidden { display: none; }
-    #loadingOverlay .spinner { width: 36px; height: 36px; border: 4px solid rgba(255,255,255,0.2); border-top-color: var(--accent2); border-radius: 50%; animation: spin 0.8s linear infinite; }
-    #loadingOverlay .text { color: #e2e8f0; font-size: 0.82rem; }
+    #loadingOverlay .spinner { width: 40px; height: 40px; border: 4px solid rgba(255,255,255,0.2); border-top-color: var(--accent2); border-radius: 50%; animation: spin 0.8s linear infinite; }
+    #loadingOverlay .text { color: #e2e8f0; font-size: 0.85rem; }
     @keyframes spin { to { transform: rotate(360deg); } }
-
-    .placeholder { padding: 40px 20px; text-align: center; color: var(--text3); font-size: 0.85rem; }
-    .error { color: #ef4444; }
   </style>
 </head>
 <body>
@@ -73,23 +110,48 @@
   <button id="downloadBtn" title="Download file">⬇️ Download</button>
 </div>
 
-<div class="viewer-wrap">
+<div class="content">
   <div id="loadingOverlay">
     <div class="spinner"></div>
     <div class="text">Loading preview...</div>
   </div>
-  <div id="viewerContainer" style="display:none"></div>
-  <div id="textViewer"><pre id="textContent"></pre></div>
-  <div id="placeholder" class="placeholder" style="display:none"></div>
+  <div id="previewPane"></div>
 </div>
 
 <script>
 (function() {
   'use strict';
 
-  // ── Theme ──────────────────────────────────────────────────────────────────
-  var THEME_KEY = 'docfinder-theme';
+  // ── Configuration ──────────────────────────────────────────────────────────
+  var TEXT_MAX_BYTES = 512 * 1024; // 512 KB
+  var PREVIEW_TIMEOUT_MS = 30000;  // 30 seconds
+
+  var TEXT_EXTS = ['txt','log','md','markdown','csv','tsv','json','jsonl','xml','yaml','yml',
+                   'toml','ini','cfg','conf','properties','sh','bash','zsh','bat','cmd','ps1',
+                   'py','pyw','js','ts','jsx','tsx','java','kt','go','rs','c','cpp','h','hpp',
+                   'cs','vb','rb','php','html','htm','css','scss','sass','less','sql','r',
+                   'gitignore','dockerfile','makefile','gradle','mvnw','lock','editorconfig',
+                   'gitattributes','eslintrc','babelrc','prettierrc','env'];
+
+  var IMAGE_EXTS = ['jpg','jpeg','png','gif','bmp','svg','webp','ico'];
+
+  var DOWNLOAD_ONLY = ['ofd','dwg','dxf','zip','rar','7z','tar','gz','bz2','xz',
+                       'mp4','avi','mkv','mov','wmv','flv','webm','mp3','wav','flac','aac',
+                       'doc','xls','ppt','pptx','exe','dll','so','dylib','bin','dat'];
+
+  // ── DOM Elements ───────────────────────────────────────────────────────────
+  var fileNameLabel = document.getElementById('fileNameLabel');
   var themeToggle = document.getElementById('themeToggle');
+  var downloadBtn = document.getElementById('downloadBtn');
+  var loadingOverlay = document.getElementById('loadingOverlay');
+  var previewPane = document.getElementById('previewPane');
+
+  var currentFilePath = null;
+  var currentFileName = null;
+  var abortController = null;
+
+  // ── Theme Management ───────────────────────────────────────────────────────
+  var THEME_KEY = 'docfinder-theme';
 
   function applyTheme(theme) {
     if (theme === 'light') {
@@ -101,92 +163,113 @@
       themeToggle.textContent = '🌙';
       themeToggle.title = 'Switch to light theme';
     }
-    localStorage.setItem(THEME_KEY, theme);
+    try {
+      localStorage.setItem(THEME_KEY, theme);
+    } catch(e) {}
   }
 
   themeToggle.addEventListener('click', function() {
     applyTheme(document.body.classList.contains('light') ? 'dark' : 'light');
   });
 
-  applyTheme(localStorage.getItem(THEME_KEY) || 'dark');
+  var savedTheme = 'dark';
+  try {
+    savedTheme = localStorage.getItem(THEME_KEY) || 'dark';
+  } catch(e) {}
+  applyTheme(savedTheme);
 
-  // ── Parse URL parameters ───────────────────────────────────────────────────
-  var params = new URLSearchParams(window.location.search);
-  var filePath = params.get('path');
+  // ── Utility Functions ──────────────────────────────────────────────────────
+  function escapeHtml(str) {
+    var div = document.createElement('div');
+    div.textContent = str;
+    return div.innerHTML;
+  }
 
-  var fileNameLabel = document.getElementById('fileNameLabel');
-  var viewerContainer = document.getElementById('viewerContainer');
-  var textViewer = document.getElementById('textViewer');
-  var textContent = document.getElementById('textContent');
-  var loadingOverlay = document.getElementById('loadingOverlay');
-  var placeholder = document.getElementById('placeholder');
-  var downloadBtn = document.getElementById('downloadBtn');
+  function getFileExtension(filename) {
+    if (!filename) return '';
+    var parts = filename.split('.');
+    return parts.length > 1 ? parts.pop().toLowerCase() : '';
+  }
 
-  var fileName = '';
-
-  // ── Text extension list (handled by inline text viewer) ───────────────────
-  var TEXT_EXTS = ['txt','log','md','markdown','csv','tsv','json','jsonl','xml','yaml','yml',
-                   'toml','ini','cfg','conf','properties','sh','bash','zsh','bat','cmd','ps1',
-                   'py','pyw','js','ts','jsx','tsx','java','kt','go','rs','c','cpp','h','hpp',
-                   'cs','vb','rb','php','html','htm','css','scss','sass','less','sql','r',
-                   'gitignore','dockerfile','makefile','gradle','mvnw'];
-
-  function isTextExt(filename) {
-    if (!filename) return false;
-    var ext = filename.split('.').pop().toLowerCase();
+  function isTextFile(ext) {
     return TEXT_EXTS.indexOf(ext) >= 0;
   }
 
-  function showError(msg) {
-    loadingOverlay.classList.add('hidden');
-    placeholder.textContent = msg;
-    placeholder.classList.add('error');
-    placeholder.style.display = '';
+  function isImageFile(ext) {
+    return IMAGE_EXTS.indexOf(ext) >= 0;
+  }
+
+  function isDownloadOnly(ext) {
+    return DOWNLOAD_ONLY.indexOf(ext) >= 0;
   }
 
   function hideLoading() {
     loadingOverlay.classList.add('hidden');
   }
 
-  // ── Read limited bytes from stream ─────────────────────────────────────────
-  function readLimitedBytes(resp, maxBytes) {
-    if (!resp.body) {
-      return resp.arrayBuffer().then(function(buf) {
-        return buf.byteLength > maxBytes ? buf.slice(0, maxBytes) : buf;
-      });
-    }
-    var reader = resp.body.getReader();
-    var chunks = [];
-    var total = 0;
-    function pump() {
-      return reader.read().then(function(result) {
-        if (result.done) {
-          return concatBuffers(chunks);
-        }
-        var chunk = result.value;
-        var remaining = maxBytes - total;
-        if (chunk.length > remaining) {
-          chunks.push(chunk.slice(0, remaining));
-          reader.cancel();
-          return concatBuffers(chunks);
-        }
-        chunks.push(chunk);
-        total += chunk.length;
-        return pump();
-      });
-    }
-    return pump();
+  function showLoading(message) {
+    loadingOverlay.classList.remove('hidden');
+    var textEl = loadingOverlay.querySelector('.text');
+    if (textEl) textEl.textContent = message || 'Loading preview...';
   }
 
-  function concatBuffers(chunks) {
-    var total = chunks.reduce(function(s, c) { return s + c.length; }, 0);
-    var out = new Uint8Array(total);
-    var offset = 0;
-    chunks.forEach(function(c) { out.set(c, offset); offset += c.length; });
-    return out.buffer;
+  // ── Error and Message Display ──────────────────────────────────────────────
+  function showErrorMessage(error, fileName) {
+    hideLoading();
+    var errorHtml = '<div class="message-box error-message">' +
+      '<h3>⚠ Preview Failed</h3>' +
+      '<p>Could not preview file: <strong>' + escapeHtml(fileName) + '</strong></p>' +
+      '<p class="error-details">' + escapeHtml(error.message || 'Unknown error') + '</p>' +
+      '<button onclick="downloadCurrentFile()">Download File</button>' +
+      '</div>';
+    previewPane.innerHTML = errorHtml;
+    console.error('Preview error:', {
+      fileName: fileName,
+      error: error.message,
+      stack: error.stack
+    });
   }
 
-  // ── Charset detection ──────────────────────────────────────────────────────
+  function showUnsupportedMessage(fileName, ext) {
+    hideLoading();
+    var messageHtml = '<div class="message-box unsupported-format">' +
+      '<h3>Preview Not Available</h3>' +
+      '<p>The file format <span class="format-badge">.' + escapeHtml(ext) + '</span> is not supported for preview.</p>' +
+      '<p>File: <span class="file-info">' + escapeHtml(fileName) + '</span></p>' +
+      '<p style="margin-top:12px;font-size:0.8rem;color:var(--text3);">Supported formats: PDF, text/code files, and images.</p>' +
+      '<button onclick="downloadCurrentFile()">Download File</button>' +
+      '</div>';
+    previewPane.innerHTML = messageHtml;
+    console.log('Unsupported format:', ext, 'for file:', fileName);
+  }
+
+  function showDownloadOnlyMessage(fileName, ext) {
+    hideLoading();
+    var messageHtml = '<div class="message-box download-only">' +
+      '<h3>📥 Download Required</h3>' +
+      '<p>Files with format <span class="format-badge">.' + escapeHtml(ext) + '</span> cannot be previewed in the browser.</p>' +
+      '<p>File: <span class="file-info">' + escapeHtml(fileName) + '</span></p>' +
+      '<p style="margin-top:8px;font-size:0.8rem;">Please download the file to view it with the appropriate application.</p>' +
+      '<button onclick="downloadCurrentFile()">Download File</button>' +
+      '</div>';
+    previewPane.innerHTML = messageHtml;
+    console.log('Download-only format:', ext, 'for file:', fileName);
+  }
+
+  // ── Download Function ──────────────────────────────────────────────────────
+  window.downloadCurrentFile = function() {
+    if (!currentFilePath || !currentFileName) return;
+    var a = document.createElement('a');
+    a.href = '/api/file?path=' + encodeURIComponent(currentFilePath);
+    a.download = currentFileName;
+    document.body.appendChild(a);
+    a.click();
+    document.body.removeChild(a);
+  };
+
+  downloadBtn.addEventListener('click', window.downloadCurrentFile);
+
+  // ── Charset Detection ──────────────────────────────────────────────────────
   function decodeBuffer(buffer) {
     var bytes = new Uint8Array(buffer);
 
@@ -201,16 +284,19 @@
       return new TextDecoder('utf-16be').decode(buffer.slice ? buffer.slice(2) : bytes.slice(2).buffer);
     }
 
+    // Try UTF-8 with fatal flag
     try {
       return new TextDecoder('utf-8', { fatal: true }).decode(buffer);
-    } catch(e) { /* not valid UTF-8 */ }
+    } catch(e) {}
 
+    // Try GBK (Chinese)
     try {
       if (typeof TextDecoder !== 'undefined') {
         return new TextDecoder('gbk', { fatal: true }).decode(buffer);
       }
-    } catch(e) { /* not GBK */ }
+    } catch(e) {}
 
+    // Fallback to windows-1252
     try {
       return new TextDecoder('windows-1252').decode(buffer);
     } catch(e) {
@@ -218,95 +304,215 @@
     }
   }
 
-  // ── Load text viewer ───────────────────────────────────────────────────────
-  function loadTextViewer(filePath, fileName) {
-    fetch('/api/file?path=' + encodeURIComponent(filePath))
+  // ── Stream Reading with Size Limit ─────────────────────────────────────────
+  function readLimitedBytes(response, maxBytes) {
+    if (!response.body) {
+      return response.arrayBuffer().then(function(buf) {
+        if (buf.byteLength > maxBytes) {
+          return buf.slice(0, maxBytes);
+        }
+        return buf;
+      });
+    }
+
+    var reader = response.body.getReader();
+    var chunks = [];
+    var totalBytes = 0;
+
+    function pump() {
+      return reader.read().then(function(result) {
+        if (result.done) {
+          return concatBuffers(chunks);
+        }
+        var chunk = result.value;
+        var remaining = maxBytes - totalBytes;
+        if (chunk.length > remaining) {
+          chunks.push(chunk.slice(0, remaining));
+          reader.cancel();
+          return concatBuffers(chunks);
+        }
+        chunks.push(chunk);
+        totalBytes += chunk.length;
+        return pump();
+      });
+    }
+
+    return pump();
+  }
+
+  function concatBuffers(chunks) {
+    var totalLength = chunks.reduce(function(sum, chunk) {
+      return sum + chunk.length;
+    }, 0);
+    var result = new Uint8Array(totalLength);
+    var offset = 0;
+    chunks.forEach(function(chunk) {
+      result.set(chunk, offset);
+      offset += chunk.length;
+    });
+    return result.buffer;
+  }
+
+  // ── Simple Syntax Highlighting ─────────────────────────────────────────────
+  function applySyntaxHighlighting(text, ext) {
+    // Simple regex-based highlighting for common patterns
+    var highlighted = text;
+
+    // Comments (support //, #, <!-- -->)
+    highlighted = highlighted.replace(/(\/\/[^\n]*|#[^\n]*|&lt;!--[\s\S]*?--&gt;)/g, '<span class="code-comment">$1</span>');
+
+    // Strings (single and double quotes)
+    highlighted = highlighted.replace(/(&quot;[^&quot;]*&quot;|'[^']*')/g, '<span class="code-string">$1</span>');
+
+    // Keywords (common across languages)
+    var keywords = ['function','class','const','let','var','if','else','for','while','return',
+                    'import','export','from','default','async','await','try','catch','throw',
+                    'public','private','protected','static','void','int','string','boolean',
+                    'true','false','null','undefined','new','this','super','extends','implements'];
+    var keywordPattern = '\\b(' + keywords.join('|') + ')\\b';
+    highlighted = highlighted.replace(new RegExp(keywordPattern, 'g'), '<span class="code-keyword">$1</span>');
+
+    // Numbers
+    highlighted = highlighted.replace(/\b(\d+\.?\d*)\b/g, '<span class="code-number">$1</span>');
+
+    return highlighted;
+  }
+
+  // ── Preview Loaders ────────────────────────────────────────────────────────
+  function loadTextPreview(filePath, fileName, ext) {
+    if (abortController) abortController.abort();
+    abortController = new AbortController();
+
+    showLoading('Loading text preview...');
+
+    fetch('/api/file?path=' + encodeURIComponent(filePath), {
+      signal: abortController.signal
+    })
       .then(function(resp) {
-        if (!resp.ok) throw new Error('HTTP ' + resp.status);
-        return readLimitedBytes(resp, 512 * 1024);
+        if (!resp.ok) throw new Error('HTTP ' + resp.status + ': ' + resp.statusText);
+        return readLimitedBytes(resp, TEXT_MAX_BYTES);
       })
       .then(function(buffer) {
-        var decoded = decodeBuffer(buffer);
+        var text = decodeBuffer(buffer);
+        var escapedText = escapeHtml(text);
+        var highlightedText = applySyntaxHighlighting(escapedText, ext);
+
         hideLoading();
-        textContent.textContent = decoded;
-        textViewer.style.display = '';
-      })
-      .catch(function(err) {
-        showError('Text preview failed: ' + (err ? err.message : 'unknown error'));
-      });
-  }
+        previewPane.classList.add('text-mode');
+        previewPane.innerHTML = '<pre>' + highlightedText + '</pre>';
 
-  var PREVIEW_LOAD_TIMEOUT_MS = 30000; // 30 s fallback to clear loading overlay
-
-  // ── Load kkFileView (primary viewer for all file types) ───────────────────
-  function loadViewer(filePath, fileName) {
-    var fileUrl = '/api/file?path=' + encodeURIComponent(filePath);
-    // kkFileView requires the file URL to be Base64-encoded (it calls Base64.decode internally).
-    // Also append fullfilename so kkFileView can detect the file type from the extension.
-    var fullFileUrl = window.location.origin + fileUrl + '&fullfilename=' + encodeURIComponent(fileName);
-    // filePath and fileName are percent-encoded by encodeURIComponent(), making fullFileUrl
-    // ASCII-safe. Guard against any unexpected non-Latin1 chars before calling btoa().
-    var safeUrl = fullFileUrl.replace(/[\u0080-\uFFFF]/g, function(c) { return encodeURIComponent(c); });
-    var base64Url = btoa(safeUrl);
-    var kkUrl = '/api/kkfileview/onlinePreview?url=' + encodeURIComponent(base64Url) + '&locale=en';
-
-    function useKkFileViewIframe() {
-      viewerContainer.style.display = '';
-      var iframe = document.createElement('iframe');
-      iframe.style.width = '100%';
-      iframe.style.height = '100%';
-      iframe.style.border = 'none';
-      iframe.onload = function() { hideLoading(); };
-      viewerContainer.appendChild(iframe);
-      iframe.src = kkUrl;
-      setTimeout(hideLoading, PREVIEW_LOAD_TIMEOUT_MS);
-    }
-
-    function useFallback() {
-      viewerContainer.style.display = 'none';
-      if (isTextExt(fileName)) {
-        loadTextViewer(filePath, fileName);
-      } else {
-        hideLoading();
-        showError('Preview requires kkFileView server to be running. Enable it in the File menu.');
-      }
-    }
-
-    // Check kkFileView availability before creating iframe
-    fetch('/api/kkfileview/', { method: 'HEAD' })
-      .then(function(resp) {
-        if (resp.ok) {
-          useKkFileViewIframe();
-        } else {
-          useFallback();
+        if (buffer.byteLength >= TEXT_MAX_BYTES) {
+          var notice = document.createElement('div');
+          notice.style.cssText = 'padding:12px;background:var(--bg3);color:var(--text3);font-size:0.8rem;text-align:center;border-top:1px solid var(--border)';
+          notice.textContent = '⚠ File truncated at ' + TEXT_MAX_BYTES + ' bytes for preview';
+          previewPane.appendChild(notice);
         }
       })
-      .catch(function() {
-        useFallback();
+      .catch(function(err) {
+        if (err.name === 'AbortError') return;
+        showErrorMessage(err, fileName);
       });
   }
 
-  // ── Initialize ─────────────────────────────────────────────────────────────
+  function loadImagePreview(filePath, fileName) {
+    if (abortController) abortController.abort();
+    abortController = new AbortController();
+
+    showLoading('Loading image...');
+
+    var img = document.createElement('img');
+    img.style.maxWidth = '100%';
+    img.style.height = 'auto';
+    img.style.display = 'block';
+    img.style.margin = '20px auto';
+
+    img.onload = function() {
+      hideLoading();
+    };
+
+    img.onerror = function() {
+      showErrorMessage(new Error('Failed to load image'), fileName);
+    };
+
+    img.src = '/api/file?path=' + encodeURIComponent(filePath);
+    previewPane.innerHTML = '';
+    previewPane.appendChild(img);
+  }
+
+  function loadPdfPreview(filePath, fileName) {
+    if (abortController) abortController.abort();
+    abortController = new AbortController();
+
+    showLoading('Loading PDF...');
+
+    var iframe = document.createElement('iframe');
+    iframe.style.width = '100%';
+    iframe.style.height = '100%';
+    iframe.style.border = 'none';
+    iframe.style.display = 'block';
+
+    iframe.onload = function() {
+      hideLoading();
+    };
+
+    iframe.onerror = function() {
+      showErrorMessage(new Error('Failed to load PDF'), fileName);
+    };
+
+    iframe.src = '/api/file?path=' + encodeURIComponent(filePath);
+    previewPane.innerHTML = '';
+    previewPane.appendChild(iframe);
+
+    setTimeout(function() {
+      hideLoading();
+    }, PREVIEW_TIMEOUT_MS);
+  }
+
+  // ── Main Preview Router ────────────────────────────────────────────────────
+  function loadPreview(filePath, fileName) {
+    var ext = getFileExtension(fileName);
+
+    console.log('Loading preview:', {
+      filePath: filePath,
+      fileName: fileName,
+      extension: ext
+    });
+
+    try {
+      if (isTextFile(ext)) {
+        loadTextPreview(filePath, fileName, ext);
+      } else if (isImageFile(ext)) {
+        loadImagePreview(filePath, fileName);
+      } else if (ext === 'pdf') {
+        loadPdfPreview(filePath, fileName);
+      } else if (isDownloadOnly(ext)) {
+        showDownloadOnlyMessage(fileName, ext);
+      } else {
+        showUnsupportedMessage(fileName, ext);
+      }
+    } catch (error) {
+      showErrorMessage(error, fileName);
+    }
+  }
+
+  // ── Initialization ─────────────────────────────────────────────────────────
+  var params = new URLSearchParams(window.location.search);
+  var filePath = params.get('path');
+
   if (!filePath) {
-    showError('No file path specified. Add ?path=<file-path> to the URL.');
+    hideLoading();
+    previewPane.innerHTML = '<div class="message-box error-message">' +
+      '<h3>⚠ No File Specified</h3>' +
+      '<p>Please provide a file path using the <code>?path=</code> parameter.</p>' +
+      '</div>';
     return;
   }
 
-  fileName = filePath.split(/[/\\]/).pop() || filePath;
-  fileNameLabel.textContent = fileName;
+  currentFilePath = filePath;
+  currentFileName = filePath.split(/[/\\]/).pop() || filePath;
+  fileNameLabel.textContent = currentFileName;
 
-  // Download button
-  downloadBtn.addEventListener('click', function() {
-    var a = document.createElement('a');
-    a.href = '/api/file?path=' + encodeURIComponent(filePath);
-    a.download = fileName;
-    document.body.appendChild(a);
-    a.click();
-    document.body.removeChild(a);
-  });
-
-  // Load preview via kkFileView for all file types
-  loadViewer(filePath, fileName);
+  loadPreview(filePath, currentFileName);
 })();
 </script>
 </body>
