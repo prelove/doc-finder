@@ -551,6 +551,7 @@
 
   var PREVIEW_EXTS = ['pdf', 'docx', 'xlsx', 'xls', 'doc', 'ppt', 'pptx'];  // Limited browser support
   var IMAGE_EXTS = ['jpg', 'jpeg', 'png', 'gif', 'bmp', 'svg', 'webp', 'ico'];
+  var OFFICE_EXTS = ['doc', 'docx', 'xls', 'xlsx', 'ppt', 'pptx'];
 
   // Unsupported formats that should only allow download
   var DOWNLOAD_ONLY = ['ofd', 'dwg', 'dxf', 'zip', 'rar', '7z', 'tar', 'gz', 'bz2',
@@ -568,6 +569,10 @@
 
   function isImageFile(ext) {
     return IMAGE_EXTS.indexOf(ext) >= 0;
+  }
+
+  function isOfficeFile(ext) {
+    return OFFICE_EXTS.indexOf(ext) >= 0;
   }
 
   function isDownloadOnly(ext) {
@@ -622,6 +627,8 @@
         loadImagePreview(filePath, fileName);
       } else if (ext === 'pdf') {
         loadPdfPreview(filePath, fileName);
+      } else if (isOfficeFile(ext)) {
+        showOfficeDocumentMessage(fileName, ext);
       } else if (isDownloadOnly(ext)) {
         showDownloadOnlyMessage(fileName, ext);
       } else {
@@ -648,8 +655,10 @@
         // Only read up to 512KB to avoid hanging the browser
         return readLimitedBytes(resp, 512 * 1024);
       })
-      .then(function(buffer) {
+      .then(function(result) {
         if (ac.signal.aborted) return;
+        var buffer = result.buffer || result;  // Handle both old and new format
+        var wasTruncated = result.truncated || false;
         var decoded = decodeBuffer(buffer);
         hideLoadingOverlay();
         previewAbort = null;
@@ -658,6 +667,14 @@
         textContent.innerHTML = applySyntaxHighlighting(decoded, ext);
         textViewer.style.display = '';
         previewPlaceholder.style.display = 'none';
+
+        // Show truncation notice if needed
+        if (wasTruncated) {
+          var notice = document.createElement('div');
+          notice.style.cssText = 'padding:8px 12px;margin-top:8px;background:var(--bg3);color:var(--text3);font-size:0.75rem;text-align:center;border-radius:4px;';
+          notice.textContent = '⚠ File truncated at 512 KB for preview. Open in new tab to view full content.';
+          textViewer.appendChild(notice);
+        }
 
         console.log('Text preview loaded successfully:', fileName);
       })
@@ -704,17 +721,26 @@
     var reader = resp.body.getReader();
     var chunks = [];
     var total = 0;
+    var truncated = false;
     function pump() {
       return reader.read().then(function(result) {
         if (result.done) {
-          return concatBuffers(chunks);
+          return { buffer: concatBuffers(chunks), truncated: truncated };
         }
         var chunk = result.value;
         var remaining = maxBytes - total;
-        if (chunk.length > remaining) {
+        if (remaining <= 0) {
+          // Already have enough data, just drain the rest without storing
+          truncated = true;
+          return pump();
+        }
+        if (chunk.length >= remaining) {
+          // This chunk puts us over the limit
           chunks.push(chunk.slice(0, remaining));
-          reader.cancel();
-          return concatBuffers(chunks);
+          total += remaining;
+          truncated = true;
+          // Continue draining to avoid "Response has been truncated" error
+          return pump();
         }
         chunks.push(chunk);
         total += chunk.length;
@@ -747,19 +773,27 @@
       return new TextDecoder('utf-16be').decode(buffer.slice ? buffer.slice(2) : bytes.slice(2).buffer);
     }
 
-    // Try UTF-8 first; if it fails (throws), fall back to windows-1252 (latin-1)
+    // Try UTF-8 first; if it fails (throws), try other encodings
     try {
       var text = new TextDecoder('utf-8', { fatal: true }).decode(buffer);
       return text;
     } catch(e) { /* not valid UTF-8 */ }
 
-    // Attempt GBK for CJK files
+    // Attempt GBK for Chinese (GB2312-80 is subset of GBK)
     try {
       if (typeof TextDecoder !== 'undefined') {
         var gbk = new TextDecoder('gbk', { fatal: true }).decode(buffer);
         return gbk;
       }
     } catch(e) { /* not GBK */ }
+
+    // Try GB2312 specifically
+    try {
+      if (typeof TextDecoder !== 'undefined') {
+        var gb2312 = new TextDecoder('gb2312', { fatal: true }).decode(buffer);
+        return gb2312;
+      }
+    } catch(e) { /* not GB2312 */ }
 
     // Final fallback: windows-1252
     try {
@@ -873,6 +907,30 @@
     previewContainer.innerHTML = downloadHtml;
 
     console.log('Download-only format:', fileName, 'Extension:', ext);
+  }
+
+  function showOfficeDocumentMessage(fileName, ext) {
+    previewContainer.style.display = '';
+    previewPlaceholder.style.display = 'none';
+    textViewer.style.display = 'none';
+    hideLoadingOverlay();
+
+    var fileUrl = '/api/file?path=' + encodeURIComponent(currentFilePath);
+    var officeHtml = '<div class="unsupported-message">' +
+      '<h3>📄 Office Document</h3>' +
+      '<p>Office format <strong>.' + escapeHtml(ext) + '</strong> detected.</p>' +
+      '<p>File: <strong>' + escapeHtml(fileName) + '</strong></p>' +
+      '<p style="margin-top:12px;font-size:0.85rem;color:var(--text2);">Your browser may be able to preview this file. Try:</p>' +
+      '<div style="margin-top:12px;">' +
+      '<button class="download-btn" onclick="window.open(\'' + fileUrl + '\', \'_blank\')" style="margin-right:8px;">Open in New Tab</button>' +
+      '<button class="download-btn" onclick="downloadCurrentFile()">Download File</button>' +
+      '</div>' +
+      '<p style="margin-top:12px;font-size:0.75rem;color:var(--text3);">Note: Browser support for Office documents varies. If preview doesn\'t work, please download the file.</p>' +
+      '</div>';
+
+    previewContainer.innerHTML = officeHtml;
+
+    console.log('Office document format:', fileName, 'Extension:', ext);
   }
 
   // Make download function globally accessible
