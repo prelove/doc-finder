@@ -7,6 +7,8 @@ import org.slf4j.LoggerFactory;
 import java.io.BufferedReader;
 import java.io.IOException;
 import java.io.InputStreamReader;
+import java.net.HttpURLConnection;
+import java.net.URL;
 import java.nio.file.Files;
 import java.nio.file.Path;
 import java.nio.file.Paths;
@@ -26,6 +28,8 @@ public class KkFileViewServer {
     private Thread outputThread;
     private Thread errorThread;
     private final AtomicBoolean running = new AtomicBoolean(false);
+    /** True when the server was started externally (not by this instance). */
+    private final AtomicBoolean externalMode = new AtomicBoolean(false);
     private final int port;
     private final Path jarPath;
     private final Path workDir;
@@ -38,6 +42,72 @@ public class KkFileViewServer {
         this.port = port;
         this.workDir = AppPaths.getBaseDir().resolve("kkfileview");
         this.jarPath = workDir.resolve("kkFileView.jar");
+    }
+
+    /**
+     * Probes whether something is already listening on the given port by making a
+     * lightweight HTTP HEAD request.  Returns {@code true} if any HTTP response is
+     * received (including error codes), {@code false} if the connection is refused
+     * or the request times out.
+     *
+     * @param port TCP port to probe (e.g. 8012)
+     */
+    public static boolean probePort(int port) {
+        try {
+            URL url = new URL("http://127.0.0.1:" + port + "/index");
+            HttpURLConnection conn = (HttpURLConnection) url.openConnection();
+            conn.setConnectTimeout(1500);
+            conn.setReadTimeout(2000);
+            conn.setRequestMethod("HEAD");
+            int code = conn.getResponseCode();
+            conn.disconnect();
+            return code > 0;
+        } catch (Exception e) {
+            return false;
+        }
+    }
+
+    /**
+     * Returns the major version of the currently running JVM (e.g. 8, 11, 17, 21).
+     * Parses {@code java.version} and falls back to 8 on parse failure.
+     */
+    public static int getCurrentJavaMajorVersion() {
+        String version = System.getProperty("java.version", "1.8");
+        try {
+            if (version.startsWith("1.")) {
+                // Legacy format: "1.8.0_xxx" -> 8
+                int secondDot = version.indexOf('.', 2);
+                String minor = secondDot == -1
+                        ? version.substring(2)
+                        : version.substring(2, secondDot);
+                return Integer.parseInt(minor);
+            }
+            // Modern format: "17.0.2", "21.0.1"
+            int dotIdx = version.indexOf('.');
+            return dotIdx == -1
+                    ? Integer.parseInt(version)
+                    : Integer.parseInt(version.substring(0, dotIdx));
+        } catch (Exception e) {
+            return 8;
+        }
+    }
+
+    /**
+     * Marks this instance as connected to an externally managed kkFileView process
+     * running on the configured port.  No subprocess is started.
+     */
+    public synchronized void attachToExternal() {
+        externalMode.set(true);
+        running.set(true);
+        log.info("Attached to externally running kkFileView on port {}", port);
+    }
+
+    /**
+     * Returns {@code true} when this instance is operating in external mode
+     * (i.e. attached to a kkFileView server that was not started by DocFinder).
+     */
+    public boolean isExternalMode() {
+        return externalMode.get();
     }
 
     /**
@@ -146,8 +216,15 @@ public class KkFileViewServer {
 
     /**
      * Stop the kkFileView server.
+     * In external mode this simply detaches without killing the external process.
      */
     public synchronized void stop() {
+        if (externalMode.get()) {
+            log.info("Detaching from external kkFileView instance on port {}", port);
+            externalMode.set(false);
+            running.set(false);
+            return;
+        }
         if (!running.get()) {
             log.debug("kkFileView server is not running");
             return;
@@ -194,8 +271,12 @@ public class KkFileViewServer {
 
     /**
      * Check if the server is currently running.
+     * In external mode returns the cached running flag (set by {@link #attachToExternal()}).
      */
     public boolean isRunning() {
+        if (externalMode.get()) {
+            return running.get();
+        }
         return running.get() && process != null && process.isAlive();
     }
 
