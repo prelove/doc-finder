@@ -152,7 +152,7 @@ public class KkFileViewServer {
         // Trust DocFinder's own file-serve endpoint so kkFileView can fetch the
         // source document from http://localhost:<port>/api/file without triggering
         // the "来自不受信任的站点" 403 security check.
-        command.add("-Dkkfileview.trust.host=localhost,127.0.0.1");
+        command.add("-Dtrust.host=localhost,127.0.0.1");
         command.add("-jar");
         command.add(jarPath.toString());
 
