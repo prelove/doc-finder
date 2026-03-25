@@ -64,6 +64,7 @@ public class WebServer {
         s.createContext("/api/search",  new SearchHandler(() -> searchService));
         s.createContext("/api/preview", new PreviewHandler());
         s.createContext("/api/file",    new FileServeHandler());
+        s.createContext("/api/text",    new TextServeHandler());
         s.createContext("/api/share",   shareHandler);
         s.createContext("/share/",      new StaticHandler()); // public share pages → share.html
         s.createContext("/web/",        new StaticHandler()); // bundled JS / CSS
