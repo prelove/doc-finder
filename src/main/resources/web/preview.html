@@ -4,6 +4,8 @@
   <meta charset="UTF-8"/>
   <meta name="viewport" content="width=device-width, initial-scale=1.0"/>
   <title>DocFinder Preview</title>
+  <!-- jschardet: statistical charset detection (async, no-op if CDN unavailable) -->
+  <script async src="https://cdn.jsdelivr.net/npm/jschardet@3.0.0/dist/jschardet.min.js"></script>
   <style>
     *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
 
@@ -101,6 +103,8 @@
     #loadingOverlay .spinner { width: 40px; height: 40px; border: 4px solid rgba(255,255,255,0.2); border-top-color: var(--accent2); border-radius: 50%; animation: spin 0.8s linear infinite; }
     #loadingOverlay .text { color: #e2e8f0; font-size: 0.85rem; }
     @keyframes spin { to { transform: rotate(360deg); } }
+    /* Office document preview (vue-office) */
+    .office-doc-wrapper { width: 100%; min-height: 100%; overflow: auto; background: #fff; }
   </style>
 </head>
 <body>
@@ -267,17 +271,119 @@
     var fileUrl = '/api/file?path=' + encodeURIComponent(currentFilePath);
     var messageHtml = '<div class="message-box office-preview">' +
       '<h3>📄 Office Document</h3>' +
-      '<p>Office format <span class="format-badge">.' + escapeHtml(ext) + '</span> detected.</p>' +
+      '<p>Office format <span class="format-badge">.' + escapeHtml(ext) + '</span> cannot be rendered in-browser.</p>' +
       '<p>File: <span class="file-info">' + escapeHtml(fileName) + '</span></p>' +
-      '<p style="margin-top:12px;font-size:0.85rem;color:var(--text2);">Your browser may be able to preview this file. Try:</p>' +
       '<div style="margin-top:12px;">' +
       '<button onclick="window.open(\'' + fileUrl + '\', \'_blank\')" style="margin-right:8px;">Open in New Tab</button>' +
       '<button onclick="downloadCurrentFile()">Download File</button>' +
       '</div>' +
-      '<p style="margin-top:12px;font-size:0.75rem;color:var(--text3);">Note: Browser support for Office documents varies. If preview doesn\'t work, please download the file.</p>' +
       '</div>';
     previewPane.innerHTML = messageHtml;
-    console.log('Office document format:', ext, 'for file:', fileName);
+    console.log('Office document fallback:', ext, 'for file:', fileName);
+  }
+
+  // ── vue-office lazy loader ─────────────────────────────────────────────────
+  var vofficeState = 'idle'; // 'idle' | 'loading' | 'ready' | 'error'
+  var vofficeQueue = [];
+
+  function loadScriptTag(url, onok, onerr) {
+    var s = document.createElement('script');
+    s.src = url;
+    s.onload = onok;
+    s.onerror = onerr || function() {};
+    document.head.appendChild(s);
+  }
+
+  function loadCSSTag(url) {
+    var link = document.createElement('link');
+    link.rel = 'stylesheet';
+    link.href = url;
+    document.head.appendChild(link);
+  }
+
+  function withVueOffice(cb) {
+    if (vofficeState === 'ready') { cb(null); return; }
+    if (vofficeState === 'error') { cb(new Error('vue-office unavailable')); return; }
+    vofficeQueue.push(cb);
+    if (vofficeState === 'loading') return;
+    vofficeState = 'loading';
+
+    function flush(err) {
+      vofficeState = err ? 'error' : 'ready';
+      var q = vofficeQueue.splice(0);
+      q.forEach(function(fn) { fn(err); });
+    }
+
+    loadScriptTag('https://cdn.jsdelivr.net/npm/vue@3/dist/vue.global.prod.js', function() {
+      loadCSSTag('https://cdn.jsdelivr.net/npm/@vue-office/docx/lib/index.css');
+      loadCSSTag('https://cdn.jsdelivr.net/npm/@vue-office/excel/lib/index.css');
+      var n = 3, errs = [];
+      function done(err) {
+        if (err) errs.push(err);
+        if (--n === 0) flush(errs.length ? errs[0] : null);
+      }
+      loadScriptTag('https://cdn.jsdelivr.net/npm/@vue-office/docx/lib/index.umd.js',
+        function() { done(null); }, function() { done(new Error('docx CDN load failed')); });
+      loadScriptTag('https://cdn.jsdelivr.net/npm/@vue-office/excel/lib/index.umd.js',
+        function() { done(null); }, function() { done(new Error('excel CDN load failed')); });
+      loadScriptTag('https://cdn.jsdelivr.net/npm/@vue-office/pptx/lib/index.umd.js',
+        function() { done(null); }, function() { done(new Error('pptx CDN load failed')); });
+    }, function() { flush(new Error('Vue 3 CDN load failed')); });
+  }
+
+  // ── Office document preview via vue-office ────────────────────────────────
+  function loadOfficePreview(filePath, fileName, ext) {
+    // Old binary formats not supported by vue-office – fall back immediately
+    if (ext === 'doc' || ext === 'ppt') {
+      showOfficeDocumentMessage(fileName, ext);
+      return;
+    }
+
+    if (abortController) abortController.abort();
+    abortController = new AbortController();
+    var signal = abortController.signal;
+
+    showLoading('Loading ' + ext.toUpperCase() + ' preview…');
+    previewPane.classList.remove('text-mode');
+    previewPane.innerHTML = '';
+
+    var wrapper = document.createElement('div');
+    wrapper.className = 'office-doc-wrapper';
+    previewPane.appendChild(wrapper);
+
+    var fileUrl = '/api/file?path=' + encodeURIComponent(filePath);
+
+    withVueOffice(function(err) {
+      if (signal.aborted) return;
+      if (err) {
+        console.warn('vue-office CDN load failed, showing fallback:', err.message);
+        showOfficeDocumentMessage(fileName, ext);
+        return;
+      }
+
+      var renderer = ext === 'docx' ? window.VueOfficeDocx
+                   : (ext === 'xlsx' || ext === 'xls') ? window.VueOfficeExcel
+                   : ext === 'pptx' ? window.VueOfficePptx
+                   : null;
+
+      if (!renderer || typeof renderer.renderAsync !== 'function') {
+        console.warn('vue-office renderer not available for ext:', ext);
+        showOfficeDocumentMessage(fileName, ext);
+        return;
+      }
+
+      renderer.renderAsync(fileUrl, wrapper, null, {})
+        .then(function() {
+          if (!signal.aborted) hideLoading();
+          console.log('Office preview rendered:', fileName);
+        })
+        .catch(function(renderErr) {
+          if (!signal.aborted) {
+            console.error('Office render failed:', renderErr);
+            showOfficeDocumentMessage(fileName, ext);
+          }
+        });
+    });
   }
 
   // ── Download Function ──────────────────────────────────────────────────────
@@ -294,10 +400,33 @@
   downloadBtn.addEventListener('click', window.downloadCurrentFile);
 
   // ── Charset Detection ──────────────────────────────────────────────────────
+  // Map jschardet / external encoding names to TextDecoder-compatible names
+  function normalizeEncoding(enc) {
+    if (!enc) return null;
+    var u = enc.toUpperCase().replace(/_/g, '-');
+    var map = {
+      'UTF-8':'utf-8','UTF8':'utf-8',
+      'UTF-16':'utf-16le','UTF-16LE':'utf-16le','UTF-16BE':'utf-16be',
+      'SHIFT-JIS':'shift-jis','SHIFTJIS':'shift-jis','SJIS':'shift-jis',
+      'EUC-JP':'euc-jp','EUCJP':'euc-jp',
+      'ISO-2022-JP':'iso-2022-jp',
+      'EUC-KR':'euc-kr','EUCKR':'euc-kr',
+      'BIG5':'big5','BIG-5':'big5',
+      'GB2312':'gb2312','GBK':'gbk','GB18030':'gb18030',
+      'KOI8-R':'koi8-r','KOI8-U':'koi8-u',
+      'ISO-8859-1':'iso-8859-1','ISO-8859-2':'iso-8859-2',
+      'ISO-8859-5':'iso-8859-5','ISO-8859-7':'iso-8859-7',
+      'WINDOWS-1250':'windows-1250','WINDOWS-1251':'windows-1251',
+      'WINDOWS-1252':'windows-1252','WINDOWS-1253':'windows-1253',
+      'WINDOWS-1255':'windows-1255'
+    };
+    return map[u] || enc.toLowerCase();
+  }
+
   function decodeBuffer(buffer) {
     var bytes = new Uint8Array(buffer);
 
-    // BOM detection
+    // BOM detection (highest priority)
     if (bytes.length >= 3 && bytes[0] === 0xEF && bytes[1] === 0xBB && bytes[2] === 0xBF) {
       return new TextDecoder('utf-8').decode(buffer.slice ? buffer.slice(3) : bytes.slice(3).buffer);
     }
@@ -308,6 +437,24 @@
       return new TextDecoder('utf-16be').decode(buffer.slice ? buffer.slice(2) : bytes.slice(2).buffer);
     }
 
+    // Statistical detection via jschardet (loaded async from CDN; may not be ready)
+    if (typeof jschardet !== 'undefined') {
+      try {
+        var sampleLen = Math.min(bytes.length, 65536);
+        var chars = [];
+        for (var i = 0; i < sampleLen; i++) chars.push(String.fromCharCode(bytes[i]));
+        var detected = jschardet.detect(chars.join(''));
+        if (detected && detected.encoding && detected.confidence >= 0.7) {
+          var enc = normalizeEncoding(detected.encoding);
+          if (enc) {
+            try {
+              return new TextDecoder(enc, { fatal: true }).decode(buffer);
+            } catch(e) { /* detected encoding decode failed, fall through */ }
+          }
+        }
+      } catch(e) { /* jschardet error, fall through */ }
+    }
+
     // Try UTF-8 with fatal flag
     try {
       return new TextDecoder('utf-8', { fatal: true }).decode(buffer);
@@ -315,16 +462,7 @@
 
     // Try GBK (Chinese - GB2312-80 is subset of GBK)
     try {
-      if (typeof TextDecoder !== 'undefined') {
-        return new TextDecoder('gbk', { fatal: true }).decode(buffer);
-      }
-    } catch(e) {}
-
-    // Try GB2312 specifically
-    try {
-      if (typeof TextDecoder !== 'undefined') {
-        return new TextDecoder('gb2312', { fatal: true }).decode(buffer);
-      }
+      return new TextDecoder('gbk', { fatal: true }).decode(buffer);
     } catch(e) {}
 
     // Fallback to windows-1252
@@ -529,7 +667,7 @@
       } else if (ext === 'pdf') {
         loadPdfPreview(filePath, fileName);
       } else if (isOfficeFile(ext)) {
-        showOfficeDocumentMessage(fileName, ext);
+        loadOfficePreview(filePath, fileName, ext);
       } else if (isDownloadOnly(ext)) {
         showDownloadOnlyMessage(fileName, ext);
       } else {
