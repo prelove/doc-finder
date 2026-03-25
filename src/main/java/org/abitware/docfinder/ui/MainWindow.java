@@ -2595,6 +2595,26 @@ public class MainWindow extends JFrame implements MenuBarPanel.MenuListener {
 
     private void toggleKkFileView() {
         final boolean enable = kkFileViewToggle != null && kkFileViewToggle.isSelected();
+
+        // Pre-flight: when enabling and no subprocess is already running, warn if
+        // the current JVM is below Java 21 (required by the latest kkFileView release).
+        if (enable && (kkFileViewServer == null || !kkFileViewServer.isRunning())) {
+            if (org.abitware.docfinder.web.KkFileViewServer.getCurrentJavaMajorVersion() < 21) {
+                int choice = JOptionPane.showConfirmDialog(this,
+                        "The current JVM (" + System.getProperty("java.version") + ") is below Java 21.\n"
+                        + "The latest official kkFileView requires Java 21 to run.\n"
+                        + "If startup fails, please install Java 21.\n"
+                        + "(A Java 8 compatible fork is also available — see KKFILEVIEW_INTEGRATION.md)\n\n"
+                        + "Continue attempting to start kkFileView?",
+                        "kkFileView – Java Version Warning",
+                        JOptionPane.YES_NO_OPTION, JOptionPane.WARNING_MESSAGE);
+                if (choice != JOptionPane.YES_OPTION) {
+                    if (kkFileViewToggle != null) kkFileViewToggle.setSelected(false);
+                    return;
+                }
+            }
+        }
+
         if (kkFileViewToggle != null) kkFileViewToggle.setEnabled(false);
         statusLabel.setText(enable ? "Starting kkFileView server…" : "Stopping kkFileView server…");
 
@@ -2602,22 +2622,32 @@ public class MainWindow extends JFrame implements MenuBarPanel.MenuListener {
             private String message;
             private boolean success = false;
             private String url;
+            private boolean attachedExternal = false;
 
             @Override
             protected Void doInBackground() {
                 try {
                     org.abitware.docfinder.index.ConfigManager cm = new org.abitware.docfinder.index.ConfigManager();
                     if (enable) {
+                        int port = cm.getKkFileViewPort();
                         if (kkFileViewServer == null) {
-                            kkFileViewServer = new org.abitware.docfinder.web.KkFileViewServer(cm.getKkFileViewPort());
+                            kkFileViewServer = new org.abitware.docfinder.web.KkFileViewServer(port);
                         }
-                        if (!kkFileViewServer.isAvailable()) {
-                            message = "kkFileView JAR not found at: " + kkFileViewServer.getJarPath() +
-                                    "\n\nPlease download and place kkFileView JAR at the above location." +
-                                    "\nSee KKFILEVIEW_INTEGRATION.md for instructions.";
-                            return null;
+                        if (!kkFileViewServer.isRunning()) {
+                            // Check if an external instance is already listening on the port.
+                            if (org.abitware.docfinder.web.KkFileViewServer.probePort(port)) {
+                                kkFileViewServer.attachToExternal();
+                                attachedExternal = true;
+                            } else {
+                                if (!kkFileViewServer.isAvailable()) {
+                                    message = "kkFileView JAR not found at: " + kkFileViewServer.getJarPath()
+                                            + "\n\nPlease download and place kkFileView JAR at the above location."
+                                            + "\nSee KKFILEVIEW_INTEGRATION.md for instructions.";
+                                    return null;
+                                }
+                                kkFileViewServer.start();
+                            }
                         }
-                        kkFileViewServer.start();
                         // Update webServer reference if it exists
                         if (webServer != null) {
                             webServer.setKkFileViewServer(kkFileViewServer);
@@ -2647,7 +2677,10 @@ public class MainWindow extends JFrame implements MenuBarPanel.MenuListener {
                     }
                 } else {
                     if (enable) {
-                        statusLabel.setText("kkFileView server started: " + url);
+                        String msg = attachedExternal
+                                ? "Connected to existing kkFileView server: " + url
+                                : "kkFileView server started: " + url;
+                        statusLabel.setText(msg);
                     } else {
                         statusLabel.setText("kkFileView server stopped.");
                     }

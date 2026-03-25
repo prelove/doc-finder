@@ -45,26 +45,36 @@ public class App {
             }, "docfinder-migration").start();
         }
 
-        // 4) Optionally start kkFileView server (before web interface)
+        // 4) Set up kkFileView server – probe the configured port first so that a
+        //    manually started kkFileView instance is reused automatically.
         ConfigManager cfg = new ConfigManager();
-        final KkFileViewServer kkFileViewServer;
-        if (cfg.isKkFileViewEnabled()) {
-            kkFileViewServer = new KkFileViewServer(cfg.getKkFileViewPort());
-            if (kkFileViewServer.isAvailable()) {
+        final int kkPort = cfg.getKkFileViewPort();
+        KkFileViewServer _kkServer = null;
+        if (KkFileViewServer.probePort(kkPort)) {
+            // Something is already listening on that port – attach without starting.
+            _kkServer = new KkFileViewServer(kkPort);
+            _kkServer.attachToExternal();
+            logger.info("Detected existing kkFileView instance on port {}, attaching", kkPort);
+        } else if (cfg.isKkFileViewEnabled()) {
+            _kkServer = new KkFileViewServer(kkPort);
+            if (_kkServer.isAvailable()) {
+                if (KkFileViewServer.getCurrentJavaMajorVersion() < 21) {
+                    logger.warn("Current JVM ({}) is below Java 21. The latest kkFileView requires Java 21 – startup may fail.",
+                            System.getProperty("java.version"));
+                }
+                Runtime.getRuntime().addShutdownHook(new Thread(_kkServer::stop, "docfinder-kkfileview-stop"));
                 try {
-                    kkFileViewServer.start();
-                    logger.info("kkFileView server started at {}", kkFileViewServer.getBaseUrl());
+                    _kkServer.start();
+                    logger.info("kkFileView server started at {}", _kkServer.getBaseUrl());
                 } catch (IOException ex) {
                     logger.error("Failed to start kkFileView server", ex);
                 }
-                Runtime.getRuntime().addShutdownHook(new Thread(kkFileViewServer::stop, "docfinder-kkfileview-stop"));
             } else {
-                logger.warn("kkFileView is enabled but JAR not found at: {}", kkFileViewServer.getJarPath());
+                logger.warn("kkFileView is enabled but JAR not found at: {}", _kkServer.getJarPath());
                 logger.warn("Please download kkFileView JAR and place it at the above location.");
             }
-        } else {
-            kkFileViewServer = null;
         }
+        final KkFileViewServer kkFileViewServer = _kkServer;
 
         // 5) Optionally start web interface (before EDT to get config early)
         final WebServer webServer;
