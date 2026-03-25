@@ -1,5 +1,6 @@
 package org.abitware.docfinder.web;
 
+import org.abitware.docfinder.index.ConfigManager;
 import org.abitware.docfinder.util.AppPaths;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
@@ -33,13 +34,16 @@ public class KkFileViewServer {
     private final int port;
     private final Path jarPath;
     private final Path workDir;
+    private final ConfigManager configManager;
 
     /**
      * Create a new KkFileViewServer instance.
      * @param port The port for kkFileView to listen on (default: 8012)
+     * @param configManager Configuration manager for retrieving trust host settings
      */
-    public KkFileViewServer(int port) {
+    public KkFileViewServer(int port, ConfigManager configManager) {
         this.port = port;
+        this.configManager = configManager;
         this.workDir = AppPaths.getBaseDir().resolve("kkfileview");
         this.jarPath = workDir.resolve("kkFileView.jar");
     }
@@ -149,10 +153,12 @@ public class KkFileViewServer {
         command.add("-Dfile.dir=" + workDir.resolve("files").toString());
         command.add("-Duser.language=en");
         command.add("-Duser.country=US");
-        // Trust DocFinder's own file-serve endpoint so kkFileView can fetch the
-        // source document from http://localhost:<port>/api/file without triggering
-        // the "来自不受信任的站点" 403 security check.
-        command.add("-Dtrust.host=localhost,127.0.0.1");
+        // Configure trust host whitelist. Default is "*" (all hosts) since DocFinder is a
+        // local desktop app that may be accessed via various network interfaces
+        // (localhost, LAN IP, etc.). Users access their own local files, so SSRF risk is minimal.
+        // For security-conscious deployments, users can configure kkfileview.trust.host in settings.
+        String trustHost = configManager != null ? configManager.getKkFileViewTrustHost() : "*";
+        command.add("-Dtrust.host=" + trustHost);
         command.add("-jar");
         command.add(jarPath.toString());
 

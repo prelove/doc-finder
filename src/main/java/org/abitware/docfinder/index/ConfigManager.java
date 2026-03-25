@@ -216,6 +216,25 @@ public class ConfigManager {
 	}
 
 	/**
+	 * Get kkFileView trust host whitelist configuration.
+	 * Controls which hosts kkFileView will accept file preview requests from.
+	 * @return comma-separated host list or "*" for all hosts (default: "*")
+	 */
+	public String getKkFileViewTrustHost() {
+	    return loadAll().getProperty("kkfileview.trust.host", "*");
+	}
+
+	/**
+	 * Set kkFileView trust host whitelist configuration.
+	 * @param trustHost comma-separated host list (e.g. "localhost,127.0.0.1") or "*" for all
+	 */
+	public void setKkFileViewTrustHost(String trustHost) {
+	    java.util.Properties p = loadAll();
+	    p.setProperty("kkfileview.trust.host", trustHost != null ? trustHost : "*");
+	    saveAll(p);
+	}
+
+	/**
 	 * Get preferred document viewer for web UI.
 	 * @return "kkfileview" (default) or "jitviewer"
 	 */

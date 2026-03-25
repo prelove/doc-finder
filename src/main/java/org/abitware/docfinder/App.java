@@ -52,11 +52,11 @@ public class App {
         KkFileViewServer _kkServer = null;
         if (KkFileViewServer.probePort(kkPort)) {
             // Something is already listening on that port – attach without starting.
-            _kkServer = new KkFileViewServer(kkPort);
+            _kkServer = new KkFileViewServer(kkPort, cfg);
             _kkServer.attachToExternal();
             logger.info("Detected existing kkFileView instance on port {}, attaching", kkPort);
         } else if (cfg.isKkFileViewEnabled()) {
-            _kkServer = new KkFileViewServer(kkPort);
+            _kkServer = new KkFileViewServer(kkPort, cfg);
             if (_kkServer.isAvailable()) {
                 if (KkFileViewServer.getCurrentJavaMajorVersion() < 21) {
                     logger.warn("Current JVM ({}) is below Java 21. The latest kkFileView requires Java 21 – startup may fail.",

@@ -2631,7 +2631,7 @@ public class MainWindow extends JFrame implements MenuBarPanel.MenuListener {
                     if (enable) {
                         int port = cm.getKkFileViewPort();
                         if (kkFileViewServer == null) {
-                            kkFileViewServer = new org.abitware.docfinder.web.KkFileViewServer(port);
+                            kkFileViewServer = new org.abitware.docfinder.web.KkFileViewServer(port, cm);
                         }
                         if (!kkFileViewServer.isRunning()) {
                             // Check if an external instance is already listening on the port.
