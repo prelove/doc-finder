@@ -149,6 +149,10 @@ public class KkFileViewServer {
         command.add("-Dfile.dir=" + workDir.resolve("files").toString());
         command.add("-Duser.language=en");
         command.add("-Duser.country=US");
+        // Allow kkFileView to fetch preview source files from the DocFinder web server
+        // running on localhost. Without this, kkFileView rejects URLs whose host is not
+        // in its trusted-host list and returns "预览源文件来自不受信任的站点".
+        command.add("-Dkk.fileview.trusted.host=localhost,127.0.0.1");
         command.add("-jar");
         command.add(jarPath.toString());
 
