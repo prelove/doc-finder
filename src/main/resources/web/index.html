@@ -4,7 +4,6 @@
   <meta charset="UTF-8"/>
   <meta name="viewport" content="width=device-width, initial-scale=1.0"/>
   <title>DocFinder Web</title>
-  <link rel="stylesheet" href="/web/jit-viewer.min.css"/>
   <style>
     *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
 
@@ -62,8 +61,8 @@
 
     /* ── Search bar ── */
     .search-bar { display: flex; gap: 8px; padding: 12px 16px; background: var(--bg3); border-bottom: 1px solid var(--border); flex-wrap: wrap; align-items: center; }
-    #themeToggleBtn, #previewToggleBtn, #viewerToggleBtn { background: var(--btn-sec); border: 1px solid var(--input-bd); cursor: pointer; color: var(--text2); font-size: 0.95rem; padding: 6px 10px; border-radius: 6px; white-space: nowrap; flex-shrink: 0; }
-    #themeToggleBtn:hover, #previewToggleBtn:hover, #viewerToggleBtn:hover { background: var(--btn-sec2); color: var(--text); }
+    #themeToggleBtn, #previewToggleBtn { background: var(--btn-sec); border: 1px solid var(--input-bd); cursor: pointer; color: var(--text2); font-size: 0.95rem; padding: 6px 10px; border-radius: 6px; white-space: nowrap; flex-shrink: 0; }
+    #themeToggleBtn:hover, #previewToggleBtn:hover { background: var(--btn-sec2); color: var(--text); }
     #previewToggleBtn.active { background: var(--accent); color: #fff; border-color: var(--accent); }
     .search-bar input[type=text] { flex: 1; min-width: 200px; padding: 7px 11px; border-radius: 6px; border: 1px solid var(--input-bd); background: var(--input-bg); color: var(--text); font-size: 0.92rem; outline: none; }
     .search-bar input[type=text]:focus { border-color: var(--accent); }
@@ -113,11 +112,18 @@
     .preview-header { padding: 7px 12px; font-size: 0.76rem; color: var(--text2); border-bottom: 1px solid var(--border2); font-weight: 600; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; display: flex; align-items: center; gap: 6px; background: var(--bg2); }
     .preview-header span { flex: 1; overflow: hidden; text-overflow: ellipsis; }
     .preview-body { flex: 1; overflow: hidden; position: relative; }
-    #viewerContainer { width: 100%; height: 100%; }
+    #previewContainer { width: 100%; height: 100%; }
     .preview-placeholder { padding: 40px 16px; text-align: center; color: var(--text3); font-size: 0.85rem; }
     /* Text viewer */
     #textViewer { display: none; width: 100%; height: 100%; overflow: auto; padding: 12px; background: var(--pre-bg); }
     #textViewer pre { font-family: 'Cascadia Code','Consolas','Fira Mono','Monaco',monospace; font-size: 0.78rem; line-height: 1.5; color: var(--text-pre); white-space: pre-wrap; word-break: break-all; border: none; background: none; margin: 0; padding: 0; }
+
+    /* Simple syntax highlighting */
+    .code-keyword { color: #ff79c6; font-weight: 600; }
+    .code-string { color: #50fa7b; }
+    .code-comment { color: #6272a4; font-style: italic; }
+    .code-function { color: #8be9fd; }
+    .code-number { color: #bd93f9; }
 
     /* ── Loading overlay ── */
     #previewLoading { display: none; position: absolute; inset: 0; background: rgba(0,0,0,0.55); z-index: 50; align-items: center; justify-content: center; flex-direction: column; gap: 12px; }
@@ -126,6 +132,50 @@
     #previewLoading .ld-text { color: #e2e8f0; font-size: 0.82rem; }
     #previewLoading .ld-cancel { margin-top: 4px; background: rgba(255,255,255,0.15); border: 1px solid rgba(255,255,255,0.3); color: #e2e8f0; border-radius: 5px; padding: 5px 14px; font-size: 0.8rem; cursor: pointer; }
     #previewLoading .ld-cancel:hover { background: rgba(255,255,255,0.25); }
+
+    /* Error/unsupported message styles */
+    .error-message, .unsupported-message {
+      padding: 30px 20px;
+      text-align: center;
+      color: var(--text);
+    }
+    .error-message h3, .unsupported-message h3 {
+      color: #ef4444;
+      font-size: 1.1rem;
+      margin-bottom: 12px;
+    }
+    .unsupported-message h3 {
+      color: #f59e0b;
+    }
+    .error-message p, .unsupported-message p {
+      margin: 8px 0;
+      line-height: 1.6;
+    }
+    .error-details {
+      font-family: monospace;
+      font-size: 0.75rem;
+      color: var(--text3);
+      background: var(--bg2);
+      padding: 10px;
+      border-radius: 4px;
+      margin: 12px 0;
+      text-align: left;
+      overflow-x: auto;
+    }
+    .download-btn {
+      margin-top: 16px;
+      padding: 8px 20px;
+      background: var(--accent);
+      color: white;
+      border: none;
+      border-radius: 6px;
+      cursor: pointer;
+      font-size: 0.9rem;
+      font-weight: 600;
+    }
+    .download-btn:hover {
+      background: var(--accent3);
+    }
 
     /* ── Misc ── */
     .empty-state { text-align: center; padding: 60px 20px; color: var(--text3); }
@@ -165,11 +215,10 @@
 <body>
 <!-- Search bar -->
 <div class="search-bar">
-  <button id="themeToggleBtn" title="Toggle dark/light theme">&#x1F319;</button>
-  <button id="previewToggleBtn" class="active" title="Toggle preview panel">&#x1F441;</button>
-  <button id="viewerToggleBtn" title="Switch document viewer">&#x1F4C4;</button>
+  <button id="themeToggleBtn" title="Toggle dark/light theme">🌙</button>
+  <button id="previewToggleBtn" class="active" title="Toggle preview panel">👁</button>
   <div style="position: relative; flex: 1; min-width: 200px;">
-    <input type="text" id="queryInput" placeholder="Search files&hellip; (e.g. kubernetes, name:*.xlsx)" autofocus style="width: 100%;"/>
+    <input type="text" id="queryInput" placeholder="Search files… (e.g. kubernetes, name:*.xlsx)" autofocus style="width: 100%;"/>
     <div id="historyDropdown" class="history-dropdown" style="display: none;"></div>
   </div>
   <select id="scopeSelect" title="Search scope">
@@ -197,7 +246,7 @@
 <div class="main" id="mainArea">
   <div class="results-pane" id="resultsPane">
     <div id="emptyState" class="empty-state">
-      <div class="icon">&#x1F5C2;</div>
+      <div class="icon">🗂</div>
       <p>Your search results will appear here.</p>
     </div>
     <table id="resultsTable" style="display:none">
@@ -222,7 +271,7 @@
   <div class="preview-pane" id="previewPane">
     <div class="preview-header">
       <span id="previewHeaderText">Preview</span>
-      <button class="btn-icon" id="openTabBtn" title="Open in new tab" style="display:none">&#x2197;</button>
+      <button class="btn-icon" id="openTabBtn" title="Open in new tab" style="display:none">↗</button>
     </div>
     <div class="preview-body" id="previewBody">
       <!-- Loading overlay with cancel -->
@@ -231,7 +280,7 @@
         <div class="ld-text" id="previewLoadingText">Loading preview…</div>
         <button class="ld-cancel" id="previewCancelBtn">Cancel</button>
       </div>
-      <div id="viewerContainer" style="display:none;width:100%;height:100%;"></div>
+      <div id="previewContainer" style="display:none;width:100%;height:100%;"></div>
       <div id="textViewer"><pre id="textContent"></pre></div>
       <div id="previewPlaceholder" class="preview-placeholder">Select a result to preview.</div>
     </div>
@@ -241,7 +290,7 @@
 <!-- Share modal -->
 <div class="modal-overlay" id="shareModal">
   <div class="modal">
-    <h2>&#x1F517; Share File</h2>
+    <h2>🔗 Share File</h2>
     <div class="modal-field">
       <label>File</label>
       <input type="text" id="shareFilePath" readonly/>
@@ -280,89 +329,6 @@
   </div>
 </div>
 
-<script src="/web/jit-viewer.min.js"></script>
-<script>
-// Suppress JitViewer license notice dialogs - Enhanced version
-(function() {
-  // Override window.alert, window.confirm to suppress license notices
-  var originalAlert = window.alert;
-  var originalConfirm = window.confirm;
-
-  window.alert = function(msg) {
-    if (msg && (msg.includes('JitViewer') || msg.includes('License') || msg.includes('attribution') ||
-                msg.includes('jit-viewer-sdk') || msg.includes('jitOffice') ||
-                msg.includes('retain') || msg.includes('provides document preview'))) {
-      console.log('Suppressed JitViewer license notice:', msg);
-      return;
-    }
-    return originalAlert.apply(this, arguments);
-  };
-
-  window.confirm = function(msg) {
-    if (msg && (msg.includes('JitViewer') || msg.includes('License') || msg.includes('attribution') ||
-                msg.includes('jit-viewer-sdk') || msg.includes('jitOffice') ||
-                msg.includes('retain') || msg.includes('provides document preview'))) {
-      console.log('Suppressed JitViewer license notice:', msg);
-      return true;
-    }
-    return originalConfirm.apply(this, arguments);
-  };
-
-  // Enhanced modal detection - check more aggressively
-  var checkAndRemoveLicenseModals = function() {
-    // Check for any fixed-position elements that might be modals
-    var fixedElements = document.querySelectorAll('[style*="position: fixed"], [style*="position:fixed"]');
-    fixedElements.forEach(function(el) {
-      var text = el.textContent || el.innerText || '';
-      if (text.includes('License notice') || text.includes('Please retain attribution') ||
-          text.includes('JitViewer') || text.includes('jitOffice') ||
-          (text.includes('provides document preview') && text.includes('github.com'))) {
-        console.log('Removing JitViewer license modal (fixed element)');
-        el.style.display = 'none';
-        el.remove();
-      }
-    });
-
-    // Check for modal/dialog class patterns
-    var modals = document.querySelectorAll('[class*="modal"], [class*="dialog"], [class*="overlay"], [class*="popup"]');
-    modals.forEach(function(el) {
-      var text = el.textContent || el.innerText || '';
-      if ((text.includes('License') || text.includes('attribution')) &&
-          (text.includes('JitViewer') || text.includes('jitOffice'))) {
-        console.log('Removing JitViewer license modal (class pattern)');
-        el.style.display = 'none';
-        el.remove();
-      }
-    });
-  };
-
-  // Run check periodically and on mutations
-  setInterval(checkAndRemoveLicenseModals, 100);
-
-  // Monitor DOM changes
-  var observer = new MutationObserver(function(mutations) {
-    mutations.forEach(function(mutation) {
-      mutation.addedNodes.forEach(function(node) {
-        if (node.nodeType === 1) {
-          var text = node.textContent || node.innerText || '';
-          if ((text.includes('License notice') || text.includes('Please retain attribution') ||
-               text.includes('JitViewer') || text.includes('jitOffice') ||
-               (text.includes('provides document preview') && text.includes('github.com'))) &&
-              (node.style && (node.style.position === 'fixed' || node.style.position === 'absolute') ||
-               node.className && (node.className.includes('modal') || node.className.includes('dialog') ||
-                                  node.className.includes('overlay') || node.className.includes('popup')))) {
-            console.log('Removing JitViewer license dialog (mutation)');
-            node.style.display = 'none';
-            setTimeout(function() { try { node.remove(); } catch(e) {} }, 10);
-          }
-        }
-      });
-    });
-  });
-
-  observer.observe(document.body, { childList: true, subtree: true });
-})();
-</script>
 <script>
 (function() {
   'use strict';
@@ -419,61 +385,6 @@
   // Restore saved preview state (default: enabled)
   var savedPreview = localStorage.getItem(PREVIEW_KEY);
   setPreviewEnabled(savedPreview === null || savedPreview === 'true');
-
-  // ── Viewer Toggle (JitViewer / kkFileView) ──────────────────────────────────
-  var viewerToggleBtn = document.getElementById('viewerToggleBtn');
-  var currentViewerPreference = 'kkfileview'; // default
-
-  function fetchViewerPreference() {
-    fetch('/api/viewer')
-      .then(function(resp) { return resp.ok ? resp.json() : null; })
-      .then(function(data) {
-        if (data && data.viewer) {
-          currentViewerPreference = data.viewer;
-          updateViewerToggleButton();
-        }
-      })
-      .catch(function(err) {
-        console.log('Could not fetch viewer preference:', err);
-      });
-  }
-
-  function updateViewerToggleButton() {
-    if (currentViewerPreference === 'kkfileview') {
-      viewerToggleBtn.textContent = '📄K';
-      viewerToggleBtn.title = 'Using kkFileView (click to switch to JitViewer)';
-    } else {
-      viewerToggleBtn.textContent = '📄J';
-      viewerToggleBtn.title = 'Using JitViewer (click to switch to kkFileView)';
-    }
-  }
-
-  viewerToggleBtn.addEventListener('click', function() {
-    var newViewer = (currentViewerPreference === 'kkfileview') ? 'jitviewer' : 'kkfileview';
-    fetch('/api/viewer', {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ viewer: newViewer })
-    })
-      .then(function(resp) { return resp.ok ? resp.json() : null; })
-      .then(function(data) {
-        if (data && data.viewer) {
-          currentViewerPreference = data.viewer;
-          updateViewerToggleButton();
-          // Reload current preview if a file is loaded
-          if (currentFilePath) {
-            var fileName = currentFilePath.split(/[\/\\]/).pop();
-            loadViewer(currentFilePath, fileName);
-          }
-        }
-      })
-      .catch(function(err) {
-        alert('Failed to switch viewer: ' + err.message);
-      });
-  });
-
-  // Fetch viewer preference on load
-  fetchViewerPreference();
 
   // ── Search History ───────────────────────────────────────────────────────────
   var HISTORY_KEY = 'docfinder-search-history';
@@ -615,7 +526,7 @@
   var resultsBody       = document.getElementById('resultsBody');
   var previewHeaderText = document.getElementById('previewHeaderText');
   var openTabBtn        = document.getElementById('openTabBtn');
-  var viewerContainer   = document.getElementById('viewerContainer');
+  var previewContainer  = document.getElementById('previewContainer');
   var textViewer        = document.getElementById('textViewer');
   var textContent       = document.getElementById('textContent');
   var previewPlaceholder= document.getElementById('previewPlaceholder');
@@ -626,23 +537,41 @@
   var currentResults = [];
   var selectedIndex  = -1;
   var searchToken    = 0;
-  var currentViewer  = null;
   var currentFilePath= null;
   var previewAbort   = null;  // AbortController for current preview fetch
   var sortColumn     = null;  // Current sort column
   var sortDirection  = 'asc'; // Current sort direction
 
-  // ── Text extension list (handled by inline text viewer) ─────────────────────
+  // ── Supported file formats ─────────────────────────────────────────────────────
   var TEXT_EXTS = ['txt','log','md','markdown','csv','tsv','json','jsonl','xml','yaml','yml',
                    'toml','ini','cfg','conf','properties','sh','bash','zsh','bat','cmd','ps1',
                    'py','pyw','js','ts','jsx','tsx','java','kt','go','rs','c','cpp','h','hpp',
                    'cs','vb','rb','php','html','htm','css','scss','sass','less','sql','r',
                    'gitignore','dockerfile','makefile','gradle','mvnw'];
 
-  function isTextExt(filename) {
-    if (!filename) return false;
-    var ext = filename.split('.').pop().toLowerCase();
+  var PREVIEW_EXTS = ['pdf', 'docx', 'xlsx', 'xls', 'doc', 'ppt', 'pptx'];  // Limited browser support
+  var IMAGE_EXTS = ['jpg', 'jpeg', 'png', 'gif', 'bmp', 'svg', 'webp', 'ico'];
+
+  // Unsupported formats that should only allow download
+  var DOWNLOAD_ONLY = ['ofd', 'dwg', 'dxf', 'zip', 'rar', '7z', 'tar', 'gz', 'bz2',
+                       'mp4', 'avi', 'mkv', 'mov', 'wmv', 'flv', 'mp3', 'wav', 'exe', 'dll'];
+
+  function getFileExtension(filename) {
+    if (!filename) return '';
+    var parts = filename.split('.');
+    return parts.length > 1 ? parts.pop().toLowerCase() : '';
+  }
+
+  function isTextFile(ext) {
     return TEXT_EXTS.indexOf(ext) >= 0;
+  }
+
+  function isImageFile(ext) {
+    return IMAGE_EXTS.indexOf(ext) >= 0;
+  }
+
+  function isDownloadOnly(ext) {
+    return DOWNLOAD_ONLY.indexOf(ext) >= 0;
   }
 
   // ── Preview loading overlay ──────────────────────────────────────────────────
@@ -656,21 +585,17 @@
   previewCancelBtn.addEventListener('click', function() {
     if (previewAbort) { previewAbort.abort(); previewAbort = null; }
     hideLoadingOverlay();
-    destroyViewer();
+    destroyPreview();
     previewPlaceholder.textContent = 'Preview cancelled.';
     previewPlaceholder.style.display = '';
   });
 
-  // ── Viewer management ────────────────────────────────────────────────────────
-  function destroyViewer() {
+  // ── Preview management ────────────────────────────────────────────────────────
+  function destroyPreview() {
     if (previewAbort) { previewAbort.abort(); previewAbort = null; }
     hideLoadingOverlay();
-    if (currentViewer) {
-      try { currentViewer.destroy(); } catch(e) {}
-      currentViewer = null;
-    }
-    viewerContainer.innerHTML = '';
-    viewerContainer.style.display = 'none';
+    previewContainer.innerHTML = '';
+    previewContainer.style.display = 'none';
     textViewer.style.display = 'none';
     textContent.textContent = '';
     previewPlaceholder.style.display = '';
@@ -679,109 +604,37 @@
     currentFilePath = null;
   }
 
-  function loadViewer(filePath, fileName) {
-    destroyViewer();
+  function loadPreview(filePath, fileName) {
+    destroyPreview();
     currentFilePath = filePath;
     previewHeaderText.textContent = fileName;
     openTabBtn.style.display = '';
 
-    // For known text types, use our own text viewer (only when JitViewer is selected)
-    if (isTextExt(fileName) && currentViewerPreference !== 'kkfileview') {
-      loadTextViewer(filePath, fileName);
-      return;
-    }
+    var ext = getFileExtension(fileName);
 
-    showLoadingOverlay('Loading preview…');
-    previewPlaceholder.style.display = 'none';
-    viewerContainer.style.display = '';
+    console.log('Loading preview for:', fileName, 'Extension:', ext);
 
-    var fileUrl = '/api/file?path=' + encodeURIComponent(filePath);
-    var ac = new AbortController();
-    previewAbort = ac;
-
-    // Choose viewer based on preference
-    if (currentViewerPreference === 'kkfileview') {
-      loadKkFileView(fileUrl, fileName, ac);
-    } else {
-      loadJitViewer(fileUrl, fileName, ac);
-    }
-  }
-
-  function loadJitViewer(fileUrl, fileName, ac) {
     try {
-      var viewer = JitViewer.createViewer({
-        target: viewerContainer,
-        file: fileUrl,
-        filename: fileName,
-        theme: document.body.classList.contains('light') ? 'default' : 'dark',
-        toolbar: true,
-        width: '100%',
-        height: '100%',
-        onReady: function() { hideLoadingOverlay(); previewAbort = null; },
-        onError: function(err) {
-          hideLoadingOverlay();
-          previewAbort = null;
-          viewerContainer.innerHTML = '<div style="padding:16px;color:#ef4444;font-size:0.8rem;">Preview failed: ' + esc(String(err)) + '</div>';
-        }
-      });
-      viewer.mount();
-      currentViewer = viewer;
-      // Fallback: hide overlay after 30s if onReady never fires
-      var fallbackTimer = setTimeout(function() { hideLoadingOverlay(); }, 30000);
-      if (viewer && typeof viewer.on === 'function') {
-        viewer.on('ready', function() { clearTimeout(fallbackTimer); hideLoadingOverlay(); });
+      // Route to appropriate preview handler based on file type
+      if (isTextFile(ext)) {
+        loadTextPreview(filePath, fileName, ext);
+      } else if (isImageFile(ext)) {
+        loadImagePreview(filePath, fileName);
+      } else if (ext === 'pdf') {
+        loadPdfPreview(filePath, fileName);
+      } else if (isDownloadOnly(ext)) {
+        showDownloadOnlyMessage(fileName, ext);
+      } else {
+        showUnsupportedMessage(fileName, ext);
       }
-    } catch(e) {
-      hideLoadingOverlay();
-      previewAbort = null;
-      viewerContainer.innerHTML = '<div style="padding:16px;color:#ef4444;font-size:0.8rem;">Viewer error: ' + esc(String(e)) + '</div>';
+    } catch (error) {
+      console.error('Preview error:', error);
+      showErrorMessage(error, fileName);
     }
   }
 
-  function loadKkFileView(fileUrl, fileName, ac) {
-    try {
-      // Create iframe for kkFileView
-      var iframe = document.createElement('iframe');
-      iframe.style.width = '100%';
-      iframe.style.height = '100%';
-      iframe.style.border = 'none';
-
-      // kkFileView requires the file URL to be Base64-encoded (it calls Base64.decode internally).
-      // Also append fullfilename so kkFileView can detect the file type from the extension,
-      // since the /api/file path segment itself has no extension.
-      var fullFileUrl = window.location.origin + fileUrl + '&fullfilename=' + encodeURIComponent(fileName);
-      // filePath and fileName are percent-encoded by encodeURIComponent(), making fullFileUrl
-      // ASCII-safe. Guard against any unexpected non-Latin1 chars before calling btoa().
-      var safeUrl = fullFileUrl.replace(/[\u0080-\uFFFF]/g, function(c) { return encodeURIComponent(c); });
-      var base64Url = btoa(safeUrl);
-      var kkFileViewUrl = '/api/kkfileview/onlinePreview?url=' + encodeURIComponent(base64Url) + '&locale=en';
-
-      iframe.onload = function() {
-        hideLoadingOverlay();
-        previewAbort = null;
-      };
-
-      iframe.onerror = function(err) {
-        hideLoadingOverlay();
-        previewAbort = null;
-        viewerContainer.innerHTML = '<div style="padding:16px;color:#ef4444;font-size:0.8rem;">kkFileView preview failed. Make sure kkFileView server is enabled in File menu.</div>';
-      };
-
-      viewerContainer.appendChild(iframe);
-      iframe.src = kkFileViewUrl;
-      currentViewer = { element: iframe, destroy: function() { iframe.remove(); } };
-
-      // Fallback: hide overlay after 30s if onload never fires
-      setTimeout(function() { hideLoadingOverlay(); }, 30000);
-    } catch(e) {
-      hideLoadingOverlay();
-      previewAbort = null;
-      viewerContainer.innerHTML = '<div style="padding:16px;color:#ef4444;font-size:0.8rem;">kkFileView error: ' + esc(String(e)) + '</div>';
-    }
-  }
-
-  // ── Text viewer with charset detection ──────────────────────────────────────
-  function loadTextViewer(filePath, fileName) {
+  // ── Text file preview with simple syntax highlighting ────────────────────────
+  function loadTextPreview(filePath, fileName, ext) {
     showLoadingOverlay('Loading text…');
     previewPlaceholder.style.display = 'none';
 
@@ -800,17 +653,45 @@
         var decoded = decodeBuffer(buffer);
         hideLoadingOverlay();
         previewAbort = null;
-        textContent.textContent = decoded;
+
+        // Apply simple syntax highlighting
+        textContent.innerHTML = applySyntaxHighlighting(decoded, ext);
         textViewer.style.display = '';
         previewPlaceholder.style.display = 'none';
+
+        console.log('Text preview loaded successfully:', fileName);
       })
       .catch(function(err) {
         if (err && err.name === 'AbortError') return;
+        console.error('Text preview failed:', fileName, err);
         hideLoadingOverlay();
         previewAbort = null;
-        previewPlaceholder.textContent = 'Text preview failed: ' + (err ? err.message : 'unknown error');
-        previewPlaceholder.style.display = '';
+        showErrorMessage(err, fileName);
       });
+  }
+
+  // Simple syntax highlighting (basic patterns)
+  function applySyntaxHighlighting(text, ext) {
+    // Escape HTML first
+    text = escapeHtml(text);
+
+    // Only apply highlighting for code files
+    if (['js', 'ts', 'java', 'py', 'go', 'rs', 'c', 'cpp', 'cs'].indexOf(ext) < 0) {
+      return text;
+    }
+
+    // Very simple patterns - just for demonstration
+    // Keywords
+    text = text.replace(/\b(function|var|let|const|if|else|for|while|return|class|public|private|void|int|string)\b/g,
+                       '<span class="code-keyword">$1</span>');
+    // Strings
+    text = text.replace(/(["'])((?:\\.|(?!\1).)*?)\1/g, '<span class="code-string">$1$2$1</span>');
+    // Comments (simple)
+    text = text.replace(/(\/\/.*$)/gm, '<span class="code-comment">$1</span>');
+    // Numbers
+    text = text.replace(/\b(\d+)\b/g, '<span class="code-number">$1</span>');
+
+    return text;
   }
 
   // Read at most maxBytes from a Response, return ArrayBuffer
@@ -888,6 +769,124 @@
     }
   }
 
+  // ── Image preview ─────────────────────────────────────────────────────────────
+  function loadImagePreview(filePath, fileName) {
+    hideLoadingOverlay();
+    previewPlaceholder.style.display = 'none';
+    previewContainer.style.display = '';
+
+    var img = document.createElement('img');
+    img.style.maxWidth = '100%';
+    img.style.maxHeight = '100%';
+    img.style.objectFit = 'contain';
+    img.src = '/api/file?path=' + encodeURIComponent(filePath);
+    img.onerror = function() {
+      console.error('Image preview failed:', fileName);
+      showErrorMessage(new Error('Failed to load image'), fileName);
+    };
+    img.onload = function() {
+      console.log('Image preview loaded successfully:', fileName);
+    };
+    previewContainer.appendChild(img);
+  }
+
+  // ── PDF preview ───────────────────────────────────────────────────────────────
+  function loadPdfPreview(filePath, fileName) {
+    hideLoadingOverlay();
+    previewPlaceholder.style.display = 'none';
+    previewContainer.style.display = '';
+
+    // Use browser's native PDF viewer via iframe or embed
+    var iframe = document.createElement('iframe');
+    iframe.style.width = '100%';
+    iframe.style.height = '100%';
+    iframe.style.border = 'none';
+    iframe.src = '/api/file?path=' + encodeURIComponent(filePath);
+
+    iframe.onload = function() {
+      console.log('PDF preview loaded successfully:', fileName);
+    };
+
+    iframe.onerror = function() {
+      console.error('PDF preview failed:', fileName);
+      showErrorMessage(new Error('Failed to load PDF'), fileName);
+    };
+
+    previewContainer.appendChild(iframe);
+  }
+
+  // ── Error messages ────────────────────────────────────────────────────────────
+  function showErrorMessage(error, fileName) {
+    previewContainer.style.display = '';
+    previewPlaceholder.style.display = 'none';
+    textViewer.style.display = 'none';
+
+    var errorHtml = '<div class="error-message">' +
+      '<h3>⚠ Preview Failed</h3>' +
+      '<p>Could not preview file: <strong>' + escapeHtml(fileName) + '</strong></p>' +
+      '<p class="error-details">' + escapeHtml(error.message || String(error)) + '</p>' +
+      '<button class="download-btn" onclick="downloadCurrentFile()">Download File</button>' +
+      '</div>';
+
+    previewContainer.innerHTML = errorHtml;
+
+    console.error('Preview error for', fileName, ':', {
+      message: error.message,
+      stack: error.stack
+    });
+  }
+
+  function showUnsupportedMessage(fileName, ext) {
+    previewContainer.style.display = '';
+    previewPlaceholder.style.display = 'none';
+    textViewer.style.display = 'none';
+    hideLoadingOverlay();
+
+    var formatList = 'PDF, Images (JPG, PNG, GIF, etc.), Text/Code files, and limited Office document support.';
+
+    var unsupportedHtml = '<div class="unsupported-message">' +
+      '<h3>⚠ Preview Not Available</h3>' +
+      '<p>The file format <strong>.' + escapeHtml(ext) + '</strong> is not supported for preview.</p>' +
+      '<p style="font-size:0.85rem; color:var(--text3);">Supported formats: ' + formatList + '</p>' +
+      '<p>You can still download the file:</p>' +
+      '<button class="download-btn" onclick="downloadCurrentFile()">Download File</button>' +
+      '</div>';
+
+    previewContainer.innerHTML = unsupportedHtml;
+
+    console.log('Unsupported format:', fileName, 'Extension:', ext);
+  }
+
+  function showDownloadOnlyMessage(fileName, ext) {
+    previewContainer.style.display = '';
+    previewPlaceholder.style.display = 'none';
+    textViewer.style.display = 'none';
+    hideLoadingOverlay();
+
+    var downloadHtml = '<div class="unsupported-message">' +
+      '<h3>📥 Download Required</h3>' +
+      '<p>This file type (<strong>.' + escapeHtml(ext) + '</strong>) cannot be previewed in the browser.</p>' +
+      '<p>Please download the file to view it:</p>' +
+      '<button class="download-btn" onclick="downloadCurrentFile()">Download File</button>' +
+      '</div>';
+
+    previewContainer.innerHTML = downloadHtml;
+
+    console.log('Download-only format:', fileName, 'Extension:', ext);
+  }
+
+  // Make download function globally accessible
+  window.downloadCurrentFile = function() {
+    if (currentFilePath) {
+      var a = document.createElement('a');
+      a.href = '/api/file?path=' + encodeURIComponent(currentFilePath);
+      a.download = previewHeaderText.textContent;
+      document.body.appendChild(a);
+      a.click();
+      document.body.removeChild(a);
+    }
+  };
+
   openTabBtn.addEventListener('click', function() {
     if (currentFilePath) {
       window.open('/api/file?path=' + encodeURIComponent(currentFilePath), '_blank');
@@ -918,7 +917,7 @@
     var limit = limitSelect.value;
 
     statusBar.innerHTML = '<span class="spinner"></span>Searching…';
-    destroyViewer();
+    destroyPreview();
 
     var url = '/api/search?q=' + encodeURIComponent(q)
             + '&scope=' + scope + '&mode=' + mode
@@ -965,8 +964,8 @@
     currentResults.forEach(function(r, idx) {
       var tr = document.createElement('tr');
       var actionsHtml = r.directory ? '' :
-        '<button class="btn-icon share-btn" title="Share file" data-idx="' + idx + '">&#x1F517;</button>' +
-        '<button class="btn-icon preview-btn" title="Open in new tab" data-idx="' + idx + '">&#x2197;</button>';
+        '<button class="btn-icon share-btn" title="Share file" data-idx="' + idx + '">🔗</button>' +
+        '<button class="btn-icon preview-btn" title="Open in new tab" data-idx="' + idx + '">↗</button>';
       tr.innerHTML =
         '<td class="name">' + (r.directory ? '<span class="dir-icon"></span>' : '<span class="file-icon"></span>') + esc(r.name) + '</td>' +
         '<td class="path" title="' + esc(r.path) + '">' + esc(r.path) + '</td>' +
@@ -1059,18 +1058,22 @@
     if (rows[idx]) rows[idx].classList.add('selected');
     var r = currentResults[idx];
     if (!r.directory) {
-      loadViewer(r.path, r.name);
+      loadPreview(r.path, r.name);
     } else {
-      destroyViewer();
-      previewHeaderText.textContent = '\uD83D\uDCC1 ' + r.name;
+      destroyPreview();
+      previewHeaderText.textContent = '📁 ' + r.name;
       previewPlaceholder.textContent = '[Directory: ' + r.path + ']';
       previewPlaceholder.style.display = '';
     }
   }
 
   function esc(s) {
+    return escapeHtml(s);
+  }
+
+  function escapeHtml(s) {
     if (!s) return '';
-    return s.replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;').replace(/"/g,'&quot;');
+    return String(s).replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;').replace(/"/g,'&quot;').replace(/'/g,'&#39;');
   }
 
   // ── Share modal ──────────────────────────────────────────────────────────────
