@@ -135,9 +135,11 @@
 
   var IMAGE_EXTS = ['jpg','jpeg','png','gif','bmp','svg','webp','ico'];
 
+  var OFFICE_EXTS = ['doc','docx','xls','xlsx','ppt','pptx'];
+
   var DOWNLOAD_ONLY = ['ofd','dwg','dxf','zip','rar','7z','tar','gz','bz2','xz',
                        'mp4','avi','mkv','mov','wmv','flv','webm','mp3','wav','flac','aac',
-                       'doc','xls','ppt','pptx','exe','dll','so','dylib','bin','dat'];
+                       'exe','dll','so','dylib','bin','dat'];
 
   // ── DOM Elements ───────────────────────────────────────────────────────────
   var fileNameLabel = document.getElementById('fileNameLabel');
@@ -199,6 +201,10 @@
     return IMAGE_EXTS.indexOf(ext) >= 0;
   }
 
+  function isOfficeFile(ext) {
+    return OFFICE_EXTS.indexOf(ext) >= 0;
+  }
+
   function isDownloadOnly(ext) {
     return DOWNLOAD_ONLY.indexOf(ext) >= 0;
   }
@@ -256,6 +262,24 @@
     console.log('Download-only format:', ext, 'for file:', fileName);
   }
 
+  function showOfficeDocumentMessage(fileName, ext) {
+    hideLoading();
+    var fileUrl = '/api/file?path=' + encodeURIComponent(currentFilePath);
+    var messageHtml = '<div class="message-box office-preview">' +
+      '<h3>📄 Office Document</h3>' +
+      '<p>Office format <span class="format-badge">.' + escapeHtml(ext) + '</span> detected.</p>' +
+      '<p>File: <span class="file-info">' + escapeHtml(fileName) + '</span></p>' +
+      '<p style="margin-top:12px;font-size:0.85rem;color:var(--text2);">Your browser may be able to preview this file. Try:</p>' +
+      '<div style="margin-top:12px;">' +
+      '<button onclick="window.open(\'' + fileUrl + '\', \'_blank\')" style="margin-right:8px;">Open in New Tab</button>' +
+      '<button onclick="downloadCurrentFile()">Download File</button>' +
+      '</div>' +
+      '<p style="margin-top:12px;font-size:0.75rem;color:var(--text3);">Note: Browser support for Office documents varies. If preview doesn\'t work, please download the file.</p>' +
+      '</div>';
+    previewPane.innerHTML = messageHtml;
+    console.log('Office document format:', ext, 'for file:', fileName);
+  }
+
   // ── Download Function ──────────────────────────────────────────────────────
   window.downloadCurrentFile = function() {
     if (!currentFilePath || !currentFileName) return;
@@ -289,10 +313,17 @@
       return new TextDecoder('utf-8', { fatal: true }).decode(buffer);
     } catch(e) {}
 
-    // Try GBK (Chinese)
+    // Try GBK (Chinese - GB2312-80 is subset of GBK)
     try {
       if (typeof TextDecoder !== 'undefined') {
         return new TextDecoder('gbk', { fatal: true }).decode(buffer);
+      }
+    } catch(e) {}
+
+    // Try GB2312 specifically
+    try {
+      if (typeof TextDecoder !== 'undefined') {
+        return new TextDecoder('gb2312', { fatal: true }).decode(buffer);
       }
     } catch(e) {}
 
@@ -308,28 +339,38 @@
   function readLimitedBytes(response, maxBytes) {
     if (!response.body) {
       return response.arrayBuffer().then(function(buf) {
-        if (buf.byteLength > maxBytes) {
-          return buf.slice(0, maxBytes);
+        var truncated = buf.byteLength > maxBytes;
+        if (truncated) {
+          return { buffer: buf.slice(0, maxBytes), truncated: true };
         }
-        return buf;
+        return { buffer: buf, truncated: false };
       });
     }
 
     var reader = response.body.getReader();
     var chunks = [];
     var totalBytes = 0;
+    var truncated = false;
 
     function pump() {
       return reader.read().then(function(result) {
         if (result.done) {
-          return concatBuffers(chunks);
+          return { buffer: concatBuffers(chunks), truncated: truncated };
         }
         var chunk = result.value;
         var remaining = maxBytes - totalBytes;
-        if (chunk.length > remaining) {
+        if (remaining <= 0) {
+          // Already have enough data, just drain the rest without storing
+          truncated = true;
+          return pump();
+        }
+        if (chunk.length >= remaining) {
+          // This chunk puts us over the limit
           chunks.push(chunk.slice(0, remaining));
-          reader.cancel();
-          return concatBuffers(chunks);
+          totalBytes += remaining;
+          truncated = true;
+          // Continue draining to avoid "Response has been truncated" error
+          return pump();
         }
         chunks.push(chunk);
         totalBytes += chunk.length;
@@ -392,7 +433,9 @@
         if (!resp.ok) throw new Error('HTTP ' + resp.status + ': ' + resp.statusText);
         return readLimitedBytes(resp, TEXT_MAX_BYTES);
       })
-      .then(function(buffer) {
+      .then(function(result) {
+        var buffer = result.buffer || result;  // Handle both old and new format
+        var wasTruncated = result.truncated || false;
         var text = decodeBuffer(buffer);
         var escapedText = escapeHtml(text);
         var highlightedText = applySyntaxHighlighting(escapedText, ext);
@@ -401,7 +444,7 @@
         previewPane.classList.add('text-mode');
         previewPane.innerHTML = '<pre>' + highlightedText + '</pre>';
 
-        if (buffer.byteLength >= TEXT_MAX_BYTES) {
+        if (wasTruncated) {
           var notice = document.createElement('div');
           notice.style.cssText = 'padding:12px;background:var(--bg3);color:var(--text3);font-size:0.8rem;text-align:center;border-top:1px solid var(--border)';
           notice.textContent = '⚠ File truncated at ' + TEXT_MAX_BYTES + ' bytes for preview';
@@ -485,6 +528,8 @@
         loadImagePreview(filePath, fileName);
       } else if (ext === 'pdf') {
         loadPdfPreview(filePath, fileName);
+      } else if (isOfficeFile(ext)) {
+        showOfficeDocumentMessage(fileName, ext);
       } else if (isDownloadOnly(ext)) {
         showDownloadOnlyMessage(fileName, ext);
       } else {
