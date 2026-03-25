@@ -4,32 +4,87 @@
   <meta charset="UTF-8"/>
   <meta name="viewport" content="width=device-width, initial-scale=1.0"/>
   <title>DocFinder &ndash; Shared File</title>
-  <link rel="stylesheet" href="/web/jit-viewer.min.css"/>
   <style>
     *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
-    body { font-family: system-ui, -apple-system, sans-serif; background: #0f1117; color: #e2e8f0; min-height: 100vh; display: flex; flex-direction: column; }
-    header { background: #1a1d2e; border-bottom: 1px solid #2d3748; padding: 10px 20px; display: flex; align-items: center; gap: 12px; }
-    header h1 { font-size: 1.1rem; font-weight: 700; color: #60a5fa; }
-    header .file-name { font-size: 0.9rem; color: #94a3b8; flex: 1; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+
+    /* ── CSS variables for theming ── */
+    :root {
+      --bg:       #0f1117;
+      --bg2:      #1a1d2e;
+      --bg3:      #13151f;
+      --border:   #2d3748;
+      --text:     #e2e8f0;
+      --text2:    #94a3b8;
+      --text3:    #64748b;
+      --accent:   #3b82f6;
+      --accent2:  #60a5fa;
+      --btn-sec:  #374151;
+      --btn-sec2: #4b5563;
+      --text-pre: #e2e8f0;
+      --pre-bg:   #0d1117;
+    }
+    body.light {
+      --bg:       #f8fafc;
+      --bg2:      #ffffff;
+      --bg3:      #f1f5f9;
+      --border:   #e2e8f0;
+      --text:     #1e293b;
+      --text2:    #475569;
+      --text3:    #94a3b8;
+      --accent:   #2563eb;
+      --accent2:  #1d4ed8;
+      --btn-sec:  #e2e8f0;
+      --btn-sec2: #cbd5e1;
+      --text-pre: #1e293b;
+      --pre-bg:   #f8fafc;
+    }
+
+    body { font-family: system-ui, -apple-system, sans-serif; background: var(--bg); color: var(--text); min-height: 100vh; display: flex; flex-direction: column; }
+    header { background: var(--bg2); border-bottom: 1px solid var(--border); padding: 10px 20px; display: flex; align-items: center; gap: 12px; }
+    header h1 { font-size: 1.1rem; font-weight: 700; color: var(--accent2); }
+    header .file-name { font-size: 0.9rem; color: var(--text2); flex: 1; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
     .toolbar { display: flex; gap: 8px; align-items: center; }
     .toolbar button { padding: 5px 14px; border-radius: 6px; border: none; font-size: 0.82rem; font-weight: 600; cursor: pointer; }
-    .btn-download { background: #3b82f6; color: #fff; }
-    .btn-download:hover { background: #2563eb; }
-    .btn-fullscreen { background: #374151; color: #e2e8f0; }
-    .btn-fullscreen:hover { background: #4b5563; }
-    #viewer-wrap { flex: 1; overflow: hidden; position: relative; }
+    .btn-download { background: var(--accent); color: #fff; }
+    .btn-download:hover { background: var(--accent2); }
+    .btn-fullscreen { background: var(--btn-sec); color: var(--text); }
+    .btn-fullscreen:hover { background: var(--btn-sec2); }
+    #viewer-wrap { flex: 1; overflow: auto; position: relative; }
     #viewerContainer { width: 100%; height: 100%; }
     /* Password / error gates */
     .gate { display: flex; flex: 1; align-items: center; justify-content: center; }
-    .gate-card { background: #1a1d2e; border: 1px solid #2d3748; border-radius: 10px; padding: 32px; min-width: 320px; text-align: center; }
-    .gate-card h2 { font-size: 1rem; color: #e2e8f0; margin-bottom: 16px; }
-    .gate-card p { font-size: 0.85rem; color: #94a3b8; margin-bottom: 16px; }
-    .gate-card input { width: 100%; padding: 9px 12px; border-radius: 6px; border: 1px solid #3d4a5c; background: #0f1117; color: #e2e8f0; font-size: 0.9rem; outline: none; margin-bottom: 12px; }
-    .gate-card input:focus { border-color: #60a5fa; }
-    .gate-card button { padding: 8px 24px; border-radius: 6px; border: none; background: #3b82f6; color: #fff; font-size: 0.9rem; font-weight: 600; cursor: pointer; }
-    .gate-card button:hover { background: #2563eb; }
+    .gate-card { background: var(--bg2); border: 1px solid var(--border); border-radius: 10px; padding: 32px; min-width: 320px; text-align: center; }
+    .gate-card h2 { font-size: 1rem; color: var(--text); margin-bottom: 16px; }
+    .gate-card p { font-size: 0.85rem; color: var(--text2); margin-bottom: 16px; }
+    .gate-card input { width: 100%; padding: 9px 12px; border-radius: 6px; border: 1px solid var(--border); background: var(--bg); color: var(--text); font-size: 0.9rem; outline: none; margin-bottom: 12px; }
+    .gate-card input:focus { border-color: var(--accent2); }
+    .gate-card button { padding: 8px 24px; border-radius: 6px; border: none; background: var(--accent); color: #fff; font-size: 0.9rem; font-weight: 600; cursor: pointer; }
+    .gate-card button:hover { background: var(--accent2); }
     .gate-card .err { color: #ef4444; font-size: 0.8rem; margin-top: 8px; }
-    .expiry-tag { font-size: 0.7rem; background: #2d3748; color: #94a3b8; border-radius: 4px; padding: 2px 7px; }
+    .expiry-tag { font-size: 0.7rem; background: var(--btn-sec); color: var(--text2); border-radius: 4px; padding: 2px 7px; }
+    /* Text preview */
+    #viewerContainer.text-mode { background: var(--pre-bg); padding: 16px; overflow: auto; }
+    #viewerContainer.text-mode pre { font-family: 'Cascadia Code','Consolas','Fira Mono','Monaco',monospace; font-size: 0.78rem; line-height: 1.6; color: var(--text-pre); white-space: pre-wrap; word-break: break-word; margin: 0; }
+    .code-keyword  { color: #ff79c6; font-weight: 500; }
+    .code-string   { color: #f1fa8c; }
+    .code-comment  { color: #6272a4; font-style: italic; }
+    .code-number   { color: #bd93f9; }
+    .code-function { color: #50fa7b; }
+    /* Office document preview (js-preview) */
+    .office-doc-wrapper { width: 100%; height: 100%; overflow: auto; background: #fff; }
+    /* Messages */
+    .message-box { padding: 40px 20px; text-align: center; max-width: 500px; margin: 40px auto; }
+    .message-box h3 { font-size: 1.1rem; margin-bottom: 12px; color: var(--text); }
+    .message-box p { font-size: 0.85rem; color: var(--text2); margin-bottom: 8px; line-height: 1.5; }
+    .message-box .format-badge { display: inline-block; background: var(--bg2); color: var(--text2); padding: 2px 8px; border-radius: 4px; font-size: 0.75rem; margin: 0 4px; font-family: monospace; }
+    .message-box button { margin-top: 16px; padding: 8px 20px; background: var(--accent); color: white; border: none; border-radius: 6px; font-size: 0.85rem; cursor: pointer; }
+    .message-box button:hover { background: var(--accent2); }
+    /* Loading overlay */
+    #loadingOverlay { display: flex; position: absolute; inset: 0; background: rgba(0,0,0,0.6); z-index: 50; align-items: center; justify-content: center; flex-direction: column; gap: 12px; }
+    #loadingOverlay.hidden { display: none; }
+    #loadingOverlay .spinner { width: 40px; height: 40px; border: 4px solid rgba(255,255,255,0.2); border-top-color: #60a5fa; border-radius: 50%; animation: spin 0.8s linear infinite; }
+    #loadingOverlay .text { color: #e2e8f0; font-size: 0.85rem; }
+    @keyframes spin { to { transform: rotate(360deg); } }
   </style>
 </head>
 <body>
@@ -38,6 +93,7 @@
   <span class="file-name" id="fileNameLabel">Loading...</span>
   <span class="expiry-tag" id="expiryTag" style="display:none"></span>
   <div class="toolbar" id="toolbar" style="display:none">
+    <button id="themeToggle" title="Toggle theme">🌙</button>
     <button class="btn-download" id="downloadBtn">&#x2B07; Download</button>
     <button class="btn-fullscreen" id="fullscreenBtn">&#x26F6; Fullscreen</button>
   </div>
@@ -61,34 +117,97 @@
 </div>
 
 <div id="viewer-wrap" style="display:none">
+  <div id="loadingOverlay">
+    <div class="spinner"></div>
+    <div class="text">Loading preview...</div>
+  </div>
   <div id="viewerContainer"></div>
 </div>
 
-<script src="/web/jit-viewer.min.js"></script>
 <script>
 (function() {
   'use strict';
 
+  // ── Configuration ──────────────────────────────────────────────────────────
+  var TEXT_EXTS = ['txt','log','md','markdown','csv','tsv','json','jsonl','xml','yaml','yml',
+                   'toml','ini','cfg','conf','properties','sh','bash','zsh','bat','cmd','ps1',
+                   'py','pyw','js','ts','jsx','tsx','java','kt','go','rs','c','cpp','h','hpp',
+                   'cs','vb','rb','php','html','htm','css','scss','sass','less','sql','r',
+                   'gitignore','dockerfile','makefile','gradle','mvnw','lock','editorconfig',
+                   'gitattributes','eslintrc','babelrc','prettierrc','env'];
+  var IMAGE_EXTS = ['jpg','jpeg','png','gif','bmp','svg','webp','ico'];
+  var OFFICE_EXTS = ['doc','docx','xls','xlsx','ppt','pptx'];
+
   // Extract token from path: /share/{token}
   var token = location.pathname.replace(/^\/share\/?/, '').replace(/\/.*$/, '');
 
-  var fileNameLabel = document.getElementById('fileNameLabel');
-  var expiryTag     = document.getElementById('expiryTag');
-  var toolbar       = document.getElementById('toolbar');
-  var passwordGate  = document.getElementById('passwordGate');
-  var errorGate     = document.getElementById('errorGate');
-  var errorMsg      = document.getElementById('errorMsg');
-  var viewerWrap    = document.getElementById('viewer-wrap');
+  var fileNameLabel   = document.getElementById('fileNameLabel');
+  var expiryTag       = document.getElementById('expiryTag');
+  var toolbar         = document.getElementById('toolbar');
+  var passwordGate    = document.getElementById('passwordGate');
+  var errorGate       = document.getElementById('errorGate');
+  var errorMsg        = document.getElementById('errorMsg');
+  var viewerWrap      = document.getElementById('viewer-wrap');
   var viewerContainer = document.getElementById('viewerContainer');
-  var pwInput       = document.getElementById('pwInput');
-  var pwSubmit      = document.getElementById('pwSubmit');
-  var pwErr         = document.getElementById('pwErr');
-  var downloadBtn   = document.getElementById('downloadBtn');
-  var fullscreenBtn = document.getElementById('fullscreenBtn');
+  var loadingOverlay  = document.getElementById('loadingOverlay');
+  var pwInput         = document.getElementById('pwInput');
+  var pwSubmit        = document.getElementById('pwSubmit');
+  var pwErr           = document.getElementById('pwErr');
+  var downloadBtn     = document.getElementById('downloadBtn');
+  var fullscreenBtn   = document.getElementById('fullscreenBtn');
 
-  var currentViewer = null;
-  var shareInfo     = null;
-  var passwordValue = '';
+  var themeToggle     = document.getElementById('themeToggle');
+
+  var shareInfo       = null;
+  var passwordValue   = '';
+  var currentOfficePreviewer = null;
+
+  // ── Theme Management ───────────────────────────────────────────────────────
+  var THEME_KEY = 'docfinder-theme';
+
+  function applyTheme(theme) {
+    if (theme === 'light') {
+      document.body.classList.add('light');
+      themeToggle.textContent = '☀️';
+      themeToggle.title = 'Switch to dark theme';
+    } else {
+      document.body.classList.remove('light');
+      themeToggle.textContent = '🌙';
+      themeToggle.title = 'Switch to light theme';
+    }
+    try { localStorage.setItem(THEME_KEY, theme); } catch(e) {}
+  }
+
+  themeToggle.addEventListener('click', function() {
+    applyTheme(document.body.classList.contains('light') ? 'dark' : 'light');
+  });
+
+  var savedTheme = 'dark';
+  try { savedTheme = localStorage.getItem(THEME_KEY) || 'dark'; } catch(e) {}
+  applyTheme(savedTheme);
+
+  function escapeHtml(str) {
+    var div = document.createElement('div');
+    div.textContent = str;
+    return div.innerHTML;
+  }
+
+  function getFileExtension(filename) {
+    if (!filename) return '';
+    var parts = filename.split('.');
+    return parts.length > 1 ? parts.pop().toLowerCase() : '';
+  }
+
+  function isTextFile(ext)   { return TEXT_EXTS.indexOf(ext) >= 0; }
+  function isImageFile(ext)  { return IMAGE_EXTS.indexOf(ext) >= 0; }
+  function isOfficeFile(ext) { return OFFICE_EXTS.indexOf(ext) >= 0; }
+
+  function hideLoading() { loadingOverlay.classList.add('hidden'); }
+  function showLoading(msg) {
+    loadingOverlay.classList.remove('hidden');
+    var textEl = loadingOverlay.querySelector('.text');
+    if (textEl) textEl.textContent = msg || 'Loading preview...';
+  }
 
   function showError(msg) {
     fileNameLabel.textContent = 'Unavailable';
@@ -109,37 +228,211 @@
     return 'Expires in ' + m + 'm';
   }
 
-  function mountViewer(fileName, password) {
-    if (currentViewer) { try { currentViewer.destroy(); } catch(e) {} currentViewer = null; }
-    var fileUrl = '/api/share/' + encodeURIComponent(token) + '/file'
-                + (password ? '?password=' + encodeURIComponent(password) : '');
+  function getFileUrl(password) {
+    return '/api/share/' + encodeURIComponent(token) + '/file'
+         + (password ? '?password=' + encodeURIComponent(password) : '');
+  }
 
+  // ── Simple Syntax Highlighting ─────────────────────────────────────────────
+  function applySyntaxHighlighting(text, ext) {
+    var highlighted = text;
+    highlighted = highlighted.replace(/(\/\/[^\n]*|#[^\n]*|&lt;!--[\s\S]*?--&gt;)/g, '<span class="code-comment">$1</span>');
+    highlighted = highlighted.replace(/(&quot;[^&quot;]*&quot;|'[^']*')/g, '<span class="code-string">$1</span>');
+    var keywords = ['function','class','const','let','var','if','else','for','while','return',
+                    'import','export','from','default','async','await','try','catch','throw',
+                    'public','private','protected','static','void','int','string','boolean',
+                    'true','false','null','undefined','new','this','super','extends','implements'];
+    var keywordPattern = '\\b(' + keywords.join('|') + ')\\b';
+    highlighted = highlighted.replace(new RegExp(keywordPattern, 'g'), '<span class="code-keyword">$1</span>');
+    highlighted = highlighted.replace(/\b(\d+\.?\d*)\b/g, '<span class="code-number">$1</span>');
+    return highlighted;
+  }
+
+  // ── js-preview lazy loader ─────────────────────────────────────────────────
+  var jspreviewState = 'idle';
+  var jspreviewQueue = [];
+
+  function loadScriptTag(url, onok, onerr) {
+    var s = document.createElement('script');
+    s.src = url;
+    s.onload = onok;
+    s.onerror = onerr || function() {};
+    document.head.appendChild(s);
+  }
+
+  function loadCSSTag(url) {
+    var link = document.createElement('link');
+    link.rel = 'stylesheet';
+    link.href = url;
+    document.head.appendChild(link);
+  }
+
+  function withJsPreview(cb) {
+    if (jspreviewState === 'ready') { cb(null); return; }
+    if (jspreviewState === 'error') { cb(new Error('js-preview unavailable')); return; }
+    jspreviewQueue.push(cb);
+    if (jspreviewState === 'loading') return;
+    jspreviewState = 'loading';
+
+    function flush(err) {
+      jspreviewState = err ? 'error' : 'ready';
+      var q = jspreviewQueue.splice(0);
+      q.forEach(function(fn) { fn(err); });
+    }
+
+    loadCSSTag('https://cdn.jsdelivr.net/npm/@js-preview/docx/lib/index.css');
+    loadCSSTag('https://cdn.jsdelivr.net/npm/@js-preview/excel/lib/index.css');
+    var n = 2, errs = [];
+    function done(err) {
+      if (err) errs.push(err);
+      if (--n === 0) flush(errs.length ? errs[0] : null);
+    }
+    loadScriptTag('https://cdn.jsdelivr.net/npm/@js-preview/docx/lib/index.umd.js',
+      function() { done(null); }, function() { done(new Error('docx CDN load failed')); });
+    loadScriptTag('https://cdn.jsdelivr.net/npm/@js-preview/excel/lib/index.umd.js',
+      function() { done(null); }, function() { done(new Error('excel CDN load failed')); });
+  }
+
+  // ── Preview Mounting ───────────────────────────────────────────────────────
+  function showDownloadMessage(fileName, ext) {
+    hideLoading();
+    viewerContainer.innerHTML = '<div class="message-box">' +
+      '<h3>📄 ' + escapeHtml(ext.toUpperCase()) + ' Document</h3>' +
+      '<p>Format <span class="format-badge">.' + escapeHtml(ext) + '</span> cannot be previewed in the browser.</p>' +
+      '<p>File: <strong>' + escapeHtml(fileName) + '</strong></p>' +
+      '<button onclick="document.getElementById(\'downloadBtn\').click()">Download File</button>' +
+      '</div>';
+  }
+
+  function mountViewer(fileName, password) {
     passwordGate.style.display = 'none';
     errorGate.style.display = 'none';
     viewerWrap.style.display = '';
     toolbar.style.display = 'flex';
     fileNameLabel.textContent = fileName;
 
-    try {
-      var viewer = JitViewer.createViewer({
-        target: viewerContainer,
-        file: fileUrl,
-        filename: fileName,
-        theme: 'dark',
-        toolbar: true,
-        width: '100%',
-        height: '100%',
-        onError: function(err) {
-          viewerContainer.innerHTML = '<div style="padding:30px;color:#ef4444;font-size:0.85rem;">Preview error: ' + String(err) + '</div>';
-        }
-      });
-      viewer.mount();
-      currentViewer = viewer;
-    } catch(e) {
-      viewerContainer.innerHTML = '<div style="padding:30px;color:#ef4444;font-size:0.85rem;">Viewer error: ' + String(e) + '</div>';
+    var ext = getFileExtension(fileName);
+    var fileUrl = getFileUrl(password);
+
+    if (isTextFile(ext)) {
+      mountTextPreview(fileUrl, fileName, ext);
+    } else if (isImageFile(ext)) {
+      mountImagePreview(fileUrl, fileName);
+    } else if (ext === 'pdf') {
+      mountPdfPreview(fileUrl, fileName);
+    } else if (ext === 'docx' || ext === 'xlsx') {
+      mountOfficePreview(fileUrl, fileName, ext);
+    } else if (isOfficeFile(ext)) {
+      showDownloadMessage(fileName, ext);
+    } else {
+      showDownloadMessage(fileName, ext);
     }
   }
 
+  function mountTextPreview(fileUrl, fileName, ext) {
+    showLoading('Loading text...');
+    // The /api/share/.../file endpoint now includes charset in Content-Type
+    // so fetching as text should work; browser respects the charset header.
+    fetch(fileUrl)
+      .then(function(resp) {
+        if (!resp.ok) throw new Error('HTTP ' + resp.status);
+        return resp.text();
+      })
+      .then(function(text) {
+        hideLoading();
+        var escapedText = escapeHtml(text);
+        var highlightedText = applySyntaxHighlighting(escapedText, ext);
+        viewerContainer.className = 'text-mode';
+        viewerContainer.innerHTML = '<pre>' + highlightedText + '</pre>';
+      })
+      .catch(function(err) {
+        hideLoading();
+        viewerContainer.innerHTML = '<div class="message-box" style="border:1px solid #ef4444;background:rgba(239,68,68,0.1);border-radius:8px;">' +
+          '<h3 style="color:#ef4444;">⚠ Preview Failed</h3>' +
+          '<p>' + escapeHtml(err.message) + '</p>' +
+          '<button onclick="document.getElementById(\'downloadBtn\').click()">Download File</button>' +
+          '</div>';
+      });
+  }
+
+  function mountImagePreview(fileUrl, fileName) {
+    showLoading('Loading image...');
+    var img = document.createElement('img');
+    img.style.cssText = 'max-width:100%;height:auto;display:block;margin:20px auto;';
+    img.onload = function() { hideLoading(); };
+    img.onerror = function() {
+      hideLoading();
+      viewerContainer.innerHTML = '<div class="message-box" style="border:1px solid #ef4444;background:rgba(239,68,68,0.1);border-radius:8px;">' +
+        '<h3 style="color:#ef4444;">⚠ Image Load Failed</h3>' +
+        '<button onclick="document.getElementById(\'downloadBtn\').click()">Download File</button>' +
+        '</div>';
+    };
+    img.src = fileUrl;
+    viewerContainer.innerHTML = '';
+    viewerContainer.appendChild(img);
+  }
+
+  function mountPdfPreview(fileUrl, fileName) {
+    showLoading('Loading PDF...');
+    var iframe = document.createElement('iframe');
+    iframe.style.cssText = 'width:100%;height:100%;border:none;display:block;';
+    iframe.onload = function() { hideLoading(); };
+    iframe.src = fileUrl;
+    viewerContainer.innerHTML = '';
+    viewerContainer.appendChild(iframe);
+    setTimeout(hideLoading, 15000);
+  }
+
+  function mountOfficePreview(fileUrl, fileName, ext) {
+    showLoading('Loading ' + ext.toUpperCase() + ' preview...');
+    viewerContainer.innerHTML = '';
+    var wrapper = document.createElement('div');
+    wrapper.className = 'office-doc-wrapper';
+    viewerContainer.appendChild(wrapper);
+
+    withJsPreview(function(err) {
+      if (err) {
+        console.warn('js-preview CDN failed:', err.message);
+        showDownloadMessage(fileName, ext);
+        return;
+      }
+      var factory = ext === 'docx' ? window.jsPreviewDocx
+                  : ext === 'xlsx' ? window.jsPreviewExcel
+                  : null;
+      if (!factory || typeof factory.init !== 'function') {
+        showDownloadMessage(fileName, ext);
+        return;
+      }
+      // Defer to next animation frame so layout is fully computed
+      // (viewer-wrap transitions from display:none; cached scripts may fire sync)
+      requestAnimationFrame(function() {
+        var h = viewerContainer.clientHeight || viewerWrap.clientHeight;
+        wrapper.style.height = (h > 0 ? h : (window.innerHeight - 60)) + 'px';
+        try {
+          if (currentOfficePreviewer) {
+            try { currentOfficePreviewer.destroy(); } catch(e) {}
+            currentOfficePreviewer = null;
+          }
+          var previewer = factory.init(wrapper);
+          currentOfficePreviewer = previewer;
+          previewer.preview(fileUrl)
+            .then(function() {
+              hideLoading();
+              console.log('Office preview rendered:', fileName);
+            })
+            .catch(function(renderErr) {
+              console.error('Office render failed:', renderErr);
+              showDownloadMessage(fileName, ext);
+            });
+        } catch(initErr) {
+          console.error('Office preview init failed:', initErr);
+          showDownloadMessage(fileName, ext);
+        }
+      });
+    });
+  }
+
+  // ── Initialization ─────────────────────────────────────────────────────────
   function init() {
     if (!token) { showError('Invalid share link.'); return; }
     fetch('/api/share/' + encodeURIComponent(token) + '/info')
@@ -170,7 +463,6 @@
     pwErr.textContent = '';
     pwSubmit.disabled = true;
     pwSubmit.textContent = 'Verifying...';
-    // Verify by attempting to load info; the file endpoint will return 401 if wrong
     fetch('/api/share/' + encodeURIComponent(token) + '/file?password=' + encodeURIComponent(pw), { method: 'HEAD' })
       .then(function(r) {
         pwSubmit.disabled = false;
@@ -194,8 +486,7 @@
 
   downloadBtn.addEventListener('click', function() {
     if (!token) return;
-    var url = '/api/share/' + encodeURIComponent(token) + '/file'
-            + (passwordValue ? '?password=' + encodeURIComponent(passwordValue) : '');
+    var url = getFileUrl(passwordValue);
     var a = document.createElement('a');
     a.href = url;
     a.download = shareInfo ? shareInfo.name : 'file';

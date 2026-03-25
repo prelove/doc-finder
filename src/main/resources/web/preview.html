@@ -4,8 +4,6 @@
   <meta charset="UTF-8"/>
   <meta name="viewport" content="width=device-width, initial-scale=1.0"/>
   <title>DocFinder Preview</title>
-  <!-- jschardet: statistical charset detection (async, no-op if CDN unavailable) -->
-  <script async src="https://cdn.jsdelivr.net/npm/jschardet@3.0.0/dist/jschardet.min.js"></script>
   <style>
     *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
 
@@ -103,8 +101,8 @@
     #loadingOverlay .spinner { width: 40px; height: 40px; border: 4px solid rgba(255,255,255,0.2); border-top-color: var(--accent2); border-radius: 50%; animation: spin 0.8s linear infinite; }
     #loadingOverlay .text { color: #e2e8f0; font-size: 0.85rem; }
     @keyframes spin { to { transform: rotate(360deg); } }
-    /* Office document preview (vue-office) */
-    .office-doc-wrapper { width: 100%; min-height: 100%; overflow: auto; background: #fff; }
+    /* Office document preview (js-preview) */
+    .office-doc-wrapper { width: 100%; height: 100%; overflow: auto; background: #fff; }
   </style>
 </head>
 <body>
@@ -282,9 +280,9 @@
     console.log('Office document fallback:', ext, 'for file:', fileName);
   }
 
-  // ── vue-office lazy loader ─────────────────────────────────────────────────
-  var vofficeState = 'idle'; // 'idle' | 'loading' | 'ready' | 'error'
-  var vofficeQueue = [];
+  // ── js-preview lazy loader ─────────────────────────────────────────────────
+  var jspreviewState = 'idle'; // 'idle' | 'loading' | 'ready' | 'error'
+  var jspreviewQueue = [];
 
   function loadScriptTag(url, onok, onerr) {
     var s = document.createElement('script');
@@ -301,40 +299,38 @@
     document.head.appendChild(link);
   }
 
-  function withVueOffice(cb) {
-    if (vofficeState === 'ready') { cb(null); return; }
-    if (vofficeState === 'error') { cb(new Error('vue-office unavailable')); return; }
-    vofficeQueue.push(cb);
-    if (vofficeState === 'loading') return;
-    vofficeState = 'loading';
+  function withJsPreview(cb) {
+    if (jspreviewState === 'ready') { cb(null); return; }
+    if (jspreviewState === 'error') { cb(new Error('js-preview unavailable')); return; }
+    jspreviewQueue.push(cb);
+    if (jspreviewState === 'loading') return;
+    jspreviewState = 'loading';
 
     function flush(err) {
-      vofficeState = err ? 'error' : 'ready';
-      var q = vofficeQueue.splice(0);
+      jspreviewState = err ? 'error' : 'ready';
+      var q = jspreviewQueue.splice(0);
       q.forEach(function(fn) { fn(err); });
     }
 
-    loadScriptTag('https://cdn.jsdelivr.net/npm/vue@3/dist/vue.global.prod.js', function() {
-      loadCSSTag('https://cdn.jsdelivr.net/npm/@vue-office/docx/lib/index.css');
-      loadCSSTag('https://cdn.jsdelivr.net/npm/@vue-office/excel/lib/index.css');
-      var n = 3, errs = [];
-      function done(err) {
-        if (err) errs.push(err);
-        if (--n === 0) flush(errs.length ? errs[0] : null);
-      }
-      loadScriptTag('https://cdn.jsdelivr.net/npm/@vue-office/docx/lib/index.umd.js',
-        function() { done(null); }, function() { done(new Error('docx CDN load failed')); });
-      loadScriptTag('https://cdn.jsdelivr.net/npm/@vue-office/excel/lib/index.umd.js',
-        function() { done(null); }, function() { done(new Error('excel CDN load failed')); });
-      loadScriptTag('https://cdn.jsdelivr.net/npm/@vue-office/pptx/lib/index.umd.js',
-        function() { done(null); }, function() { done(new Error('pptx CDN load failed')); });
-    }, function() { flush(new Error('Vue 3 CDN load failed')); });
+    loadCSSTag('https://cdn.jsdelivr.net/npm/@js-preview/docx/lib/index.css');
+    loadCSSTag('https://cdn.jsdelivr.net/npm/@js-preview/excel/lib/index.css');
+    var n = 2, errs = [];
+    function done(err) {
+      if (err) errs.push(err);
+      if (--n === 0) flush(errs.length ? errs[0] : null);
+    }
+    loadScriptTag('https://cdn.jsdelivr.net/npm/@js-preview/docx/lib/index.umd.js',
+      function() { done(null); }, function() { done(new Error('docx CDN load failed')); });
+    loadScriptTag('https://cdn.jsdelivr.net/npm/@js-preview/excel/lib/index.umd.js',
+      function() { done(null); }, function() { done(new Error('excel CDN load failed')); });
   }
 
-  // ── Office document preview via vue-office ────────────────────────────────
+  // ── Office document preview via @js-preview ────────────────────────────────
+  var currentOfficePreviewer = null;
+
   function loadOfficePreview(filePath, fileName, ext) {
-    // Old binary formats not supported by vue-office – fall back immediately
-    if (ext === 'doc' || ext === 'ppt') {
+    // Formats not supported by @js-preview – fall back immediately
+    if (ext === 'doc' || ext === 'ppt' || ext === 'pptx' || ext === 'xls') {
       showOfficeDocumentMessage(fileName, ext);
       return;
     }
@@ -350,39 +346,51 @@
     var wrapper = document.createElement('div');
     wrapper.className = 'office-doc-wrapper';
     previewPane.appendChild(wrapper);
+    // Set explicit pixel height so js-preview renderer can measure its container
+    wrapper.style.height = previewPane.clientHeight + 'px';
 
     var fileUrl = '/api/file?path=' + encodeURIComponent(filePath);
 
-    withVueOffice(function(err) {
+    withJsPreview(function(err) {
       if (signal.aborted) return;
       if (err) {
-        console.warn('vue-office CDN load failed, showing fallback:', err.message);
+        console.warn('js-preview CDN load failed, showing fallback:', err.message);
         showOfficeDocumentMessage(fileName, ext);
         return;
       }
 
-      var renderer = ext === 'docx' ? window.VueOfficeDocx
-                   : (ext === 'xlsx' || ext === 'xls') ? window.VueOfficeExcel
-                   : ext === 'pptx' ? window.VueOfficePptx
-                   : null;
+      var factory = ext === 'docx' ? window.jsPreviewDocx
+                  : ext === 'xlsx' ? window.jsPreviewExcel
+                  : null;
 
-      if (!renderer || typeof renderer.renderAsync !== 'function') {
-        console.warn('vue-office renderer not available for ext:', ext);
+      if (!factory || typeof factory.init !== 'function') {
+        console.warn('js-preview renderer not available for ext:', ext);
         showOfficeDocumentMessage(fileName, ext);
         return;
       }
 
-      renderer.renderAsync(fileUrl, wrapper, null, {})
-        .then(function() {
-          if (!signal.aborted) hideLoading();
-          console.log('Office preview rendered:', fileName);
-        })
-        .catch(function(renderErr) {
-          if (!signal.aborted) {
-            console.error('Office render failed:', renderErr);
-            showOfficeDocumentMessage(fileName, ext);
-          }
-        });
+      try {
+        if (currentOfficePreviewer) {
+          try { currentOfficePreviewer.destroy(); } catch(e) {}
+          currentOfficePreviewer = null;
+        }
+        var previewer = factory.init(wrapper);
+        currentOfficePreviewer = previewer;
+        previewer.preview(fileUrl)
+          .then(function() {
+            if (!signal.aborted) hideLoading();
+            console.log('Office preview rendered:', fileName);
+          })
+          .catch(function(renderErr) {
+            if (!signal.aborted) {
+              console.error('Office render failed:', renderErr);
+              showOfficeDocumentMessage(fileName, ext);
+            }
+          });
+      } catch(initErr) {
+        console.error('Office preview init failed:', initErr);
+        showOfficeDocumentMessage(fileName, ext);
+      }
     });
   }
 
@@ -398,139 +406,6 @@
   };
 
   downloadBtn.addEventListener('click', window.downloadCurrentFile);
-
-  // ── Charset Detection ──────────────────────────────────────────────────────
-  // Map jschardet / external encoding names to TextDecoder-compatible names
-  function normalizeEncoding(enc) {
-    if (!enc) return null;
-    var u = enc.toUpperCase().replace(/_/g, '-');
-    var map = {
-      'UTF-8':'utf-8','UTF8':'utf-8',
-      'UTF-16':'utf-16le','UTF-16LE':'utf-16le','UTF-16BE':'utf-16be',
-      'SHIFT-JIS':'shift-jis','SHIFTJIS':'shift-jis','SJIS':'shift-jis',
-      'EUC-JP':'euc-jp','EUCJP':'euc-jp',
-      'ISO-2022-JP':'iso-2022-jp',
-      'EUC-KR':'euc-kr','EUCKR':'euc-kr',
-      'BIG5':'big5','BIG-5':'big5',
-      'GB2312':'gb2312','GBK':'gbk','GB18030':'gb18030',
-      'KOI8-R':'koi8-r','KOI8-U':'koi8-u',
-      'ISO-8859-1':'iso-8859-1','ISO-8859-2':'iso-8859-2',
-      'ISO-8859-5':'iso-8859-5','ISO-8859-7':'iso-8859-7',
-      'WINDOWS-1250':'windows-1250','WINDOWS-1251':'windows-1251',
-      'WINDOWS-1252':'windows-1252','WINDOWS-1253':'windows-1253',
-      'WINDOWS-1255':'windows-1255'
-    };
-    return map[u] || enc.toLowerCase();
-  }
-
-  function decodeBuffer(buffer) {
-    var bytes = new Uint8Array(buffer);
-
-    // BOM detection (highest priority)
-    if (bytes.length >= 3 && bytes[0] === 0xEF && bytes[1] === 0xBB && bytes[2] === 0xBF) {
-      return new TextDecoder('utf-8').decode(buffer.slice ? buffer.slice(3) : bytes.slice(3).buffer);
-    }
-    if (bytes.length >= 2 && bytes[0] === 0xFF && bytes[1] === 0xFE) {
-      return new TextDecoder('utf-16le').decode(buffer.slice ? buffer.slice(2) : bytes.slice(2).buffer);
-    }
-    if (bytes.length >= 2 && bytes[0] === 0xFE && bytes[1] === 0xFF) {
-      return new TextDecoder('utf-16be').decode(buffer.slice ? buffer.slice(2) : bytes.slice(2).buffer);
-    }
-
-    // Statistical detection via jschardet (loaded async from CDN; may not be ready)
-    if (typeof jschardet !== 'undefined') {
-      try {
-        var sampleLen = Math.min(bytes.length, 65536);
-        var chars = [];
-        for (var i = 0; i < sampleLen; i++) chars.push(String.fromCharCode(bytes[i]));
-        var detected = jschardet.detect(chars.join(''));
-        if (detected && detected.encoding && detected.confidence >= 0.7) {
-          var enc = normalizeEncoding(detected.encoding);
-          if (enc) {
-            try {
-              return new TextDecoder(enc, { fatal: true }).decode(buffer);
-            } catch(e) { /* detected encoding decode failed, fall through */ }
-          }
-        }
-      } catch(e) { /* jschardet error, fall through */ }
-    }
-
-    // Try UTF-8 with fatal flag
-    try {
-      return new TextDecoder('utf-8', { fatal: true }).decode(buffer);
-    } catch(e) {}
-
-    // Try GBK (Chinese - GB2312-80 is subset of GBK)
-    try {
-      return new TextDecoder('gbk', { fatal: true }).decode(buffer);
-    } catch(e) {}
-
-    // Fallback to windows-1252
-    try {
-      return new TextDecoder('windows-1252').decode(buffer);
-    } catch(e) {
-      return new TextDecoder('iso-8859-1').decode(buffer);
-    }
-  }
-
-  // ── Stream Reading with Size Limit ─────────────────────────────────────────
-  function readLimitedBytes(response, maxBytes) {
-    if (!response.body) {
-      return response.arrayBuffer().then(function(buf) {
-        var truncated = buf.byteLength > maxBytes;
-        if (truncated) {
-          return { buffer: buf.slice(0, maxBytes), truncated: true };
-        }
-        return { buffer: buf, truncated: false };
-      });
-    }
-
-    var reader = response.body.getReader();
-    var chunks = [];
-    var totalBytes = 0;
-    var truncated = false;
-
-    function pump() {
-      return reader.read().then(function(result) {
-        if (result.done) {
-          return { buffer: concatBuffers(chunks), truncated: truncated };
-        }
-        var chunk = result.value;
-        var remaining = maxBytes - totalBytes;
-        if (remaining <= 0) {
-          // Already have enough data, just drain the rest without storing
-          truncated = true;
-          return pump();
-        }
-        if (chunk.length >= remaining) {
-          // This chunk puts us over the limit
-          chunks.push(chunk.slice(0, remaining));
-          totalBytes += remaining;
-          truncated = true;
-          // Continue draining to avoid "Response has been truncated" error
-          return pump();
-        }
-        chunks.push(chunk);
-        totalBytes += chunk.length;
-        return pump();
-      });
-    }
-
-    return pump();
-  }
-
-  function concatBuffers(chunks) {
-    var totalLength = chunks.reduce(function(sum, chunk) {
-      return sum + chunk.length;
-    }, 0);
-    var result = new Uint8Array(totalLength);
-    var offset = 0;
-    chunks.forEach(function(chunk) {
-      result.set(chunk, offset);
-      offset += chunk.length;
-    });
-    return result.buffer;
-  }
 
   // ── Simple Syntax Highlighting ─────────────────────────────────────────────
   function applySyntaxHighlighting(text, ext) {
@@ -564,30 +439,34 @@
 
     showLoading('Loading text preview...');
 
-    fetch('/api/file?path=' + encodeURIComponent(filePath), {
+    // Fetch from /api/text which detects encoding server-side and returns UTF-8
+    fetch('/api/text?path=' + encodeURIComponent(filePath), {
       signal: abortController.signal
     })
       .then(function(resp) {
         if (!resp.ok) throw new Error('HTTP ' + resp.status + ': ' + resp.statusText);
-        return readLimitedBytes(resp, TEXT_MAX_BYTES);
+        var wasTruncated = resp.headers.get('X-Truncated') === 'true';
+        var detectedCharset = resp.headers.get('X-Detected-Charset') || 'unknown';
+        return resp.text().then(function(text) {
+          return { text: text, truncated: wasTruncated, charset: detectedCharset };
+        });
       })
       .then(function(result) {
-        var buffer = result.buffer || result;  // Handle both old and new format
-        var wasTruncated = result.truncated || false;
-        var text = decodeBuffer(buffer);
-        var escapedText = escapeHtml(text);
+        var escapedText = escapeHtml(result.text);
         var highlightedText = applySyntaxHighlighting(escapedText, ext);
 
         hideLoading();
         previewPane.classList.add('text-mode');
         previewPane.innerHTML = '<pre>' + highlightedText + '</pre>';
 
-        if (wasTruncated) {
+        if (result.truncated) {
           var notice = document.createElement('div');
           notice.style.cssText = 'padding:12px;background:var(--bg3);color:var(--text3);font-size:0.8rem;text-align:center;border-top:1px solid var(--border)';
           notice.textContent = '⚠ File truncated at ' + TEXT_MAX_BYTES + ' bytes for preview';
           previewPane.appendChild(notice);
         }
+
+        console.log('Text preview loaded:', fileName, '(charset:', result.charset + ')');
       })
       .catch(function(err) {
         if (err.name === 'AbortError') return;

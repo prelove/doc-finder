@@ -5,6 +5,7 @@ import com.sun.net.httpserver.HttpHandler;
 
 import java.io.*;
 import java.net.URI;
+import java.nio.charset.Charset;
 import java.nio.file.*;
 import java.util.Map;
 
@@ -63,6 +64,28 @@ class FileServeHandler implements HttpHandler {
     static void serveFile(HttpExchange exchange, Path filePath, String downloadName) throws IOException {
         String mime = guessMime(filePath.getFileName().toString());
         long size = Files.size(filePath);
+
+        // For text MIME types without explicit charset, detect encoding and append it
+        if (mime.startsWith("text/") && !mime.contains("charset")) {
+            try {
+                int sampleSize = (int) Math.min(size, 64 * 1024);
+                byte[] sample = new byte[sampleSize];
+                int read = 0;
+                try (InputStream is = Files.newInputStream(filePath)) {
+                    while (read < sampleSize) {
+                        int n = is.read(sample, read, sampleSize - read);
+                        if (n < 0) break;
+                        read += n;
+                    }
+                }
+                if (read > 0) {
+                    Charset detected = TextServeHandler.detectCharset(sample, read);
+                    mime = mime + "; charset=" + detected.name().toLowerCase();
+                }
+            } catch (Exception e) {
+                // detection failed; serve without charset (browser will guess)
+            }
+        }
 
         exchange.getResponseHeaders().add("Content-Type", mime);
         if (downloadName != null) {
