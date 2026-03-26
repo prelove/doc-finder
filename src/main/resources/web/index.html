@@ -873,17 +873,17 @@
       q.forEach(function(fn) { fn(err); });
     }
 
-    loadCSSTag('https://cdn.jsdelivr.net/npm/@js-preview/docx/lib/index.css');
-    loadCSSTag('https://cdn.jsdelivr.net/npm/@js-preview/excel/lib/index.css');
+    loadCSSTag('/web/vendor/js-preview/docx/lib/index.css');
+    loadCSSTag('/web/vendor/js-preview/excel/lib/index.css');
     var n = 2, errs = [];
     function done(err) {
       if (err) errs.push(err);
       if (--n === 0) flush(errs.length ? errs[0] : null);
     }
-    loadScriptTag('https://cdn.jsdelivr.net/npm/@js-preview/docx/lib/index.umd.js',
-      function() { done(null); }, function() { done(new Error('docx CDN load failed')); });
-    loadScriptTag('https://cdn.jsdelivr.net/npm/@js-preview/excel/lib/index.umd.js',
-      function() { done(null); }, function() { done(new Error('excel CDN load failed')); });
+    loadScriptTag('/web/vendor/js-preview/docx/lib/index.umd.js',
+      function() { done(null); }, function() { done(new Error('docx local asset load failed')); });
+    loadScriptTag('/web/vendor/js-preview/excel/lib/index.umd.js',
+      function() { done(null); }, function() { done(new Error('excel local asset load failed')); });
   }
 
   // ── Office document preview via @js-preview ────────────────────────────────
@@ -914,7 +914,7 @@
     withJsPreview(function(err) {
       if (cancelled) return;
       if (err) {
-        console.warn('js-preview CDN load failed, showing fallback:', err.message);
+        console.warn('js-preview local asset load failed, showing fallback:', err.message);
         showOfficeDocumentMessage(fileName, ext);
         return;
       }
