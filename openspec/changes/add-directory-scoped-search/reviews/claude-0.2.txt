@@ -1,0 +1,122 @@
+DocFinder 目录检索方案 0.2 外部评审
+结论：CHANGES_REQUESTED。 有 2 项 P1 阻断实施，需要先修订文档并由用户决策。其余 P2/P3 可在修订中一并处理，也可以明确移期。
+
+审阅指纹与方法
+代码基线：HEAD 为 9a1c26ad…，与文档一致。工作树里 AGENTS.md 已修改，openspec 未跟踪，也与 delivery-status.yaml 一致。
+文档指纹：review-baseline.sha256 中 10 个文件的 SHA-256 我已逐个复算，全部一致。planning-validation.md 不在基线内。
+源码核对：我对照了 LuceneSearchService、LuceneIndexer、SourceManager、Utils、SearchHandler、index.html、MainWindow 的搜索与重建链路、App、AppPaths。
+未执行：我没有运行任何测试、构建、GUI/浏览器验证或性能测量，也没有打开 ZIP。下文所有性能判断都是代码推演，需要实测确认。
+范围：我没有把 B/C/D 阶段内容当作本期要求。
+阻断实施的问题
+F-001（P1）“尚无索引提交”的契约自相矛盾，且用户按提示操作可能无效
+位置：spec DS-04 最后一个场景；design D3 末段、D4 末段；SearchHandler.java:47-51；App.java:73-84；MainWindow.java:825-855 与 1739-1744。
+问题：
+DS-04 要求“沿用初始化 503，并提示先到桌面建立索引”。D3 同时规定“现有初始化 503 …保持”，即保留现有文案 Search index is initializing, please retry in a moment。两处冲突。
+实际代码中，没有索引提交时 new LuceneSearchService 会因 SearcherManager 找不到索引而抛 IOException。App 只记录日志，服务保持 null。Handler 只能看到 supplier == null，分不清“还在初始化”和“根本没有索引”。
+“Index All Sources”（MainWindow:825-855）完成后不调用 setSearchService，只有单文件夹添加和完整重建才会。
+触发示例：全新安装后添加来源，选了目录搜索。桌面显示“still initializing, please retry”。用户按提示点 Index All Sources 后重试，服务仍为 null，直到重启或做一次完整重建。
+影响：
+新增的提示在代码层面无法实现，或会误导用户。
+A 阶段验收 M-02 与 7.1 的“无提交夹具”无法按现有文案通过。
+这是一个既有缺陷，但本功能的错误提示依赖它，不处理就会把误导固化到新功能里。
+建议修正：
+选择一种契约：要么保留现有 503 文案，并删去 DS-04 “提示先到桌面建立索引”的要求；要么允许改文案，同时说明 handler 如何判断“未就绪”。
+把 doSearch 中 searchService == null 的提示改为区分“未建立索引”和“初始化中”。这需要最小的状态判断。
+要么让“Index All Sources”完成后重新打开服务，要么在任务中明确该缺陷“不修，但提示文案不得指向它”。
+把以上写入 D3/D4，并在 tasks 4.x/7.x 中补对应测试。
+验证：
+用没有任何 commit 的索引目录做 HTTP 测试，断言状态码和文案与修订后的契约一致。
+加一个桌面 harness 用例，覆盖服务为 null 时的提示。
+手工执行：新数据目录 → 添加来源 → Index All Sources → 限定搜索，记录实际结果。
+F-002（P1，需用户决策）旧索引迁移只给出“完整重建”一条路径，其代价和可选方案未呈现给用户
+位置：design D4/D5、Migration Plan；proposal “迁移”；MainWindow.java:1590-1651（完整重建）；LuceneIndexer.java:197-212（deleteAll）。
+事实：
+完整重建会先 deleteAll() 并 commit，之后才遍历来源。遍历期间 commit 前的新文档对读者不可见。这期间索引为空，桌面禁用搜索，Web 不禁用并返回空结果。
+若检测到 write.lock，会先 forceUnlockAndResetIndex，删除整个索引目录下的文件。
+另有非破坏的“Index All Sources”（indexFolder 对每个来源按 path 做 updateDocument）。它会给所有仍存在的文件和目录补上 path_scope，不清空索引。
+问题：
+方案只写“旧索引提示用户手动完整重建”。每个升级后的现有用户都要先经历一次全库清空再 Tika 重解析，这是本功能最大的使用门槛，文档没有向用户明确说明。
+D4 的“任一存活文档缺字段就拒绝”是全库判定。用“Index All Sources”迁移后，已删除文件和已移除来源留下的旧文档仍缺字段，整个索引永远处于 INDEX_REBUILD_REQUIRED，只有完整重建才能清除。该约束与提示文案都没有写出来。
+路径兼容性也没有评估：现有 path 字段本身是可索引的精确 term，Windows 下保留原大小写和反斜杠。用它做前缀过滤可以零迁移，但无法做大小写不敏感匹配，所以专用小写字段的决策是合理的。文档没有记录为什么不复用，也没有记录相应的取舍。
+触发示例：10 万文件的现有用户升级后首次限定搜索，收到 409。按提示点完整重建，期间索引清空。如果中途崩溃，索引保持为空。
+影响：核心体验门槛和数据可用性风险未经用户知情，批准前必须决定。
+建议修正（需用户决策）：
+在 README/proposal 中向用户明示：升级后限定搜索需要一次重建，期间全库不可搜，非原子。
+决定迁移方式：(a) 仅完整重建，保持现方案，并把 409 文案写成准确的菜单路径 File → Rebuild Index (Full)；(b) 先提示“Index All Sources”作为非破坏迁移，并说明陈旧文档可能仍阻断，最后兜底完整重建；(c) 放宽 D4 门槛，让其只统计来源范围内的缺字段文档。(c) 需要先验证技术可行性，因为旧文档没有 path_scope，无法按范围查询。
+在 design 补一条“为什么不复用 path 字段”的决策记录。
+验证：
+在 5.1/M-06 增加“Index All Sources 后的行为”用例，分别覆盖有陈旧旧文档和没有陈旧旧文档两种夹具，记录结论。
+手工验证重建期间 Web 的行为，确认文案与现实一致。
+应在批准前修订的问题（P2）
+F-003（P2）ensureDirectoryScopeSupported 的实现方式很可能让每次限定查询代价与文档数成正比
+位置：design D4 第 4 段（“MatchAll + MUST_NOT 开放 TermRangeQuery，最多找一个文档”，“首版不加全局缓存”）；acceptance P-01。
+推演：TermRangeQuery 默认是常量得分重写，需要遍历 path_scope 的全部 term 并收集 doc id。path_scope 每条文档一个唯一 term，所以每次查询要遍历 N 个 term。“最多取一个文档”不能省掉重写阶段。这是我的静态推断，没有实测。
+影响：
+P-01 门槛是“p95 超过无目录 2 倍且绝对增加超过 200ms”，在 10 万文档以上很可能触发。
+按现设计实施后会反过来迫使修订设计，D4 明确禁止“自行加缓存”，会造成返工。
+建议修正：
+先做轻量检查：对每个 leaf 比较 terms("path_scope").getDocCount() 与 maxDoc()。若全部 leaf 相等，则所有文档（含已删除）都有该字段，直接通过。只有不等时才降级为精确查询。
+允许按“已获取的 searcher/reader 实例”缓存判定结果。reader 不可变，缓存键为实例本身，刷新后换 reader 自然失效，这不同于被禁止的“全局过期缓存”。
+在 D4 中写明这两条，并保留“刷新后重新判定”的行为测试。
+验证：
+在 5.2 前做一个 10 万文档的微基准，记录检查耗时，再决定是否采用。
+保留 5.1 的混合/删除/刷新测试，确认行为不变。
+F-004（P2）限定查询与无限定查询对同一语法错误的处理不一致
+位置：design D3/D4（“未知限定执行失败转 SEARCH_FAILED”）；DS-09；LuceneSearchService.java:165-167。
+触发示例：输入 report AND (。不带目录时查询解析失败，被大 catch 吞掉，界面显示“无结果”。带目录时，同一查询返回 500 SEARCH_FAILED，并在日志里按服务端错误记录。
+影响：用户输入错误被当成服务端故障，两种模式行为分裂。
+建议修正：(a) 限定请求对 ParseException 与无限定保持一致（空结果），或 (b) 新增 INVALID_QUERY（400），并同时作用于限定与无限定。这需要用户确认，因为 (b) 会改变现有无限定行为。无论选哪个，都需要把 ParseException 与真正的 IOException/运行时错误区分开。
+验证：在 DirectoryScopedSearchTest 与 SearchHandlerTest 中，对非法语法分别用有目录和无目录各跑一遍，断言一致。
+F-005（P2）严格来源加载让一行坏记录封死整个目录检索功能
+位置：design D2（“非法路径、相对来源路径、非法记录均为 IOException”）。
+触发示例：sources.txt 里有一行被手工编辑成相对路径，或一行带有多余列。之后任何限定搜索，包括落在其他有效来源下的，都返回 503 SOURCE_CONFIG_UNAVAILABLE。通用文案只写 “Check configuration”，不指出是哪一行。
+影响：功能被少数无关的坏行全局阻断，用户无从排查。
+建议修正：
+保持“读取失败为错误”不变。
+对单行非法记录，在日志中记录行号和原因，并让校验在剩余有效来源上继续。
+或者保持严格，但在日志与桌面界面中指出具体行号（不能出现在 HTTP 文案里）。这需要用户确认安全性取舍。
+验证：在 SourceManagerSearchRootsTest 增加“混合有效与无效行”的用例，并明确断言你选择的行为。
+F-006（P2）桌面面板的状态模型和来源列表刷新时机未定义
+位置：design D5；tasks 6.1/6.2；spec DS-07。
+问题：
+面板同时有“来源下拉”和“路径文本框”。文档没有说明谁是唯一事实来源：选 “All sources” 是否等同于 Clear？编辑文本后下拉应处于什么状态？
+来源列表只在 MainWindow “后台加载”，没有写触发条件。用户在 Manage Sources 中增删来源后，或重建完成后，下拉不会刷新。
+建议修正：
+约定下拉只是路径的快捷设置项：选 “All sources” 等价于 Clear（回调一次）；手工编辑后下拉显示 “Custom”。
+在 D5/6.2 中写明来源刷新触发点：窗口启动、关闭 Manage Sources 之后、重建完成之后。
+验证：在 DirectoryScopePanelTest 增加这些状态转换测试，并在 M-01 增加“增删来源后下拉刷新”一步。
+F-007（P2，需用户决策）Web 用户要手输服务器路径，且 422/200 的差异会暴露来源配置
+位置：design D6；spec DS-08；proposal Non-goals（“不新增服务器目录树接口”）。
+问题：
+局域网上的 Web 用户通常不知道服务器上的路径，只能靠“从结果继续缩小范围”。这可以接受，但应当是用户明确知晓的产品选择。
+校验逻辑让任何人能通过 422（范围外）与非 422 的区别探测哪些路径在来源内。相比现有结果已经暴露的完整路径，这是轻微的额外泄露，但 analysis.md R-13 已提到局域网暴露风险，设计里却写“不向前端下发全部来源”，两者口径不一。
+建议修正：请用户确认两点。一是 A 阶段 Web 只支持手输和结果快捷缩小，不提供只读来源列表。二是接受 422 提示会间接暴露来源覆盖，并在 design 风险段补上这一条。
+验证：把这两点写成决策记录，不需要额外测试。
+F-008（P2）验收隔离流程过重，手工验收的执行人没有分配
+位置：acceptance “Fixture and safety”、Manual acceptance；tasks Global Constraints；AppPaths.java:10-12；LegacyMigrationTest。
+问题：
+每次验证都要把工作树复制到临时 checkout、核对哈希、核对 fork 出来的 JVM 的 user.dir/user.home。步骤多，Devin 容易遗漏，也难以复核。
+根因是 AppPaths 依赖 user.dir 且 LegacyMigrationTest 会触碰真实目录。更省事的做法是一次性修复测试隔离，例如 surefire 设置 workingDirectory 与 argLine=-Duser.home=…，或让该测试使用临时目录。tasks 1.1 只说“必要时修复测试隔离”，没有定为 A0 的明确交付物。
+M-01～M-06 需要图形界面和浏览器，但 Owner 是 Devin，没有说明 Devin 环境是否具备 GUI。tasks 6.3 只写“GUI 不可用则保持未完成”，等于可能整包卡住。
+建议修正：
+把“固定测试隔离（surefire 配置或测试内临时目录）”列为 A0 的验收项，然后其余任务正常运行 mvn test，不再要求复制 checkout。
+明确 M-01～M-06 由用户或 Codex 在真实桌面/浏览器上执行，Devin 只提供 harness、脚本和自动测试。
+验证：A0 完成后，在默认工作目录运行一次全量 mvn test，核对真实 .docfinder 没有被改动。
+可延期或局部修订（P3）
+F-009：detectMatchType（LuceneSearchService.java:414-432）通过 Explanation 描述里是否含 name:、content: 来判断匹配类型。FILTER 子句会出现在解释里，POSIX 下目录名含 name: 时会误判为名称命中。概率很低，可在 4.3 加一个特殊目录名的用例，或把解释限制在评分子句。
+F-010：D1 里 normalizeIndexedPath(Path) 只说“可绝对化”，应同时 .normalize()，并用属性测试断言它和 normalizeDirectory(String) 对同一路径输出一致，否则会出现按前缀查不到的 bug。另外，建议在 PathScopeTest 中加入 \\?\/\\?\UNC\ 长路径前缀的行为说明。macOS（默认大小写不敏感）下 POSIX 保留大小写是已知限制，可写入风险段。
+F-011：LuceneIndexer.isExcluded 会排除 user.dir 子树。位于工作目录下的目录做限定搜索会得到 0 结果，且没有任何提示。可写入风险段。
+F-012：A5 把面板、MainWindow 接入、右键动作和 harness 放进同一个任务包，而 MainWindow 单文件近 2700 行。建议拆为“面板与接入”和“右键快捷动作”两个包，便于评审。
+F-013：planning-validation.md 不在 review-baseline.sha256 中，ZIP 内容我没有核验。建议 Codex 在修订后重新生成指纹时一并说明。
+已核对且成立的设计点
+范围表达：目录范围用“自身为文件夹，或 path_scope 前缀匹配”的 FILTER，能避免兄弟前缀（ProjectA 与 ProjectAB）和误输文件路径的问题。
+类型过滤前移：旧代码在 Top-N 之后用 continue 丢目录（LuceneSearchService.java:142-148），确实会少返回，把类型过滤移进查询是对的。
+来源校验：来源校验在索引读取之前、SourceManager 的严格加载避开了 loadEntries 的网络判定（它会起 PowerShell/net use/wmic 子进程），这一点正确。
+文档结构：README、spec、design、tasks、acceptance 的编号和追溯关系一致。
+汇总
+类别	内容
+阻断实施	F-001（无索引状态契约）、F-002（迁移路径，需用户决策）
+批准前应修订	F-003、F-004（需决策）、F-005（需决策）、F-006、F-007（需决策）、F-008
+可延期并登记	F-009～F-013
+需用户决定	F-002 迁移方式；F-004 解析错误处理；F-005 坏来源行策略；F-007 Web 范围与来源暴露；以及 DEC-03（所选根自身是否出现在 FOLDER 结果，建议接受，但需要用户明确确认）
+阻断项关闭并重新指纹后，我可以再做一轮针对性复核。

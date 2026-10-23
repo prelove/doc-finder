@@ -1,0 +1,67 @@
+DocFinder 目录检索方案 0.3：针对性复核
+结论：PASS（按计划充分性）。 F-001～F-013 全部接受，没有残留的 P0/P1。下面列出 0.3 引入或遗漏的 3 项 P2、6 项 P3。它们都不阻断实施，但建议在批准前一并修订，或登记为明确移期。
+
+复核范围与核验结果
+指纹：review-baseline.sha256 中 14 个文件我已逐个复算，全部一致。
+ZIP：.sha256 与 ZIP 实际哈希一致（8a450bb4…）。ZIP 内 17 个文件与工作目录逐字节一致。
+代码基线：HEAD 仍为 9a1c26ad…，业务代码未变。
+源码复核：我复核了 pom.xml 的 Surefire 配置（3.0.0，目前无任何配置）、ConfigManager 构造（不写盘）、MainWindow 的服务发布点和 SearchWorker。
+未执行：我没有运行任何测试、构建、GUI/浏览器验证或基准。以下关于 D4 快路径和缓存的判断是代码推演，仍需 A4 的 P-00 微基准确认。
+控制台乱码：我的复核输出中出现乱码，是 Windows 控制台编码问题，不是文件损坏，哈希一致即可证明。
+
+逐项复核
+ID 结论 说明
+F-001（P1） 接受，关闭：统一INDEX_UNAVAILABLE/503替代无法精确识别；D8 reopenSearchServiceAsync、sequence、Full Rebuild前置null、DS-12、M-06对应。残余F-014/015/016。
+F-002（P1） 接受，关闭：迁移重新解析/非原子/锁恢复风险已明示；Index All优先、Full兜底；原path和局部门槛取舍、陈旧残留如实记录。残余F-019。
+F-003（P2） 接受：getDocCount==maxDoc充分条件，不比numDocs；不确定回退、reader key/helper空/关闭清理正确；P-00先行，不虚报收益。
+F-004（P2） 接受：用户确认全局/限定INVALID_QUERY/400。残余F-017。
+F-005（P2） 接受：坏行容错、全部无效/读失败报错、HTTP无行详情。残余F-020。
+F-006（P2） 接受：路径唯一值、All/Clear一次、Custom、三类刷新/generation。残余F-021。
+F-007（P2） 接受：用户知情接受422覆盖探测，非权限隔离。
+F-008（P2） 接受：A0固定隔离/test-classes/@TempDir/logback-test/nofork限制，Codex执行M项。残余F-018。
+F-009（P3） 接受：仅关键词Explanation，范围小。
+F-010（P3） 接受：共用规范、参数化、拒绝扩展命名空间。
+F-011（P3） 接受：风险/帮助已记录。
+F-012（P3） 接受：A5a/A5b串行、独立证据。
+F-013（P3） 接受：新基线包括planning-validation，旧材料保留，ZIP已核对。
+
+0.3 新增及遗漏事项
+F-014（P2）桌面端对八类错误的展示缺少明确任务与测试
+位置：spec DS-09、D3；tasks 6.1/6.2；MainWindow.java:1940-1951。
+现有SearchWorker.done只显示"Search failed: "+cause.getMessage()，缺Code映射任务与自动测试。
+建议：6.1/6.2增加映射测试/实现，不显示原始异常文本；fake抛各Code，断言状态栏及不含堆栈/原始消息。
+
+F-015（P2）桌面SearchWorker在service=null时静默空结果与D3/D8冲突
+位置：MainWindow.java:1883-1886。
+已提交但后执行的worker会在重建null后变“No results”。改抛INDEX_UNAVAILABLE，统一映射；latch让worker在置null后才执行，断言不可用而非无结果。
+
+F-016（P2）D8未列全直接创建LuceneSearchService位置
+App.java:77、MainWindow.java:1431添加单文件夹完成、:1636完整重建完成；后两者在done/EDT。
+D8和6.2应逐一列出并统一后台入口/sequence，A5a evidence附全仓创建点搜索，避免漏1431。
+
+F-017（P3）ParseException新行为影响常见输入
+用户已确认取舍。以前C++、report (final类输入空结果，现在400；UsageGuide说明，并确认addToHistory不记录错误。
+
+F-018（P3）固定隔离两细节
+D9保留外部JVM参数需argLine使用@{argLine}或${argLine}绑定，否则-DargLine可能忽略；1.1写明。
+A0改pom仅Surefire，而proposal/handoff称pom保持不变，需明确允许测试配置修订。
+
+F-019（P3）离线/部分失败也造成陈旧记录
+Index All遇来源离线/权限不足，那部分旧文档缺字段、全库409。加5.4/M-06夹具，409帮助先检查可达性。
+
+F-020（P3）坏行仅日志使用户困惑
+来源仍在列表却被跳过后报outside。桌面刷新对跳坏行给一次提示或指向日志；HTTP不披露详情。
+
+F-021（P3）下拉匹配复用PathScope
+Windows手输e:\docs若按原字符串会Custom；应规范比较，DirectoryScopePanelTest加例。
+
+F-022（P3）Index All部分成功语义
+每来源各commit，第二个失败时已有提交但服务可能仍null；只要有效commit，无论整体成功都尝试恢复服务，保留失败提示。
+
+汇总
+阻断实施：无，F-001/F-002满足关闭条件。
+批准前建议修订：F-014/F-015/F-016，均在A5a。
+可延期并登记：F-017～F-022。
+仍需用户决定：无新增，五项不再重复；F-022可由Codex直接定。
+实施批准属于用户，绑定修订后的指纹；若design/tasks因三项P2改动，重新生成指纹并说明是否需要复核。
+

@@ -1,0 +1,115 @@
+schema_version: 1
+change: add-directory-scoped-search
+package_version: "0.4"
+updated_at: 2026-10-23
+timezone: Asia/Tokyo
+phase: APPROVED_FOR_IMPLEMENTATION
+implementation_authorized: true
+source_head_at_planning: 9a1c26ad1f3261c16548f55693b3380d5db67790
+review_baseline: review-baseline.sha256
+roles:
+  product_project_quality: Codex
+  plan_reviewer: Claude
+  implementer: Devin
+  host_acceptance_executor: Codex_with_user_assistance_when_needed
+  acceptance_authority: user
+gates:
+  original_plan_review:
+    package: "0.2"
+    status: changes_requested
+    evidence: reviews/claude-0.2.txt
+  plan_review:
+    reviewed_package: "0.4"
+    status: pass_targeted_plan_review
+    evidence_origin: user_message_in_current_chat
+    evidence_record: review.md
+    scope: targeted_not_full_reread
+    unreviewed_line_by_line:
+      - F-017
+      - F-020
+    codex_documentation_followups_verified: true
+    open_p0_p1: 0
+    manifest_sha256: 2e332e5545db0cf8514856ae19c47701a33b80d7536c43333764498f3efe17de
+    zip_sha256: 05e95ddad139f16dcd8ab153c30652f2fef4fc1705b64e10e66bbcd9c96d18b5
+    tests_build_gui_benchmarks_run: false
+  current_delta:
+    package: "0.4"
+    findings: F-014_to_F-022
+    status: targeted_review_pass_with_recorded_reservations
+    externally_reviewed: true
+    mandatory_full_rereview: false
+    response: review.md
+    review_scope: targeted_excluding_line_by_line_F-017_F-020
+  product_choices:
+    status: confirmed_for_plan_revision_only
+    evidence: decisions.md
+    count: 5
+  implementation_approval:
+    status: granted
+    approved_by: user
+    approved_package_hash: 2e332e5545db0cf8514856ae19c47701a33b80d7536c43333764498f3efe17de
+    evidence: approval.md
+    candidate_manifest_sha256: 2e332e5545db0cf8514856ae19c47701a33b80d7536c43333764498f3efe17de
+    candidate_zip_sha256: 05e95ddad139f16dcd8ab153c30652f2fef4fc1705b64e10e66bbcd9c96d18b5
+    scope_note: Includes A0 changes to existing pom Surefire/properties test configuration; dependency versions remain unchanged.
+    approved_at: 2026-10-23
+    approved_manifest_sha256: 2e332e5545db0cf8514856ae19c47701a33b80d7536c43333764498f3efe17de
+    approved_review_zip_sha256: 05e95ddad139f16dcd8ab153c30652f2fef4fc1705b64e10e66bbcd9c96d18b5
+    quote: 批准以 0.4 交给 Devin 实施，包含 A0 测试配置修改。
+    test_pom_configuration_authorized: true
+  implementation:
+    status: not_started
+    task_source: tasks.md
+  independent_implementation_review:
+    status: not_started
+    evidence: null
+  acceptance:
+    status: not_started
+    execution_owner: Codex
+    authority: user
+    evidence: null
+  delivery_authorization:
+    status: not_granted
+    target_branch: null
+    pull_request: null
+    evidence: null
+  delivery:
+    status: not_started
+    delivered_sha: null
+    evidence: null
+  previous_plan_review:
+    reviewed_package: "0.3"
+    status: pass_plan_sufficiency
+    evidence_origin: user_message_in_current_chat
+    evidence_summary: reviews/claude-0.3.txt
+    baseline: reviews/baseline-0.3.sha256
+    open_p0_p1: 0
+    closed_findings: F-001_to_F-013
+  devin_handoff:
+    status: ready_for_local_execution
+    current_batch: A0
+    task_ids:
+      - "1.1"
+      - "1.2"
+      - "1.3"
+      - "1.4"
+    prompt: devin-start.md
+    connection: User opened Devin Local; instructions reference the shared local workspace.
+    execution_mode: local
+    workspace: E:/idea_projects/doc-finder
+next_action:
+  owner: user
+  action: paste_local_A0_prompt_in_Devin_Local
+  input: devin-start.md
+  expected_output: Local evidence/A0.md and implementation diff for Codex verification
+progress_rules:
+  task_checkboxes: tasks.md为唯一实施完成度来源
+  verified_results: acceptance.md及evidence为依据
+  no_inferred_approval: true
+  no_automatic_external_dispatch: true
+baseline:
+  existing_tests: historical_43_passed_not_current_feature_evidence
+  new_feature_tests: not_run
+  capability_microbenchmark: not_run
+  gui_browser_native: not_verified
+  dirty_worktree: AGENTS.md已有修改，openspec此前未跟踪

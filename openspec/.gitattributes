@@ -1,0 +1,6 @@
+# Preserve reviewed document bytes and SHA-256 manifests on every platform.
+* -text whitespace=cr-at-eol
+# Keep reviewed EOF bytes intact while checking all other whitespace normally.
+changes/add-directory-scoped-search/README.md whitespace=cr-at-eol,-blank-at-eof
+changes/add-directory-scoped-search/planning-validation.md whitespace=cr-at-eol,-blank-at-eof
+changes/add-directory-scoped-search/reviews/claude-0.3.txt whitespace=cr-at-eol,-blank-at-eof
