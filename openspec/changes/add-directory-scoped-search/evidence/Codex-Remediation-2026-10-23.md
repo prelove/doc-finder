@@ -40,3 +40,13 @@
 
 - mvn -B -DargLine=-Xmx768m clean verify：退出 0，BUILD SUCCESS，144 项，0 失败/错误，2 跳过（256m 堆在本机出现 fork OOM，改为 768m；仍保留 fork 隔离）。日志：final-verify.log。
 - 未做：M-01～M-06 实机、原生目录选择器、性能 P-00/P-01 重跑、native/Java 8/POSIX；独立修复审查待安排。不据此宣称最终验收。
+
+## 修复报告与独立审查（提交 af6bd77）
+
+- 隔离探针（外部 argLine + 忽略 home）：TestEnvironmentIsolationTest+LegacyMigrationTest 8 项通过，0 跳过。日志 isolation-probe.log。
+- 报告失败场景复测：B07/B08/B09 通过；B11a/B11b 由 SearchHandlerTest 区域回归覆盖（未重跑德语区域浏览器场景）。
+- 独立只读审查（子代理，未能执行 git）：F01–F04、F06、F07 判定正确修复；无 P0/P1。
+- 残余（未在本轮修复，不属于 F01–F07）：
+  - P2：indexAllSources() 未像 rebuildAllSources 一样递增 searchSequence/取消在途搜索；doSearch 的 isIndexing/null 提前返回早于 token 递增。当前可达性低（Apply 按钮在索引期间未禁用是入口）。
+  - P3：stopIndexServicesForLockRecovery 直接置空 searchService 绕过 setSearchService；handleFullRebuildFailure 自身未递增 searchSequence（目前依赖调用方）；空词提交未收起历史下拉；Web 的 F03/F04/F07 无自动化 DOM 回归，仅浏览器手测证据。
+- 结论：缺陷修复完成，未做最终验收；M-01～M-06 等仍待实机。
