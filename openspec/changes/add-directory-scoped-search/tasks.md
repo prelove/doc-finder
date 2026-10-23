@@ -128,9 +128,9 @@
 **Owner:** Devin自动集成；Codex真实主机验收与证据复核，用户可辅助；**Depends:** A5a/A5b/A6。
 **Files:** DirectoryScopeEndToEndTest.java；acceptance/review/evidence。
 
-- [x] 9.1 真实indexer→service→HTTP测试正文/目录/来源变更/upsert、Index All迁移夹具（正常/陈旧/离线或拒绝访问/部分提交）、未就绪→恢复→重建不可用/恢复，运行自动GREEN；Codex执行M-01～06并记录环境与实际结果。→ `DirectoryScopeEndToEndTest` 8/8（真实 HttpServer+Indexer+Service+Handler）；**M-01～M-06 实机待 Codex**。
+- [x] 9.1（自动部分已完成；M-01～M-06 实机未完成，步骤见 evidence/M-Acceptance-Runbook.md，不据此宣称通过）真实indexer→service→HTTP测试正文/目录/来源变更/upsert、Index All迁移夹具（正常/陈旧/离线或拒绝访问/部分提交）、未就绪→恢复→重建不可用/恢复，运行自动GREEN；Codex执行M-01～06并记录环境与实际结果。→ `DirectoryScopeEndToEndTest` 8/8（真实 HttpServer+Indexer+Service+Handler）；**M-01～M-06 实机待 Codex**。
 - [x] 9.2 执行P-01、mvn -B clean verify、本次diff空白、OpenSpec严格校验；实际目录不变、Java8编译、lint/static人工审查和平台skip记录；无GUI环境则状态WAITING_FOR_HOST_ACCEPTANCE，不降格验收。→ P-01 OK（scoped p95 15.5ms<unscoped 43.2ms）；clean verify SUCCESS（133 tests, target 1.8）；strict validate 通过；diff 空白仅 AGENTS.md 既有 EOF；`.docfinder` 14662 不变；人工静态审查记录于 A7 evidence。
-- [x] 9.3 交实际SHA/diff/逐DS证据/风险，独立实现review阻断闭环，Codex形成用户验收候选；旧Claude方案复核不替代实现review。→ 交付物：HEAD `9a1c26ad` + 工作树 diff（git status 全量清单见 A7 evidence 与提交说明）、evidence/A0–A7、逐 DS 索引；**review 阻断闭环与验收候选形成待 Codex**。
+- [x] 9.3（交付物已交；独立实现 review 仅覆盖修复差异，完整功能 review 与验收候选待 Codex）交实际SHA/diff/逐DS证据/风险，独立实现review阻断闭环，Codex形成用户验收候选；旧Claude方案复核不替代实现review。→ 交付物：HEAD `9a1c26ad` + 工作树 diff（git status 全量清单见 A7 evidence 与提交说明）、evidence/A0–A7、逐 DS 索引；**review 阻断闭环与验收候选形成待 Codex**。
 
 **Verify:** `mvn -B "-Dtest=DirectoryScopeEndToEndTest" test`后完整`mvn -B clean verify`；`openspec validate add-directory-scoped-search --strict`；M/P真实记录齐备。
 
