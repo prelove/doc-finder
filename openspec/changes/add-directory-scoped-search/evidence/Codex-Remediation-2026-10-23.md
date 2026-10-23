@@ -1,0 +1,42 @@
+# 测试报告缺陷修复记录
+
+用户已同意按 Codex-Verification-2026-10-23.md 的顺序执行。基线 HEAD 为 4da19eb，产品范围不变；本轮不提交、归档或推送。执行进度以 tasks.md 第 11 组为准。
+
+## 验证约束
+
+- 每项保留目标 RED/GREEN 命令、退出码及观察，环境错误不算目标 RED。
+- Maven 保持 fork、临时 work/home 隔离，仅通过进程参数限制堆；不运行真实业务索引的重建/迁移。
+- 其他流程已有的 delivery-status.yaml 和 A7.md 改动保持不动。
+- 完成修复不等于用户最终验收；原生选择器、跨平台、native、未执行的实机/性能项不得标为通过。
+
+## 本地原始日志
+
+`.omx/logs/dirscope-remediation-20261023/`；每项完成后在本文件记录结果。
+
+## F01 区域无关的 JSON 分数
+
+- RED：`mvn -B -DargLine=-Xmx256m -Dtest=SearchHandlerTest#shouldSerializeScoresIndependentlyOfFormatLocale test`，退出 1；1 项目标断言失败，实际为 `"score":1,2345`。
+- 修复：SearchHandler 使用 Locale.ROOT 格式化分数；新增测试分别覆盖全局/限定请求，finally 恢复 FORMAT 区域。
+- GREEN：`mvn -B -DargLine=-Xmx256m -Dtest=SearchHandlerTest test`，退出 0，12 项通过，0 失败/错误/跳过。
+- 原始日志：F01-red.log、F01-green.log。保持 Surefire fork；MAVEN_OPTS=-Xmx256m。
+
+## F02 完整重建失败不重发布服务
+
+- 修复：MainWindow.handleFullRebuildFailure() 失效在途打开、置空服务，状态提示不可用；Index All 部分失败恢复路径未改。
+- 回归：DirectoryScopeDesktopHarnessTest#shouldNotRepublishServiceAfterFullRebuildFailure（迟到候选被关闭、服务保持 null），通过。
+
+## F03/F04/F07 Web 请求失效、失败清屏、历史
+
+- 修复（index.html）：search() 先递增 token 再判空词，空词清空结果/预览/状态且不发请求；Clear 始终走 search()；业务错误与网络失败清旧结果、选择、预览；仅当前成功响应才 addToHistory。
+- 真实浏览器复测（BrowserFixture + Playwright，隔离 fixture，端口为当次值）：B07 成功后 422 → 0 行；B08 失败词 eport AND ( 不入历史；B09 空词后迟到响应 → 0 行；之后正常查询恢复 5 行。均通过。B10 逻辑未改动。
+
+## F05 桌面空词失效 / F06 目录文本即时同步
+
+- F05：doSearch 在空词分支前递增 searchSequence；回归 shouldInvalidateCompletedSearchWhenEmptyQueryIsSubmittedBeforeDone（后台已完成、done 在 EDT 排队）。
+- F06：DirectoryScopePanel 为路径文本加 DocumentListener 仅刷新来源/Custom/All 显示，不提交、不查盘；回归 shouldSyncComboDisplayWhileTypingWithoutCommitting。
+- 两项均已临时回退修复确认目标 RED，随后恢复并 GREEN。
+
+## 11.8 最终重验
+
+- mvn -B -DargLine=-Xmx768m clean verify：退出 0，BUILD SUCCESS，144 项，0 失败/错误，2 跳过（256m 堆在本机出现 fork OOM，改为 768m；仍保留 fork 隔离）。日志：final-verify.log。
+- 未做：M-01～M-06 实机、原生目录选择器、性能 P-00/P-01 重跑、native/Java 8/POSIX；独立修复审查待安排。不据此宣称最终验收。

@@ -12,6 +12,7 @@ import java.nio.file.Path;
 import java.nio.file.Paths;
 import java.util.LinkedHashMap;
 import java.util.List;
+import java.util.Locale;
 import java.util.Map;
 import java.util.function.Supplier;
 import java.util.logging.Level;
@@ -137,7 +138,7 @@ class SearchHandler implements HttpHandler {
             sb.append('{');
             sb.append("\"name\":\"").append(escapeJson(r.name)).append("\",");
             sb.append("\"path\":\"").append(escapeJson(r.path)).append("\",");
-            sb.append("\"score\":").append(String.format("%.4f", r.score)).append(',');
+            sb.append("\"score\":").append(String.format(Locale.ROOT, "%.4f", r.score)).append(',');
             sb.append("\"ctime\":").append(r.ctime).append(',');
             sb.append("\"atime\":").append(r.atime).append(',');
             sb.append("\"size\":").append(r.sizeBytes).append(',');

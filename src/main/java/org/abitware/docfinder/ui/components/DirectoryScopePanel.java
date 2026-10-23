@@ -9,6 +9,8 @@ import javax.swing.JFileChooser;
 import javax.swing.JLabel;
 import javax.swing.JPanel;
 import javax.swing.JTextField;
+import javax.swing.event.DocumentEvent;
+import javax.swing.event.DocumentListener;
 import java.awt.BorderLayout;
 import java.awt.FlowLayout;
 import java.io.File;
@@ -64,6 +66,11 @@ public class DirectoryScopePanel extends JPanel {
 
         pathField.setColumns(32);
         pathField.addActionListener(e -> commit(pathField.getText()));
+        pathField.getDocument().addDocumentListener(new DocumentListener() {
+            @Override public void insertUpdate(DocumentEvent e) { refreshComboDisplay(); }
+            @Override public void removeUpdate(DocumentEvent e) { refreshComboDisplay(); }
+            @Override public void changedUpdate(DocumentEvent e) { refreshComboDisplay(); }
+        });
 
         browseButton.addActionListener(e -> onBrowse());
         clearButton.addActionListener(e -> clearDirectory());

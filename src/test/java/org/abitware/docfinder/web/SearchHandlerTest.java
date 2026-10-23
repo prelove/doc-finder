@@ -21,6 +21,7 @@ import java.nio.charset.StandardCharsets;
 import java.util.Arrays;
 import java.util.Collections;
 import java.util.List;
+import java.util.Locale;
 
 import static org.junit.jupiter.api.Assertions.*;
 
@@ -228,5 +229,23 @@ class SearchHandlerTest {
         FakeExchange ex = get(svc, "q=%E6%8A%A5%E5%91%8A");
         assertEquals(200, ex.status);
         assertTrue(ex.bodyText().contains("报告文件.txt"), ex.bodyText());
+    }
+
+    @Test
+    void shouldSerializeScoresIndependentlyOfFormatLocale() throws Exception {
+        Locale previous = Locale.getDefault(Locale.Category.FORMAT);
+        try {
+            Locale.setDefault(Locale.Category.FORMAT, Locale.GERMANY);
+            StubService service = new StubService();
+            service.canned = Collections.singletonList(new SearchResult(
+                    "report.txt", "E:\\Root\\report.txt", 1.2345f, 0L, 0L, "content", 1L, false));
+            for (String rawQuery : Arrays.asList("q=report", "q=report&directory=E%3A%5CRoot")) {
+                FakeExchange exchange = get(service, rawQuery);
+                assertEquals(200, exchange.status);
+                assertTrue(exchange.bodyText().contains("\"score\":1.2345,"), exchange.bodyText());
+            }
+        } finally {
+            Locale.setDefault(Locale.Category.FORMAT, previous);
+        }
     }
 }

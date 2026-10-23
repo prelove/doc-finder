@@ -42,6 +42,7 @@ class DirectoryScopeDesktopHarnessTest {
         final AtomicBoolean closed = new AtomicBoolean();
         volatile CountDownLatch blockOn;
         volatile CountDownLatch entered;
+        volatile CountDownLatch finished;
         volatile RuntimeException throwOnSearch;
         volatile List<SearchResult> canned = Collections.emptyList();
 
@@ -61,6 +62,9 @@ class DirectoryScopeDesktopHarnessTest {
             }
             if (throwOnSearch != null) {
                 throw throwOnSearch;
+            }
+            if (finished != null) {
+                finished.countDown();
             }
             return canned;
         }
@@ -276,6 +280,57 @@ class DirectoryScopeDesktopHarnessTest {
         assertTrue(waitForStatus(partial, 10_000),
                 "failure status must survive the publish — no bare 'Ready'");
         assertSame(svc, win.getCurrentSearchService());
+    }
+
+    @Test
+    void shouldInvalidateCompletedSearchWhenEmptyQueryIsSubmittedBeforeDone() throws Exception {
+        FakeService fake = new FakeService();
+        fake.finished = new CountDownLatch(1);
+        fake.canned = Collections.singletonList(
+                new SearchResult("late.txt", "p/late.txt", 1f, 0L, 0L, "name", 1L, false));
+        win = new HarnessWindow(fake);
+
+        // Worker finishes in the background while this EDT task still runs,
+        // so its done() is queued behind us; the empty submit must invalidate it.
+        onEdt(() -> {
+            try {
+                win.getSearchField().setText("alpha");
+                invokeDoSearch(win);
+                assertTrue(fake.finished.await(10, TimeUnit.SECONDS));
+                win.getSearchField().setText("");
+                invokeDoSearch(win);
+            } catch (Exception e) {
+                throw new RuntimeException(e);
+            }
+        });
+        Thread.sleep(500);
+        onEdt(() -> { });
+
+        assertEquals(0, win.getResultTable().getRowCount(), "late result must not repopulate the table");
+        assertEquals("Enter a query to search.", win.getStatusLabel().getText());
+    }
+
+    @Test
+    void shouldNotRepublishServiceAfterFullRebuildFailure() throws Exception {
+        win = new HarnessWindow(null);
+        FakeService old = new FakeService();
+        FakeService pending = new FakeService();
+        CountDownLatch gate = new CountDownLatch(1);
+        onEdt(() -> win.setSearchService(old));
+        win.gate = gate;
+        win.firstService = pending;
+        win.reopenSearchServiceAsync(java.nio.file.Paths.get("idx"), new IndexSettings());
+        Thread.sleep(300);
+
+        onEdt(() -> win.handleFullRebuildFailure());
+        gate.countDown();
+
+        long deadline = System.currentTimeMillis() + 10_000;
+        while (System.currentTimeMillis() < deadline && !pending.closed.get()) {
+            Thread.sleep(50);
+        }
+        assertTrue(pending.closed.get(), "late candidate must be closed, not published");
+        assertNull(win.getCurrentSearchService(), "service must stay unavailable after failed rebuild");
     }
 
     @Test

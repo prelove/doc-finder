@@ -999,13 +999,15 @@
 
   function search() {
     var q = queryInput.value.trim();
-    if (!q) return;
+    var token = ++searchToken;
+    if (!q) {
+      clearCurrentResults();
+      statusBar.textContent = '';
+      return;
+    }
 
-    // Add to search history
-    addToHistory(q);
     historyDropdown.style.display = 'none';
 
-    var token = ++searchToken;
     var scope = scopeSelect.value;
     var mode  = modeSelect.value;
     var ext   = extInput.value.trim();
@@ -1027,7 +1029,12 @@
       .then(function(data) {
         if (token !== searchToken) return;
         var elapsed = Date.now() - t0;
-        if (data.error) { statusBar.textContent = 'Error: ' + data.error; return; }
+        if (data.error) {
+          clearCurrentResults();
+          statusBar.textContent = 'Error: ' + data.error;
+          return;
+        }
+        addToHistory(q);
         currentResults = data.results || [];
         selectedIndex = -1;
         renderResults();
@@ -1036,8 +1043,16 @@
       })
       .catch(function(e) {
         if (token !== searchToken) return;
+        clearCurrentResults();
         statusBar.textContent = 'Request failed: ' + e.message;
       });
+  }
+
+  function clearCurrentResults() {
+    currentResults = [];
+    selectedIndex = -1;
+    destroyPreview();
+    renderResults();
   }
 
   function renderResults() {
@@ -1305,7 +1320,7 @@
   dirInput.addEventListener('keydown', function(e) { if (e.key === 'Enter') search(); });
   clearDirBtn.addEventListener('click', function() {
     dirInput.value = '';
-    if (queryInput.value.trim()) search(); // back to all sources, keeping query/filters
+    search(); // empty query invalidates in-flight requests and clears; otherwise back to all sources, keeping query/filters
   });
   document.addEventListener('keydown', function(e) {
     if (shareModal.classList.contains('active')) return;

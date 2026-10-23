@@ -102,6 +102,21 @@ class DirectoryScopePanelTest {
     }
 
     @Test
+    void shouldSyncComboDisplayWhileTypingWithoutCommitting() {
+        AtomicInteger calls = new AtomicInteger();
+        DirectoryScopePanel p = newPanel(calls);
+        p.setSourceDirectories(Collections.singletonList("E:\\Docs"));
+        p.getPathField().setText("E:\\Somewhere");
+        assertEquals("Custom", selected(p));
+        p.getPathField().setText("E:\\Docs");
+        assertEquals("E:\\Docs", selected(p));
+        p.getPathField().setText("");
+        assertEquals("All sources", selected(p));
+        assertEquals(0, calls.get(), "typing must not commit");
+        assertEquals("", p.getDirectoryPath());
+    }
+
+    @Test
     void shouldCommitOnceOnEnter() {
         AtomicInteger calls = new AtomicInteger();
         DirectoryScopePanel p = newPanel(calls);

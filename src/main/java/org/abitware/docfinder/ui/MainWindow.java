@@ -1678,10 +1678,7 @@ public class MainWindow extends JFrame implements MenuBarPanel.MenuListener {
 					reopenSearchServiceAsync(indexDir, svc_s);
 				} catch (Exception ex) {
 					log.warn("Full rebuild failed: {}", String.valueOf(ex.getCause() != null ? ex.getCause() : ex));
-					String failed = "Rebuild failed. Search uses available committed data. See the application log.";
-					statusLabel.setText(failed);
-					reopenSearchServiceAsync(indexDir,
-							new org.abitware.docfinder.index.ConfigManager().loadIndexSettings(), failed);
+					handleFullRebuildFailure();
 				} finally {
 					// Re-enable UI and clear indexing flag
 					isIndexing = false;
@@ -1691,6 +1688,17 @@ public class MainWindow extends JFrame implements MenuBarPanel.MenuListener {
 				}
 			}
 		}.execute();
+	}
+
+	/**
+	 * A failed full rebuild leaves the index unusable (old data was reset), so
+	 * the service is not republished: searches keep reporting INDEX_UNAVAILABLE
+	 * until a later successful rebuild/Index All reopens it.
+	 */
+	void handleFullRebuildFailure() {
+		openServiceSequence++;
+		setSearchService(null);
+		statusLabel.setText("Rebuild failed. Search is unavailable until the index is rebuilt. See the application log.");
 	}
 
 	private boolean hasWriteLock(java.nio.file.Path indexDir) {
@@ -1908,6 +1916,8 @@ public class MainWindow extends JFrame implements MenuBarPanel.MenuListener {
 
 
 
+		long token = ++searchSequence;
+
 		if (q.isEmpty()) {
 
 			model.setRowCount(0);
@@ -1923,8 +1933,6 @@ public class MainWindow extends JFrame implements MenuBarPanel.MenuListener {
 		}
 
 
-
-		long token = ++searchSequence;
 
 		SearchWorker worker = new SearchWorker(token, q, filters, getSelectedScope(), getSelectedMatchMode(), directory);
 
