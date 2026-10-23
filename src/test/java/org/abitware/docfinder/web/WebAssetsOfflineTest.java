@@ -60,6 +60,13 @@ class WebAssetsOfflineTest {
         assertTrue(html.contains("parentDirectory"), "must consume server-provided parentDirectory");
         assertFalse(html.contains("/api/sources"), "no source-list API may be added");
         assertFalse(html.contains("/api/browse"), "no server browse API may be added");
+        int fn = html.indexOf("function search()");
+        String body = html.substring(fn, html.indexOf("function clearCurrentResults()"));
+        assertTrue(body.indexOf("++searchToken") < body.indexOf("if (!q)"),
+                "token must be invalidated before the empty-query return");
+        assertTrue(body.indexOf("data.error") < body.indexOf("addToHistory(q)"),
+                "history must only be written after a successful response");
+        assertEquals(1, body.split("addToHistory\\(", -1).length - 1, "single history write");
     }
 
     private String readResource(String path) throws IOException {

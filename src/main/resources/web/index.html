@@ -1000,13 +1000,12 @@
   function search() {
     var q = queryInput.value.trim();
     var token = ++searchToken;
+    historyDropdown.style.display = 'none';
     if (!q) {
       clearCurrentResults();
       statusBar.textContent = '';
       return;
     }
-
-    historyDropdown.style.display = 'none';
 
     var scope = scopeSelect.value;
     var mode  = modeSelect.value;

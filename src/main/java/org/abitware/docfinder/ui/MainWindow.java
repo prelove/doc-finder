@@ -844,6 +844,11 @@ public class MainWindow extends JFrame implements MenuBarPanel.MenuListener {
 		java.nio.file.Path indexDir = sm.getIndexDir();
 		isIndexing = true;
 		setIndexingUiEnabled(false);
+		searchSequence++;
+		if (activeSearchWorker != null) {
+			activeSearchWorker.cancel(true);
+			activeSearchWorker = null;
+		}
 
 		new javax.swing.SwingWorker<Integer, Void>() {
 			@Override
@@ -1882,6 +1887,7 @@ public class MainWindow extends JFrame implements MenuBarPanel.MenuListener {
 
 	private void doSearch() {
 		log.debug("doSearch() called.");
+		long token = ++searchSequence;
 		if (isIndexing) {
 			statusLabel.setText("Indexing in progress, searching is disabled.");
 			return;
@@ -1915,8 +1921,6 @@ public class MainWindow extends JFrame implements MenuBarPanel.MenuListener {
 		}
 
 
-
-		long token = ++searchSequence;
 
 		if (q.isEmpty()) {
 

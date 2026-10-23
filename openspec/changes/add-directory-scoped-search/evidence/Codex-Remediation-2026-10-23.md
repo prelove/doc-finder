@@ -50,3 +50,10 @@
   - P2：indexAllSources() 未像 rebuildAllSources 一样递增 searchSequence/取消在途搜索；doSearch 的 isIndexing/null 提前返回早于 token 递增。当前可达性低（Apply 按钮在索引期间未禁用是入口）。
   - P3：stopIndexServicesForLockRecovery 直接置空 searchService 绕过 setSearchService；handleFullRebuildFailure 自身未递增 searchSequence（目前依赖调用方）；空词提交未收起历史下拉；Web 的 F03/F04/F07 无自动化 DOM 回归，仅浏览器手测证据。
 - 结论：缺陷修复完成，未做最终验收；M-01～M-06 等仍待实机。
+
+## 审查残余项跟进（用户批准 option 1）
+
+- P2：indexAllSources 开始时递增 searchSequence 并取消在途搜索；doSearch 把 token 递增提前到 isIndexing/null 提前返回之前。回归 shouldInvalidateCompletedSearchWhenIndexingStartsBeforeDone（未单独做回退 RED，仅 GREEN）。
+- P3：空词提交收起历史下拉；WebAssetsOfflineTest 增加对 search() 的静态顺序断言（token 先于空词返回、历史仅在成功后写一次）。这是静态文本断言，不是 DOM 回归，浏览器级自动化仍无。
+- 未处理 P3：锁恢复路径绕过 setSearchService；handleFullRebuildFailure 自身不递增 searchSequence。
+- 重验：clean verify -Xmx768m 退出 0，145 项，0 失败，2 跳过。注意：本机在 512m/768m 下偶发 fork 启动/运行期 "insufficient memory"（环境内存压力，非用例失败），重跑通过。日志 final-verify2.log。

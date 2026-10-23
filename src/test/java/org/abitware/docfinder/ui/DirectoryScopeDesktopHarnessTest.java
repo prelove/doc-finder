@@ -311,6 +311,33 @@ class DirectoryScopeDesktopHarnessTest {
     }
 
     @Test
+    void shouldInvalidateCompletedSearchWhenIndexingStartsBeforeDone() throws Exception {
+        FakeService fake = new FakeService();
+        fake.finished = new CountDownLatch(1);
+        fake.canned = Collections.singletonList(
+                new SearchResult("late.txt", "p/late.txt", 1f, 0L, 0L, "name", 1L, false));
+        win = new HarnessWindow(fake);
+        java.lang.reflect.Field indexing = MainWindow.class.getDeclaredField("isIndexing");
+        indexing.setAccessible(true);
+
+        onEdt(() -> {
+            try {
+                win.getSearchField().setText("alpha");
+                invokeDoSearch(win);
+                assertTrue(fake.finished.await(10, TimeUnit.SECONDS));
+                indexing.setBoolean(win, true);
+                invokeDoSearch(win);
+            } catch (Exception e) {
+                throw new RuntimeException(e);
+            }
+        });
+        Thread.sleep(500);
+        onEdt(() -> { });
+
+        assertEquals(0, win.getResultTable().getRowCount(), "stale result must not publish while indexing");
+    }
+
+    @Test
     void shouldNotRepublishServiceAfterFullRebuildFailure() throws Exception {
         win = new HarnessWindow(null);
         FakeService old = new FakeService();
