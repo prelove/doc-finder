@@ -8,10 +8,14 @@ import java.io.IOException;
 import java.io.OutputStream;
 import java.net.URI;
 import java.nio.charset.StandardCharsets;
+import java.nio.file.Path;
+import java.nio.file.Paths;
 import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Map;
 import java.util.function.Supplier;
+import java.util.logging.Level;
+import java.util.logging.Logger;
 
 /**
  * 处理 GET /api/search 请求，返回 JSON 格式的搜索结果。
@@ -21,8 +25,14 @@ import java.util.function.Supplier;
  *   mode   – FUZZY | EXACT（默认 FUZZY）
  *   ext    – 扩展名过滤（可选，多个用逗号分隔，如 pdf,docx）
  *   limit  – 最大返回条数（默认 50，上限 200）
+ *   directory – 可选服务器目录范围（含全部子目录，须位于已配置来源内）
+ *
+ * 错误统一为 {"error": <固定文案>, "code": <SearchException.Code>}，
+ * HTTP 状态按 design D3 映射；不外泄原始异常消息/堆栈。
  */
 class SearchHandler implements HttpHandler {
+
+    private static final Logger log = Logger.getLogger(SearchHandler.class.getName());
 
     private final Supplier<SearchService> serviceSupplier;
 
@@ -46,7 +56,7 @@ class SearchHandler implements HttpHandler {
 
         SearchService svc = serviceSupplier.get();
         if (svc == null) {
-            sendJson(exchange, 503, "{\"error\":\"Search index is initializing, please retry in a moment\"}");
+            sendError(exchange, SearchException.Code.INDEX_UNAVAILABLE);
             return;
         }
 
@@ -72,16 +82,48 @@ class SearchHandler implements HttpHandler {
             }
         }
 
-        SearchRequest req = new SearchRequest(q, limit, filter, scope, mode);
+        String directory = params.get("directory");
+        if (directory != null && directory.trim().isEmpty()) {
+            directory = null;
+        }
+
+        SearchRequest req = new SearchRequest(q, limit, filter, scope, mode, directory);
         List<SearchResult> results;
         try {
             results = svc.search(req);
+        } catch (SearchException e) {
+            log.log(Level.WARNING, "Search failed (code=" + e.getCode() + "): " + e.getMessage(), e);
+            sendError(exchange, e.getCode());
+            return;
         } catch (Exception e) {
-            sendJson(exchange, 500, "{\"error\":\"Search failed: " + escapeJson(e.getMessage()) + "\"}");
+            log.log(Level.WARNING, "Search failed unexpectedly", e);
+            sendError(exchange, SearchException.Code.SEARCH_FAILED);
             return;
         }
 
         sendJson(exchange, 200, toJson(results));
+    }
+
+    private static int statusFor(SearchException.Code code) {
+        if (code == null) return 500;
+        switch (code) {
+            case INVALID_DIRECTORY:         return 400;
+            case DIRECTORY_NOT_INDEXED:     return 422;
+            case SOURCE_CONFIG_UNAVAILABLE: return 503;
+            case INDEX_REBUILD_REQUIRED:    return 409;
+            case SCOPE_CHECK_FAILED:        return 503;
+            case SEARCH_FAILED:             return 500;
+            case INVALID_QUERY:             return 400;
+            case INDEX_UNAVAILABLE:         return 503;
+            default:                        return 500;
+        }
+    }
+
+    private static void sendError(HttpExchange exchange, SearchException.Code code) throws IOException {
+        SearchException.Code effective = code == null ? SearchException.Code.SEARCH_FAILED : code;
+        String body = "{\"error\":\"" + escapeJson(SearchErrorMessages.forCode(effective))
+                + "\",\"code\":\"" + effective.name() + "\"}";
+        sendJson(exchange, statusFor(effective), body);
     }
 
     // --- JSON 序列化（不依赖外部库）---
@@ -100,20 +142,52 @@ class SearchHandler implements HttpHandler {
             sb.append("\"atime\":").append(r.atime).append(',');
             sb.append("\"size\":").append(r.sizeBytes).append(',');
             sb.append("\"match\":\"").append(escapeJson(r.match)).append("\",");
-            sb.append("\"directory\":").append(r.directory);
+            sb.append("\"directory\":").append(r.directory).append(',');
+            String parent = parentOf(r.path);
+            if (parent == null) {
+                sb.append("\"parentDirectory\":null");
+            } else {
+                sb.append("\"parentDirectory\":\"").append(escapeJson(parent)).append("\"");
+            }
             sb.append('}');
         }
         sb.append("]}");
         return sb.toString();
     }
 
+    /** Parent directory of a result path on the server host; null if none/unparseable. No disk I/O. */
+    static String parentOf(String path) {
+        if (path == null) return null;
+        try {
+            Path parent = Paths.get(path).getParent();
+            return parent == null ? null : parent.toString();
+        } catch (Exception e) {
+            return null;
+        }
+    }
+
     static String escapeJson(String s) {
         if (s == null) return "";
-        return s.replace("\\", "\\\\")
-                .replace("\"", "\\\"")
-                .replace("\n", "\\n")
-                .replace("\r", "\\r")
-                .replace("\t", "\\t");
+        StringBuilder sb = new StringBuilder(s.length() + 16);
+        for (int i = 0; i < s.length(); i++) {
+            char c = s.charAt(i);
+            switch (c) {
+                case '\\': sb.append("\\\\"); break;
+                case '"':  sb.append("\\\""); break;
+                case '\n': sb.append("\\n"); break;
+                case '\r': sb.append("\\r"); break;
+                case '\t': sb.append("\\t"); break;
+                case '\b': sb.append("\\b"); break;
+                case '\f': sb.append("\\f"); break;
+                default:
+                    if (c < 0x20) {
+                        sb.append(String.format("\\u%04x", (int) c));
+                    } else {
+                        sb.append(c);
+                    }
+            }
+        }
+        return sb.toString();
     }
 
     // --- HTTP helpers ---

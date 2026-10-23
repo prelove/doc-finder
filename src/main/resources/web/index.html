@@ -234,6 +234,8 @@
     <option value="EXACT">Exact</option>
   </select>
   <input type="text" id="extInput" placeholder="ext: pdf,docx" title="Filter by extension"/>
+  <input type="text" id="dirInput" placeholder="Server directory (optional)" title="Limit search to a directory on the server and all its subfolders. It must be inside a configured index source; other directories are rejected." style="flex:0 0 240px;min-width:180px;"/>
+  <button id="clearDirBtn" type="button" title="Clear the directory scope and search all sources" style="background:var(--btn-sec);">Clear</button>
   <select id="limitSelect" title="Result limit">
     <option value="50">50 results</option>
     <option value="100">100 results</option>
@@ -242,7 +244,7 @@
   <button id="searchBtn">Search</button>
 </div>
 
-<div class="status-bar" id="statusBar">Enter a query to search indexed files.</div>
+<div class="status-bar" id="statusBar">Enter a query to search indexed files. Directories outside configured sources cannot be searched — add a source in the desktop app first.</div>
 
 <!-- Main area: results + resizer + preview -->
 <div class="main" id="mainArea">
@@ -520,6 +522,8 @@
   var scopeSelect       = document.getElementById('scopeSelect');
   var modeSelect        = document.getElementById('modeSelect');
   var extInput          = document.getElementById('extInput');
+  var dirInput          = document.getElementById('dirInput');
+  var clearDirBtn       = document.getElementById('clearDirBtn');
   var limitSelect       = document.getElementById('limitSelect');
   var searchBtn         = document.getElementById('searchBtn');
   var statusBar         = document.getElementById('statusBar');
@@ -1005,6 +1009,7 @@
     var scope = scopeSelect.value;
     var mode  = modeSelect.value;
     var ext   = extInput.value.trim();
+    var dir   = dirInput.value.trim();
     var limit = limitSelect.value;
 
     statusBar.innerHTML = '<span class="spinner"></span>Searching…';
@@ -1013,7 +1018,8 @@
     var url = '/api/search?q=' + encodeURIComponent(q)
             + '&scope=' + scope + '&mode=' + mode
             + '&limit=' + limit
-            + (ext ? '&ext=' + encodeURIComponent(ext) : '');
+            + (ext ? '&ext=' + encodeURIComponent(ext) : '')
+            + (dir ? '&directory=' + encodeURIComponent(dir) : '');
 
     var t0 = Date.now();
     fetch(url)
@@ -1025,7 +1031,8 @@
         currentResults = data.results || [];
         selectedIndex = -1;
         renderResults();
-        statusBar.textContent = currentResults.length + ' result(s) in ' + elapsed + ' ms';
+        var scopeNote = dir ? ' — scope: ' + dir + ' (includes all subfolders)' : ' — scope: all sources';
+        statusBar.textContent = currentResults.length + ' result(s) in ' + elapsed + ' ms' + scopeNote;
       })
       .catch(function(e) {
         if (token !== searchToken) return;
@@ -1054,9 +1061,16 @@
 
     currentResults.forEach(function(r, idx) {
       var tr = document.createElement('tr');
-      var actionsHtml = r.directory ? '' :
+      var scopeBtn = r.directory
+        ? '<button class="btn-icon dirscope-btn" title="Search in this folder" data-dir="' + esc(r.path) + '" data-idx="' + idx + '">📂</button>'
+        : '<button class="btn-icon dirscope-btn" title="Search in containing folder" data-dir="' + esc(r.parentDirectory || '') + '" data-idx="' + idx + '"' + (r.parentDirectory ? '' : ' disabled') + '>' +
+          '<span style="font-size:0.72rem">📁↰</span></button>';
+      var actionsHtml =
+        scopeBtn +
+        '<button class="btn-icon copypath-btn" title="Copy path" data-idx="' + idx + '">📋</button>' +
+        (r.directory ? '' :
         '<button class="btn-icon share-btn" title="Share file" data-idx="' + idx + '">🔗</button>' +
-        '<button class="btn-icon preview-btn" title="Open in new tab" data-idx="' + idx + '">↗</button>';
+        '<button class="btn-icon preview-btn" title="Open in new tab" data-idx="' + idx + '">↗</button>');
       tr.innerHTML =
         '<td class="name">' + (r.directory ? '<span class="dir-icon"></span>' : '<span class="file-icon"></span>') + esc(r.name) + '</td>' +
         '<td class="path" title="' + esc(r.path) + '">' + esc(r.path) + '</td>' +
@@ -1069,6 +1083,21 @@
         selectRow(idx);
       });
       resultsBody.appendChild(tr);
+    });
+    resultsBody.querySelectorAll('.dirscope-btn').forEach(function(btn) {
+      btn.addEventListener('click', function(e) {
+        e.stopPropagation();
+        var dir = btn.dataset.dir;
+        if (!dir) return;
+        dirInput.value = dir;
+        search(); // keeps query/filters; commits exactly once
+      });
+    });
+    resultsBody.querySelectorAll('.copypath-btn').forEach(function(btn) {
+      btn.addEventListener('click', function(e) {
+        e.stopPropagation();
+        copyText(currentResults[+btn.dataset.idx].path, btn);
+      });
     });
     resultsBody.querySelectorAll('.share-btn').forEach(function(btn) {
       btn.addEventListener('click', function(e) {
@@ -1158,6 +1187,42 @@
     }
   }
 
+  // Honest clipboard copy: on failure show the text for manual selection.
+  function copyText(text, btn) {
+    function fail() {
+      window.prompt('Copy the path manually:', text);
+    }
+    function done() {
+      if (!btn) return;
+      var old = btn.textContent;
+      btn.textContent = '✓';
+      setTimeout(function() { btn.textContent = old; }, 1200);
+    }
+    if (navigator.clipboard && navigator.clipboard.writeText) {
+      navigator.clipboard.writeText(text).then(done, function() {
+        try {
+          var ta = document.createElement('textarea');
+          ta.value = text;
+          document.body.appendChild(ta);
+          ta.select();
+          var ok = document.execCommand('copy');
+          document.body.removeChild(ta);
+          if (ok) done(); else fail();
+        } catch(e) { fail(); }
+      });
+    } else {
+      try {
+        var ta = document.createElement('textarea');
+        ta.value = text;
+        document.body.appendChild(ta);
+        ta.select();
+        var ok = document.execCommand('copy');
+        document.body.removeChild(ta);
+        if (ok) done(); else fail();
+      } catch(e) { fail(); }
+    }
+  }
+
   function esc(s) {
     return escapeHtml(s);
   }
@@ -1237,6 +1302,11 @@
   // ── Keyboard navigation ──────────────────────────────────────────────────────
   searchBtn.addEventListener('click', search);
   queryInput.addEventListener('keydown', function(e) { if (e.key === 'Enter') search(); });
+  dirInput.addEventListener('keydown', function(e) { if (e.key === 'Enter') search(); });
+  clearDirBtn.addEventListener('click', function() {
+    dirInput.value = '';
+    if (queryInput.value.trim()) search(); // back to all sources, keeping query/filters
+  });
   document.addEventListener('keydown', function(e) {
     if (shareModal.classList.contains('active')) return;
     if (currentResults.length === 0) return;

@@ -29,8 +29,12 @@ _Local file name & content search. Fast, read‑only, and multilingual._
   - 同时会自动添加 `ext:` 过滤以加速 `*.ext` 的检索。
 - 允许 **前导通配**（`*.xlsx`），也可直接输入 `*.xlsx`（无字段时默认当作文件名通配）。
 - 多语言支持：英文（Standard）、中文（SmartChinese）、日文（Kuromoji）。
+- **目录范围（Search in）**：搜索框下方可选择一个已配置来源作为检索范围，或直接输入该来源内的绝对路径后按 Enter；`Clear` / `All sources` 恢复全局搜索。范围包含所选目录的全部子目录，仅检索已索引内容。范围之外的目录会提示先添加来源，而不会自动扫描或建库。
+- 非法查询语法（例如不匹配的括号 `report (final`）现在会明确提示语法错误，而不是静默返回空结果，且不会记入查询历史。含 `+`、`:` 等保留字符的输入行为以实际分词器为准；需要字面匹配时可使用双引号短语（`"a+b"`）或 `name:` 字段语法。
+- 旧索引在限定目录搜索时会提示先执行 **Index All Sources** 补齐内部字段；存在残留旧记录时才需备份后手动 **Rebuild Index (Full)**。
 
 > 精确匹配通过不分词字段 **`name_raw`** 实现；若升级后首次使用 `name:` 搜不到，请执行一次 **Rebuild Index (Full)** 以重建索引。
+> 索引新增内部字段 `path_scope`（不存储，仅用于即将推出的目录范围检索）。旧索引在限定目录搜索时会提示先执行 **Index All Sources**；存在残留旧记录时才需要备份后手动 **Rebuild Index (Full)**。
 
 ---
 
@@ -49,6 +53,7 @@ _Local file name & content search. Fast, read‑only, and multilingual._
 - 预览开关：状态栏右侧的 👁 按钮可快速显示/隐藏。
 - 编码提示：预览会自动检测常见编码（UTF-8/UTF-16、Shift-JIS、GBK、Big5、EUC-KR 等），多语言混排文件也尽量兼容。
 - 右键菜单：**Open**, **Open With…**（记住上次选择）, **Reveal in Explorer/Finder**, **Show Properties**（高级检索详情）, **Copy Path**, **Copy Name** 等。
+- 范围快捷操作：**Search in this folder**（仅目录结果；把范围设为该目录并保留当前关键词/过滤）、**Search in containing folder**（仅文件结果；范围设为该文件所在目录）。两者均按当前排序映射到正确结果行，且索引/搜索进行中不可用；再次对已生效范围执行不会产生重复提交。
 - 快捷键：
   - **Enter**：Open
   - **Ctrl+C**：Copy Path
@@ -109,6 +114,9 @@ DocFinder 提供了内置的 HTTP 服务器，允许通过浏览器访问搜索�
 
 Web 界面功能与桌面应用基本一致，支持搜索、过滤、预览等核心功能。
 
+- **目录范围（Server directory）**：搜索栏中的目录输入框可填入服务器上的绝对路径（须位于已配置来源内），按 Enter 或 Search 提交；`Clear` 恢复全部来源。范围包含所选目录的全部子目录，当前范围会显示在状态栏。每条结果提供快捷操作：目录行 `📂`（在此目录内搜索）、文件行 `📁↰`（在所在目录内搜索，无父目录时禁用）、`📋`（复制路径，剪贴板不可用时弹出手动复制框，不虚报成功）。
+- **错误响应**：搜索错误返回 `{"error": <固定英文文案>, "code": <错误码>}`，例如 `INVALID_DIRECTORY`(400)、`DIRECTORY_NOT_INDEXED`(422)、`INDEX_REBUILD_REQUIRED`(409)、`INDEX_UNAVAILABLE`(503) 等；界面不会显示内部异常细节。
+
 ### 9.2) Document Preview Engines
 
 DocFinder 支持两种文档预览引擎，可在 Web 界面中切换：
@@ -152,7 +160,7 @@ DocFinder 支持两种文档预览引擎，可在 Web 界面中切换：
 
 Web Server 提供以下 API 端点：
 
-- `GET /api/search` - 搜索查询
+- `GET /api/search` - 搜索查询（参数：`q`, `scope`, `mode`, `ext`, `limit`, `directory`；结果含 `parentDirectory` 字段）
 - `GET /api/file` - 获取文件内容
 - `GET /api/viewer` - 获取当前预览引擎设置
 - `POST /api/viewer` - 设置预览引擎（`{"viewer":"kkfileview"}` 或 `{"viewer":"jitviewer"}`）
