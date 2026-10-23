@@ -52,4 +52,20 @@ class SearchRequestTest {
         SearchRequest req = new SearchRequest("q", 0, null);
         assertEquals(1, req.limit);
     }
+
+    @Test
+    void shouldStoreTrimmedDirectoryPath() {
+        SearchRequest req = new SearchRequest("q", 10, null, SearchScope.ALL,
+                MatchMode.FUZZY, "  E:\\Docs\\A  ");
+        assertEquals("E:\\Docs\\A", req.directoryPath);
+    }
+
+    @Test
+    void shouldDefaultDirectoryPathToNull() {
+        SearchRequest legacy5 = new SearchRequest("q", 10, null,
+                SearchScope.ALL, MatchMode.FUZZY);
+        assertNull(legacy5.directoryPath);
+        SearchRequest legacy3 = new SearchRequest("q", 10, null);
+        assertNull(legacy3.directoryPath);
+    }
 }

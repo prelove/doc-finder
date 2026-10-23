@@ -3,6 +3,7 @@ package org.abitware.docfinder.index.content;
 import java.nio.file.Path;
 import java.nio.file.Paths;
 import org.abitware.docfinder.index.IndexSettings;
+import org.abitware.docfinder.util.PathScope;
 import org.abitware.docfinder.util.Utils;
 import org.apache.lucene.document.Document;
 import org.apache.lucene.document.LongPoint;
@@ -24,6 +25,7 @@ public class DocumentBuilder {
     
     /** Field names used in the index */
     private static final String FIELD_PATH = "path";
+    private static final String FIELD_PATH_SCOPE = "path_scope";
     private static final String FIELD_NAME = "name";
     private static final String FIELD_NAME_RAW = "name_raw";
     private static final String FIELD_EXT = "ext";
@@ -69,7 +71,7 @@ public class DocumentBuilder {
         Document doc = new Document();
         
         // Add basic fields
-        addBasicFields(doc, pathStr, name, ext, KIND_FILE);
+        addBasicFields(doc, filePath, pathStr, name, ext, KIND_FILE);
         
         // Add timestamp fields
         addTimestampFields(doc, attrs);
@@ -100,7 +102,7 @@ public class DocumentBuilder {
         Document doc = new Document();
         
         // Add basic fields
-        addBasicFields(doc, pathStr, name, "", KIND_FOLDER);
+        addBasicFields(doc, dirPath, pathStr, name, "", KIND_FOLDER);
         
         // Add timestamp fields
         addTimestampFields(doc, attrs);
@@ -120,10 +122,14 @@ public class DocumentBuilder {
      * @param ext the file extension
      * @param kind the kind (file or folder)
      */
-    private void addBasicFields(Document doc, String pathStr, String name, String ext, String kind) {
+    private void addBasicFields(Document doc, Path rawPath, String pathStr, String name, String ext, String kind) {
         // Path (primary key)
         doc.add(new StringField(FIELD_PATH, pathStr, org.apache.lucene.document.Field.Store.YES));
-        
+
+        // Normalized scope path for directory-restricted search (not stored)
+        doc.add(new StringField(FIELD_PATH_SCOPE, PathScope.normalizeIndexedPath(rawPath),
+                org.apache.lucene.document.Field.Store.NO));
+
         // Name (analyzed for searching)
         doc.add(new TextField(FIELD_NAME, name, org.apache.lucene.document.Field.Store.YES));
         

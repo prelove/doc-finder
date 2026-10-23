@@ -2,6 +2,9 @@ package org.abitware.docfinder.index;
 
 import org.abitware.docfinder.util.Utils;
 import org.abitware.docfinder.util.AppPaths;
+import org.abitware.docfinder.util.PathScope;
+import org.slf4j.Logger;
+import org.slf4j.LoggerFactory;
 
 import java.io.IOException;
 import java.nio.charset.StandardCharsets;
@@ -11,9 +14,21 @@ import java.util.stream.Collectors;
 
 /** 管理“索引源”列表（带本地/网络标记）。文件格式：每行 path|0/1 （1=network） */
 public class SourceManager {
-    private final Path baseDir = AppPaths.getBaseDir();
-    private final Path sourcesFile = baseDir.resolve("sources.txt"); // 向后兼容：无 | 时按旧格式读取
-    private final Path indexDir = new ConfigManager().getIndexDir();
+    private static final Logger log = LoggerFactory.getLogger(SourceManager.class);
+    private final Path baseDir;
+    private final Path sourcesFile;
+    private final Path indexDir;
+
+    public SourceManager() {
+        this(AppPaths.getBaseDir());
+    }
+
+    /** Visible for scoped-search/tests: baseDir decides where sources.txt lives. */
+    public SourceManager(Path baseDir) {
+        this.baseDir = baseDir;
+        this.sourcesFile = baseDir.resolve("sources.txt"); // 向后兼容：无 | 时按旧格式读取
+        this.indexDir = new ConfigManager().getIndexDir();
+    }
 
     /** 数据模型：一个源目录 + 是否网络 */
     public static class SourceEntry {
@@ -123,5 +138,93 @@ public class SourceManager {
         return loadEntries().stream()
                 .map(e -> Paths.get(e.path))
                 .collect(Collectors.toList());
+    }
+
+    /**
+     * Strict search-time view of configured sources: reads only, never writes,
+     * never probes the network. Bad lines are logged with line number and
+     * skipped; I/O failure or a file whose data lines are all invalid raises
+     * IOException instead of being swallowed into an empty configuration.
+     */
+    public List<Path> loadSearchRoots() throws IOException {
+        return readSearchRoots(sourcesFile);
+    }
+
+    static List<Path> readSearchRoots(Path file) throws IOException {
+        return readSearchRootsSnapshot(file).roots;
+    }
+
+    /**
+     * Same strict parse as {@link #loadSearchRoots()} but also exposes the
+     * skipped line numbers so the desktop can show a one-time warning.
+     * Web/HTTP never receives skippedLineNumbers.
+     */
+    public SearchRootsSnapshot loadSearchRootsSnapshot() throws IOException {
+        return readSearchRootsSnapshot(sourcesFile);
+    }
+
+    /** Immutable result of a strict source-file parse. */
+    public static final class SearchRootsSnapshot {
+        public final List<Path> roots;
+        public final List<Integer> skippedLineNumbers;
+
+        SearchRootsSnapshot(List<Path> roots, List<Integer> skippedLineNumbers) {
+            this.roots = roots;
+            this.skippedLineNumbers = skippedLineNumbers;
+        }
+    }
+
+    static SearchRootsSnapshot readSearchRootsSnapshot(Path file) throws IOException {
+        if (file == null || !Files.exists(file)) {
+            return new SearchRootsSnapshot(Collections.emptyList(), Collections.emptyList());
+        }
+        List<String> lines = Files.readAllLines(file, StandardCharsets.UTF_8);
+        List<Path> out = new ArrayList<>();
+        List<Integer> skipped = new ArrayList<>();
+        int dataLines = 0;
+        for (int i = 0; i < lines.size(); i++) {
+            String s = lines.get(i).trim();
+            if (s.isEmpty() || s.startsWith("#")) {
+                continue;
+            }
+            dataLines++;
+            String[] sp = s.split("\\|", -1);
+            String reason = null;
+            if (sp.length > 2) {
+                reason = "too many columns";
+            } else if (sp.length == 2 && !("0".equals(sp[1].trim()) || "1".equals(sp[1].trim()))) {
+                reason = "invalid network flag";
+            }
+            if (reason == null) {
+                String raw = sp[0].trim();
+                try {
+                    if (PathScope.normalizeDirectory(raw) == null) {
+                        reason = "empty path column";
+                    }
+                } catch (IllegalArgumentException e) {
+                    reason = "invalid absolute path: " + e.getMessage();
+                }
+                if (reason == null) {
+                    String canon = Utils.isWindows()
+                            ? Utils.canonicalizeWinPathString(raw) : raw;
+                    try {
+                        out.add(Paths.get(canon));
+                    } catch (InvalidPathException e) {
+                        reason = "invalid path syntax: " + e.getMessage();
+                    }
+                }
+            }
+            if (reason != null) {
+                skipped.add(i + 1);
+                log.warn("Skipping invalid source entry at {}:{}: {}", file, i + 1, reason);
+            }
+        }
+        if (dataLines > 0 && out.isEmpty()) {
+            throw new IOException("sources file " + file
+                    + " has " + dataLines + " data line(s) but none are valid");
+        }
+        return new SearchRootsSnapshot(
+                Collections.unmodifiableList(out),
+                Collections.unmodifiableList(skipped));
     }
 }

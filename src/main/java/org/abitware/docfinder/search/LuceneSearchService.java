@@ -22,6 +22,7 @@ import org.apache.lucene.document.StoredField;
 import org.apache.lucene.document.StringField;
 import org.apache.lucene.document.TextField;
 import org.apache.lucene.index.DirectoryReader;
+import org.apache.lucene.index.IndexReader;
 import org.apache.lucene.index.Term;
 import org.apache.lucene.queryparser.classic.MultiFieldQueryParser;
 import org.apache.lucene.queryparser.classic.ParseException;
@@ -44,12 +45,18 @@ import org.apache.lucene.store.Directory;
 import org.apache.lucene.store.NRTCachingDirectory;
 
 import org.abitware.docfinder.index.IndexSettings;
+import org.abitware.docfinder.index.SourceManager;
+import org.abitware.docfinder.util.PathScope;
+import org.slf4j.Logger;
+import org.slf4j.LoggerFactory;
 
 /** 仅按 name 字段搜索（下一步再扩展 content） */
 public class LuceneSearchService implements SearchService {
+    private static final Logger log = LoggerFactory.getLogger(LuceneSearchService.class);
     private static final String FIELD_NAME = "name";
     private static final String FIELD_NAME_RAW = "name_raw";
     private static final String FIELD_PATH = "path";
+    private static final String FIELD_PATH_SCOPE = "path_scope";
     private static final String FIELD_EXT = "ext";
     private static final String FIELD_KIND = "kind";
     private static final String FIELD_MTIME_DISPLAY = "mtime";
@@ -63,6 +70,19 @@ public class LuceneSearchService implements SearchService {
 
     private final Path indexDir;
     private final Analyzer queryAnalyzer;
+    private final SourceRootProvider sourceRootProvider;
+
+    /**
+     * Per-reader verdicts for the path_scope coverage gate, keyed by the top
+     * reader's ReaderCacheHelper key (deletions change the key, core key would
+     * not). Only SUPPORTED/REBUILD_REQUIRED are cached — never input errors,
+     * source validation, or I/O failures. Entries are removed by the reader's
+     * close listener and all cleared on service close.
+     */
+    private final Map<Object, Boolean> scopeSupportCache =
+            new java.util.concurrent.ConcurrentHashMap<>();
+    private final java.util.Set<Object> scopeListenerKeys =
+            java.util.Collections.synchronizedSet(new java.util.HashSet<>());
 
     // SearcherManager based on Directory (read-only) to avoid write.lock ownership in search service
     private volatile SearcherManager searcherManager;
@@ -72,8 +92,15 @@ public class LuceneSearchService implements SearchService {
         this(indexDir, new IndexSettings());
     }
 
-    public LuceneSearchService(Path indexDir, IndexSettings settings) throws IOException { // Constructor now throws IOException
+    public LuceneSearchService(Path indexDir, IndexSettings settings) throws IOException {
+        this(indexDir, settings, defaultProvider());
+    }
+
+    public LuceneSearchService(Path indexDir, IndexSettings settings,
+                               SourceRootProvider sourceRootProvider) throws IOException {
         this.indexDir = indexDir;
+        this.sourceRootProvider =
+                (sourceRootProvider == null) ? defaultProvider() : sourceRootProvider;
 
         Analyzer std = new StandardAnalyzer();
         Analyzer zh  = new SmartChineseAnalyzer();
@@ -98,22 +125,216 @@ public class LuceneSearchService implements SearchService {
         this.searcherManager = new SearcherManager(directory, new SearcherFactory());
     }
 
+    /**
+     * Exact coverage gate over all live docs of the searcher's reader (D4).
+     * Fast path: per leaf, numDocs()==0 skips; a non-null Terms whose
+     * getDocCount()==maxDoc() proves every doc in that leaf carries the field
+     * (deleted docs still counted in maxDoc → may force the fallback, never a
+     * wrong verdict). Inconclusive leaves degrade to an exact query locating
+     * one live doc without any path_scope term.
+     */
+    static void ensureDirectoryScopeSupported(IndexSearcher searcher) {
+        IndexReader reader = searcher.getIndexReader();
+        boolean allLeavesProven = true;
+        boolean anyLiveLeaf = false;
+        try {
+            for (org.apache.lucene.index.LeafReaderContext ctx : reader.leaves()) {
+                org.apache.lucene.index.LeafReader leaf = ctx.reader();
+                if (leaf.numDocs() == 0) {
+                    continue;
+                }
+                anyLiveLeaf = true;
+                org.apache.lucene.index.Terms terms = leaf.terms(FIELD_PATH_SCOPE);
+                if (terms == null || terms.getDocCount() != leaf.maxDoc()) {
+                    allLeavesProven = false;
+                    break;
+                }
+            }
+        } catch (IOException e) {
+            throw new SearchException(SearchException.Code.SCOPE_CHECK_FAILED,
+                    "could not inspect index for path_scope coverage: " + e.getMessage(), e);
+        }
+        if (!anyLiveLeaf || allLeavesProven) {
+            return;
+        }
+        // Exact fallback: does any LIVE doc lack a path_scope term?
+        try {
+            BooleanQuery.Builder missing = new BooleanQuery.Builder();
+            missing.add(new MatchAllDocsQuery(), BooleanClause.Occur.MUST);
+            missing.add(new PrefixQuery(new Term(FIELD_PATH_SCOPE, "")),
+                    BooleanClause.Occur.MUST_NOT);
+            TopDocs td = searcher.search(missing.build(), 1);
+            if (td.totalHits.value > 0) {
+                throw new SearchException(SearchException.Code.INDEX_REBUILD_REQUIRED,
+                        "index contains documents without path_scope; run Index All Sources or Full Rebuild");
+            }
+        } catch (IOException e) {
+            throw new SearchException(SearchException.Code.SCOPE_CHECK_FAILED,
+                    "could not verify path_scope coverage: " + e.getMessage(), e);
+        }
+    }
+
+    int scopeSupportCacheSize() {
+        return scopeSupportCache.size();
+    }
+
+    /**
+     * Cached gate for a live acquired searcher. Caches by reader cache-helper
+     * key; when helper is null the check runs uncached.
+     */
+    void checkScopeSupport(IndexSearcher searcher) {
+        IndexReader reader = searcher.getIndexReader();
+        IndexReader.CacheHelper helper = reader.getReaderCacheHelper();
+        Object key = (helper == null) ? null : helper.getKey();
+        if (key != null) {
+            Boolean cached = scopeSupportCache.get(key);
+            if (cached != null) {
+                if (!cached) {
+                    throw new SearchException(SearchException.Code.INDEX_REBUILD_REQUIRED,
+                            "index contains documents without path_scope; run Index All Sources or Full Rebuild");
+                }
+                return;
+            }
+        }
+        try {
+            ensureDirectoryScopeSupported(searcher);
+        } catch (SearchException e) {
+            // Only the deterministic coverage verdict is cacheable; transient
+            // I/O/check failures must be re-evaluated on the next request.
+            if (key != null && e.getCode() == SearchException.Code.INDEX_REBUILD_REQUIRED
+                    && registerCloseListener(reader, key)) {
+                scopeSupportCache.put(key, Boolean.FALSE);
+            }
+            throw e;
+        }
+        if (key != null && registerCloseListener(reader, key)) {
+            scopeSupportCache.put(key, Boolean.TRUE);
+        }
+    }
+
+    /**
+     * Registers a closed listener on the reader's CacheHelper that evicts the
+     * cache entry for this reader. Returns false when helper is null or
+     * registration fails → caller must not cache.
+     */
+    private boolean registerCloseListener(IndexReader reader, Object key) {
+        IndexReader.CacheHelper helper = reader.getReaderCacheHelper();
+        if (helper == null) {
+            return false;
+        }
+        if (!scopeListenerKeys.add(key)) {
+            return true; // already registered for this key
+        }
+        try {
+            helper.addClosedListener(cacheKey -> {
+                scopeSupportCache.remove(cacheKey);
+                scopeListenerKeys.remove(cacheKey);
+            });
+            return true;
+        } catch (RuntimeException e) {
+            scopeListenerKeys.remove(key);
+            log.warn("Could not register reader close listener; scope verdict will not be cached: {}",
+                    e.getMessage());
+            return false;
+        }
+    }
+
+    private static SourceRootProvider defaultProvider() {
+        SourceManager sm = new SourceManager();
+        return sm::loadSearchRoots;
+    }
+
+    /**
+     * Validates the requested directory against one snapshot of configured
+     * sources. Pure comparison: no filesystem or network access. Order per
+     * D4: normalize → load snapshot → coverage check.
+     */
+    private String resolveScopedDirectory(String directoryPath) throws IOException {
+        String normalized;
+        try {
+            normalized = PathScope.normalizeDirectory(directoryPath);
+        } catch (IllegalArgumentException e) {
+            throw new SearchException(SearchException.Code.INVALID_DIRECTORY,
+                    "directory is not a legal absolute path: " + e.getMessage(), e);
+        }
+        if (normalized == null) {
+            return null;
+        }
+        List<Path> roots;
+        try {
+            roots = sourceRootProvider.loadRoots();
+        } catch (IOException e) {
+            throw new SearchException(SearchException.Code.SOURCE_CONFIG_UNAVAILABLE,
+                    "search sources could not be loaded: " + e.getMessage(), e);
+        }
+        for (Path root : roots) {
+            if (root == null) continue;
+            String r;
+            try {
+                r = PathScope.normalizeIndexedPath(root);
+            } catch (IllegalArgumentException e) {
+                continue;
+            }
+            if (normalized.equals(r)
+                    || normalized.startsWith(PathScope.descendantPrefix(r))) {
+                return normalized;
+            }
+        }
+        throw new SearchException(SearchException.Code.DIRECTORY_NOT_INDEXED,
+                "directory is outside configured sources: " + normalized);
+    }
+
+    /**
+     * Directory restriction as a FILTER clause: the selected directory itself
+     * counts only when it is a folder document; every descendant of the whole
+     * tree matches via the trailing-slash prefix (D4).
+     */
+    private void addDirectoryFilter(BooleanQuery.Builder root, String normalizedDirectory) {
+        BooleanQuery.Builder self = new BooleanQuery.Builder();
+        self.add(new TermQuery(new Term(FIELD_PATH_SCOPE, normalizedDirectory)),
+                BooleanClause.Occur.MUST);
+        self.add(new TermQuery(new Term(FIELD_KIND, KIND_FOLDER)),
+                BooleanClause.Occur.MUST);
+
+        BooleanQuery.Builder dir = new BooleanQuery.Builder();
+        dir.add(self.build(), BooleanClause.Occur.SHOULD);
+        dir.add(new PrefixQuery(new Term(FIELD_PATH_SCOPE,
+                PathScope.descendantPrefix(normalizedDirectory))),
+                BooleanClause.Occur.SHOULD);
+        root.add(dir.build(), BooleanClause.Occur.FILTER);
+    }
+
     @Override
     public List<SearchResult> search(SearchRequest request) {
         List<SearchResult> out = new ArrayList<>();
         if (request == null) return out;
 
         String rawQuery = request.query == null ? "" : request.query.trim();
+        // Blank query short-circuits before directory/source/syntax checks (D3).
         if (rawQuery.isEmpty()) return out;
 
         FilterState filter = request.filter;
         SearchScope scope = request.scope == null ? SearchScope.ALL : request.scope;
         MatchMode matchMode = request.matchMode == null ? MatchMode.FUZZY : request.matchMode;
 
+        String scopedDir;
+        try {
+            scopedDir = resolveScopedDirectory(request.directoryPath);
+        } catch (SearchException e) {
+            throw e;
+        } catch (IOException e) {
+            throw new SearchException(SearchException.Code.SOURCE_CONFIG_UNAVAILABLE,
+                    "search sources could not be loaded: " + e.getMessage(), e);
+        }
+
         IndexSearcher searcher = null; // Declare outside try for finally block
         try {
             searcherManager.maybeRefresh(); // Refresh searcher if index has changed
             searcher = searcherManager.acquire(); // Acquire a searcher
+
+            if (scopedDir != null) {
+                checkScopeSupport(searcher);
+            }
 
             NamePreprocess np = extractNameWildcards(rawQuery);
             boolean advanced = hasAdvancedSyntax(np.qRest);
@@ -131,21 +352,26 @@ public class LuceneSearchService implements SearchService {
 
             if (scope == SearchScope.FOLDER) {
                 root.add(new TermQuery(new Term(FIELD_KIND, KIND_FOLDER)), BooleanClause.Occur.MUST);
+            } else {
+                // Type filtering inside the query (before Top-N) so excluded
+                // high-score folders cannot consume the limit (D4).
+                root.add(new TermQuery(new Term(FIELD_KIND, KIND_FOLDER)),
+                        BooleanClause.Occur.MUST_NOT);
             }
 
             addFilters(root, filter);
+            if (scopedDir != null) {
+                addDirectoryFilter(root, scopedDir);
+            }
 
             Query finalQuery = root.build();
 
             int fetchLimit = Math.max(1, Math.min(request.limit, 200));
-            TopDocs top = searcher.search(finalQuery, fetchLimit * 2);
+            TopDocs top = searcher.search(finalQuery, fetchLimit);
             for (ScoreDoc sd : top.scoreDocs) {
                 Document d = searcher.doc(sd.doc);
 
                 boolean isFolder = KIND_FOLDER.equalsIgnoreCase(d.get(FIELD_KIND));
-                if (scope != SearchScope.FOLDER && isFolder) {
-                    continue;
-                }
 
                 String name = d.get(FIELD_NAME);
                 String path = d.get(FIELD_PATH);
@@ -154,24 +380,35 @@ public class LuceneSearchService implements SearchService {
                 long size = getStoredLong(d, FIELD_SIZE);
                 if (isFolder) size = 0L;
 
-                // Pass the acquired searcher to detectMatchType
-                String match = isFolder ? "folder" : detectMatchType(searcher, finalQuery, sd.doc);
+                // Explain only the keyword/name query, not directory/type/time
+                // filters, so a POSIX dir literally named "name:" cannot be
+                // misreported as a name-source hit (D4).
+                String match = isFolder ? "folder" : detectMatchType(searcher, userQuery, sd.doc);
 
                 out.add(new SearchResult(name, path, sd.score, ctime, atime, match, size, isFolder));
-                if (out.size() >= fetchLimit) {
-                    break;
-                }
             }
-        } catch (Exception ex) {
-            // TODO: log exception details when logging framework available
-            // ex.printStackTrace(); // Removed for now
+        } catch (SearchException ex) {
+            throw ex;
+        } catch (ParseException ex) {
+            // Identical for scoped and unscoped requests (D3).
+            log.warn("Invalid search query '{}': {}", rawQuery, ex.getMessage());
+            throw new SearchException(SearchException.Code.INVALID_QUERY,
+                    "invalid query syntax: " + ex.getMessage(), ex);
+        } catch (org.apache.lucene.index.IndexNotFoundException ex) {
+            throw new SearchException(SearchException.Code.INDEX_UNAVAILABLE,
+                    "search index is unavailable: " + ex.getMessage(), ex);
+        } catch (IOException ex) {
+            throw new SearchException(SearchException.Code.SEARCH_FAILED,
+                    "search failed: " + ex.getMessage(), ex);
+        } catch (RuntimeException ex) {
+            throw new SearchException(SearchException.Code.SEARCH_FAILED,
+                    "search failed: " + ex.getMessage(), ex);
         } finally {
             if (searcher != null) {
                 try {
                     searcherManager.release(searcher);
                 } catch (IOException e) {
-                    // TODO: log this error
-                    e.printStackTrace();
+                    log.warn("Failed to release searcher: {}", e.getMessage());
                 }
             }
         }
@@ -191,6 +428,8 @@ public class LuceneSearchService implements SearchService {
 
     @Override
     public void close() {
+        scopeSupportCache.clear();
+        scopeListenerKeys.clear();
         try {
             if (searcherManager != null) {
                 searcherManager.close();

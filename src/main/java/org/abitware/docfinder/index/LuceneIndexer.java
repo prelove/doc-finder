@@ -1,5 +1,6 @@
 package org.abitware.docfinder.index;
 
+import org.abitware.docfinder.util.PathScope;
 import org.abitware.docfinder.util.Utils;
 import org.apache.lucene.analysis.Analyzer;
 import org.apache.lucene.analysis.cn.smart.SmartChineseAnalyzer;
@@ -270,6 +271,7 @@ public class LuceneIndexer implements AutoCloseable {
 
             Document doc = new Document();
             doc.add(new StringField("path", pathStr, Field.Store.YES));
+            doc.add(new StringField("path_scope", PathScope.normalizeIndexedPath(dir), Field.Store.NO));
             doc.add(new TextField("name", name, Field.Store.YES));
             doc.add(new StringField("name_raw", name.toLowerCase(Locale.ROOT), Field.Store.NO));
             doc.add(new StringField("ext", "", Field.Store.YES));
@@ -296,6 +298,7 @@ public class LuceneIndexer implements AutoCloseable {
 
             Document doc = new Document();
             doc.add(new StringField("path", pathStr, Field.Store.YES));
+            doc.add(new StringField("path_scope", PathScope.normalizeIndexedPath(file), Field.Store.NO));
             doc.add(new TextField("name", name, Field.Store.YES));
             doc.add(new StringField("name_raw", name.toLowerCase(Locale.ROOT), Field.Store.NO));
             doc.add(new StringField("ext", getExt(name), Field.Store.YES));

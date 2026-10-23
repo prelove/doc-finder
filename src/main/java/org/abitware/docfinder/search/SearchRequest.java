@@ -7,16 +7,24 @@ public class SearchRequest {
     public final FilterState filter;
     public final SearchScope scope;
     public final MatchMode matchMode;
+    /** Optional directory restriction; trimmed snapshot, no I/O here. */
+    public final String directoryPath;
 
     public SearchRequest(String query, int limit, FilterState filter) {
         this(query, limit, filter, SearchScope.ALL, MatchMode.FUZZY);
     }
 
     public SearchRequest(String query, int limit, FilterState filter, SearchScope scope, MatchMode matchMode) {
+        this(query, limit, filter, scope, matchMode, null);
+    }
+
+    public SearchRequest(String query, int limit, FilterState filter, SearchScope scope,
+                         MatchMode matchMode, String directoryPath) {
         this.query = (query == null) ? "" : query;
         this.limit = Math.max(1, limit);
         this.filter = filter;
         this.scope = (scope == null) ? SearchScope.ALL : scope;
         this.matchMode = (matchMode == null) ? MatchMode.FUZZY : matchMode;
+        this.directoryPath = (directoryPath == null) ? null : directoryPath.trim();
     }
 }

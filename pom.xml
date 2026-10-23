@@ -14,6 +14,10 @@
     <project.build.sourceEncoding>UTF-8</project.build.sourceEncoding>
     <maven.compiler.source>1.8</maven.compiler.source>
     <maven.compiler.target>1.8</maven.compiler.target>
+    <!-- Empty default so the Surefire argLine composition below can safely
+         append the isolated user.home last. External -DargLine=... values
+         override this property and are preserved before the isolation args. -->
+    <argLine></argLine>
   </properties>
   
   <dependencies>
@@ -233,6 +237,16 @@
 	      <groupId>org.apache.maven.plugins</groupId>
 	      <artifactId>maven-surefire-plugin</artifactId>
 	      <version>3.0.0</version>
+	      <configuration>
+	        <!-- Fixed test isolation: the forked JVM must run inside target so
+	             AppPaths (user.dir/.docfinder) and LegacyMigration (user.home)
+	             can never reach the real working/home directory. Isolation
+	             args are appended last so they win over external -DargLine. -->
+	        <forkCount>1</forkCount>
+	        <reuseForks>true</reuseForks>
+	        <workingDirectory>${project.build.testOutputDirectory}</workingDirectory>
+	        <argLine>${argLine} -Duser.home="${project.build.directory}/test-home"</argLine>
+	      </configuration>
 	    </plugin>
 	  </plugins>
   </build>

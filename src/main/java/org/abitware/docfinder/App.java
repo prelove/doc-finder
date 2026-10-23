@@ -68,22 +68,11 @@ public class App {
             win.setWebServer(webServer);
             win.setVisible(true);
 
-            // Open the Lucene index off the EDT to avoid blocking Swing painting
-            new Thread(() -> {
-                try {
-                    java.nio.file.Path indexDir = new SourceManager().getIndexDir();
-                    ConfigManager cm = new ConfigManager();
-                    org.abitware.docfinder.index.IndexSettings idxSettings = cm.loadIndexSettings();
-                    SearchService searchService = new LuceneSearchService(indexDir, idxSettings);
-                    // Web interface gets a reference to the search service once index is ready
-                    if (webServer != null) webServer.setSearchService(searchService);
-                    SwingUtilities.invokeLater(() -> win.setSearchService(searchService));
-                } catch (IOException ex) {
-                    logger.error("Failed to open search index", ex);
-                    SwingUtilities.invokeLater(() ->
-                        win.getStatusLabel().setText("Search index unavailable: " + ex.getMessage()));
-                }
-            }, "docfinder-index-open").start();
+            // Open the Lucene index through the window's unified reopen path
+            // (background open, EDT publish, stale candidates closed — D8).
+            java.nio.file.Path indexDir = new SourceManager().getIndexDir();
+            org.abitware.docfinder.index.IndexSettings idxSettings = new ConfigManager().loadIndexSettings();
+            win.reopenSearchServiceAsync(indexDir, idxSettings);
 
             // 全局热键：Ctrl + Alt + Space
             GlobalHotkey ghk = new GlobalHotkey(win);
