@@ -57,3 +57,11 @@
 - P3：空词提交收起历史下拉；WebAssetsOfflineTest 增加对 search() 的静态顺序断言（token 先于空词返回、历史仅在成功后写一次）。这是静态文本断言，不是 DOM 回归，浏览器级自动化仍无。
 - 未处理 P3：锁恢复路径绕过 setSearchService；handleFullRebuildFailure 自身不递增 searchSequence。
 - 重验：clean verify -Xmx768m 退出 0，145 项，0 失败，2 跳过。注意：本机在 512m/768m 下偶发 fork 启动/运行期 "insufficient memory"（环境内存压力，非用例失败），重跑通过。日志 final-verify2.log。
+
+## 补验记录（基线 4b98dff，Windows 10 / Oracle JDK17，-Xmx768m；原始日志 .omx/logs/dirscope-remediation-20261023/）
+
+- P-00（DirectoryScopeCheckBenchmark，10 万 doc 隔离 fixture，观察记录非断言）：首次检查 444.72 ms；同 reader 重复 p50=0.00 ms、p95=0.03 ms；精确回退查询 178.17 ms；含已删除文档判定 0.04 ms；建索引 3984 ms。日志 P00.log。
+- P-01（DirectoryScopedSearchPerfBenchmark，10 万文件 doc + 1001 目录 doc）：unscoped 热查询 p50=12.03 / p95=18.21 ms；scoped p50=7.92 / p95=16.59 ms；门槛 OK（未出现 2× 且 +200 ms 退化）。单机单点观测，不是 SLA。日志 P01.log。
+- Java 8 运行时：mvn test -Djvm=D:\Java\java8\bin\java.exe，fork 实际为 JDK 1.8.0_40（surefire 报告 java.home=D:\Java\java8 已核对）；145 项，0 失败/错误，2 跳过，BUILD SUCCESS。日志 java8-test.log。说明：这证明测试在 Java 8 JVM 上可运行，未覆盖 Java 8 下的桌面 GUI 手工验收。
+- B11（德语区域，真实 harness 内嵌 Web，-Duser.language=de -Duser.country=DE）：全局与目录限定响应的 score 均为小数点（2.8643），PowerShell ConvertFrom-Json 均可解析（3 条/2 条）。解析器不是浏览器 JSON.parse，但 JSON 语法判定等价；此前失败的是 B11a/B11b，现已不复现。
+- 仍未验证：POSIX 主机、native profile、真实 UNC/大规模网络来源、M-01～M-06 实机。
