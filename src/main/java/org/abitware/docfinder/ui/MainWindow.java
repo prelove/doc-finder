@@ -61,7 +61,20 @@ public class MainWindow extends JFrame implements MenuBarPanel.MenuListener {
 	private static final int SCORE_COL = 2;
 
 	// ========= Fields =========
-	private SearchService searchService;
+	// Safely published: written on the EDT (or during service reopen), read
+	// once into a local by SearchWorker on the executor thread (D8).
+	private volatile SearchService searchService;
+
+	// Directory-scope selector (D5): committed snapshot read by doSearch.
+	private final org.abitware.docfinder.ui.components.DirectoryScopePanel directoryScopePanel =
+			new org.abitware.docfinder.ui.components.DirectoryScopePanel(
+					this::onDirectoryScopeCommitted);
+
+	// Monotonic guard for async service opens: window close / full rebuild /
+	// a newer open request invalidates older candidates, which must then be
+	// closed instead of published (D8).
+	private volatile long openServiceSequence = 0L;
+	private volatile long sourceLoadSequence = 0L;
 
 	// Top bar: search and filters
 	// Search box changed to editable combo box, editor is still JTextField
@@ -75,6 +88,8 @@ public class MainWindow extends JFrame implements MenuBarPanel.MenuListener {
 	// Popup & "Open With" remembered item (for right-click menu and refresh)
 	private JPopupMenu rowPopup;
 	private JMenuItem rememberedOpenWithItem;
+	private JMenuItem searchInThisFolderItem;
+	private JMenuItem searchInContainingItem;
 
 	private final JTextField extField = new JTextField(); // Comma-separated extensions
 	private JFormattedTextField fromField; // yyyy-MM-dd
@@ -148,10 +163,13 @@ public class MainWindow extends JFrame implements MenuBarPanel.MenuListener {
 		setLocationRelativeTo(null);
 		getContentPane().setLayout(new BorderLayout());
 
-		// 1) Top North: search bar + collapsible filter bar
+		// 1) Top North: search bar + directory scope + collapsible filter bar
 		JPanel north = new JPanel(new BorderLayout());
 		north.add(buildTopBar(), BorderLayout.NORTH);
-		north.add(buildFilterBar(), BorderLayout.CENTER); // Hidden by default
+		JPanel northCenter = new JPanel(new BorderLayout());
+		northCenter.add(directoryScopePanel, BorderLayout.NORTH);
+		northCenter.add(buildFilterBar(), BorderLayout.CENTER); // Hidden by default
+		north.add(northCenter, BorderLayout.CENTER);
 		getContentPane().add(north, BorderLayout.NORTH);
 
 		// 2) Center: results table + right preview panel
@@ -199,6 +217,9 @@ public class MainWindow extends JFrame implements MenuBarPanel.MenuListener {
 		}
 		updatePreviewInner("Preview", false);
 
+		// Load configured sources for the directory-scope combo off the EDT
+		refreshSourceDirectoriesAsync();
+
 		lafListener = evt -> {
 			if ("lookAndFeel".equals(evt.getPropertyName())) {
 				javax.swing.SwingUtilities.invokeLater(this::refreshPreviewForTheme);
@@ -243,13 +264,14 @@ public class MainWindow extends JFrame implements MenuBarPanel.MenuListener {
 			}
 		});
 
-		// Load and add history items to query box
+		// Load and add history items to query box; suppress actions so a
+		// non-empty history cannot fire doSearch before the filter bar exists.
+		suppressQueryActions = true;
 		List<String> hist = historyMgr.load();
 		for (String s : hist)
 			queryBox.addItem(s);
 
 		// Shortcuts: focus search field, clear selection
-		suppressQueryActions = true;
 		queryBox.setSelectedItem(""); // <-- Clear
 		suppressQueryActions = false;
 		searchField.requestFocusInWindow(); // Focus search field
@@ -451,6 +473,7 @@ public class MainWindow extends JFrame implements MenuBarPanel.MenuListener {
 		queryBox.setEnabled(enabled);
 		scopeBox.setEnabled(enabled);
 		matchModeBox.setEnabled(enabled);
+		directoryScopePanel.setScopeControlsEnabled(enabled);
 		if (webServerToggle != null) webServerToggle.setEnabled(enabled);
 	}
 
@@ -839,16 +862,30 @@ public class MainWindow extends JFrame implements MenuBarPanel.MenuListener {
 
 			@Override
 			protected void done() {
+				boolean ok = false;
 				try {
 					int n = get();
 					long ms = System.currentTimeMillis() - t0;
 					statusLabel.setText("Indexed files: " + n + " | Time: " + ms + " ms | Index: " + indexDir);
+					ok = true;
 				} catch (Exception ex) {
-					statusLabel.setText("Index failed: " + ex.getMessage());
+					statusLabel.setText("Indexing failed or partially completed."
+							+ " Search uses available committed data. See the application log.");
+					log.warn("Index All Sources failed or partially completed: {}", String.valueOf(ex.getCause() != null ? ex.getCause() : ex));
 				} finally {
 					isIndexing = false;
 					setIndexingUiEnabled(true);
 					setBusyProgress(false, "");
+					// Whether the run fully succeeded or stopped after partial
+					// commits, try to (re)open the search service so committed
+					// data becomes searchable without restart (D8/F-022). If no
+					// valid commit exists the open fails → INDEX_UNAVAILABLE.
+					org.abitware.docfinder.index.IndexSettings svc_s =
+							new org.abitware.docfinder.index.ConfigManager().loadIndexSettings();
+					reopenSearchServiceAsync(indexDir, svc_s, ok ? null
+							: "Indexing failed or partially completed."
+							+ " Search uses available committed data. See the application log.");
+					refreshSourceDirectoriesAsync();
 				}
 			}
 		}.execute();
@@ -1425,20 +1462,16 @@ public class MainWindow extends JFrame implements MenuBarPanel.MenuListener {
 				try {
 					int n = get();
 					statusLabel.setText("Indexed files: " + n + "  |  Index: " + indexDir.toString());
-                    // 切换到 Lucene 搜索服务
-					try {
-						org.abitware.docfinder.index.IndexSettings svc_s = new org.abitware.docfinder.index.ConfigManager().loadIndexSettings();
-						setSearchService(new org.abitware.docfinder.search.LuceneSearchService(indexDir, svc_s));
-					} catch (java.io.IOException ioEx) {
-						statusLabel.setText("Failed to switch search service: " + ioEx.getMessage());
-						ioEx.printStackTrace();
-					}
+                    // 切换到 Lucene 搜索服务（后台打开，EDT 统一发布 — D8）
+					org.abitware.docfinder.index.IndexSettings svc_s = new org.abitware.docfinder.index.ConfigManager().loadIndexSettings();
+					reopenSearchServiceAsync(indexDir, svc_s);
                     // 可选：自动触发一次搜索以验证
                     // doSearch();
 				} catch (Exception ex) {
 					statusLabel.setText("Index failed: " + ex.getMessage());
 				} finally {
 					setBusyProgress(false, "");
+					refreshSourceDirectoriesAsync();
 				}
 			}
 		}.execute();
@@ -1605,9 +1638,18 @@ public class MainWindow extends JFrame implements MenuBarPanel.MenuListener {
 
 		java.nio.file.Path indexDir = sm.getIndexDir();
 
-		// Disable UI and set indexing flag
+		// Disable UI and set indexing flag. Pending service opens and queued
+		// searches are invalidated first so the rebuild period is reported as
+		// INDEX_UNAVAILABLE, never as "No results" (D8).
 		isIndexing = true;
 		setIndexingUiEnabled(false);
+		openServiceSequence++;
+		searchSequence++;
+		if (activeSearchWorker != null) {
+			activeSearchWorker.cancel(true);
+			activeSearchWorker = null;
+		}
+		setSearchService(null);
         statusLabel.setText("Rebuilding index (full)… Searching is disabled.");
 		setBusyProgress(true, "Rebuilding index...");
 		long t0 = System.currentTimeMillis();
@@ -1631,20 +1673,21 @@ public class MainWindow extends JFrame implements MenuBarPanel.MenuListener {
 					int n = get();
 					long ms = System.currentTimeMillis() - t0;
 					statusLabel.setText("Rebuilt files: " + n + " | Time: " + ms + " ms | Index: " + indexDir);
-					try {
-						org.abitware.docfinder.index.IndexSettings svc_s = new org.abitware.docfinder.index.ConfigManager().loadIndexSettings();
-						setSearchService(new org.abitware.docfinder.search.LuceneSearchService(indexDir, svc_s));
-					} catch (java.io.IOException ioEx) {
-						statusLabel.setText("Failed to switch search service after rebuild: " + ioEx.getMessage());
-						ioEx.printStackTrace();
-					}
+					// 后台打开并统一发布（D8）
+					org.abitware.docfinder.index.IndexSettings svc_s = new org.abitware.docfinder.index.ConfigManager().loadIndexSettings();
+					reopenSearchServiceAsync(indexDir, svc_s);
 				} catch (Exception ex) {
-					statusLabel.setText("Rebuild failed: " + ex.getMessage());
+					log.warn("Full rebuild failed: {}", String.valueOf(ex.getCause() != null ? ex.getCause() : ex));
+					String failed = "Rebuild failed. Search uses available committed data. See the application log.";
+					statusLabel.setText(failed);
+					reopenSearchServiceAsync(indexDir,
+							new org.abitware.docfinder.index.ConfigManager().loadIndexSettings(), failed);
 				} finally {
 					// Re-enable UI and clear indexing flag
 					isIndexing = false;
 					setIndexingUiEnabled(true);
 					setBusyProgress(false, "");
+					refreshSourceDirectoriesAsync();
 				}
 			}
 		}.execute();
@@ -1701,6 +1744,7 @@ public class MainWindow extends JFrame implements MenuBarPanel.MenuListener {
 			log.warn("Failed to stop network polling before lock recovery: {}", ex.getMessage());
 		}
 		try {
+			openServiceSequence++; // invalidate any pending service open candidates
 			if (searchService != null) {
 				searchService.close();
 				searchService = null;
@@ -1717,6 +1761,105 @@ public class MainWindow extends JFrame implements MenuBarPanel.MenuListener {
 				netPollToggle.setSelected(false);
 			}
 		});
+	}
+
+	private void onDirectoryScopeCommitted() {
+		// A committed scope change re-runs the current query once (no-op when
+		// the query box is empty; empty input clears results inside doSearch).
+		doSearch();
+	}
+
+	/**
+	 * Background refresh of the directory-scope source list. Latest
+	 * generation wins; stale snapshots are dropped on the EDT (D5). Shows a
+	 * one-shot warning when rows were skipped or the file cannot be read —
+	 * the next clean refresh clears it.
+	 */
+	private void refreshSourceDirectoriesAsync() {
+		final long gen = ++sourceLoadSequence;
+		new Thread(() -> {
+			java.util.List<String> dirs = new java.util.ArrayList<>();
+			boolean warn = false;
+			try {
+				org.abitware.docfinder.index.SourceManager sm =
+						new org.abitware.docfinder.index.SourceManager();
+				org.abitware.docfinder.index.SourceManager.SearchRootsSnapshot snap =
+						sm.loadSearchRootsSnapshot();
+				for (java.nio.file.Path p : snap.roots) {
+					dirs.add(p.toString());
+				}
+				warn = !snap.skippedLineNumbers.isEmpty();
+			} catch (java.io.IOException e) {
+				log.warn("Could not load search sources for scope panel: {}", e.getMessage());
+				warn = true;
+			}
+			final boolean warnFinal = warn;
+			SwingUtilities.invokeLater(() -> {
+				if (gen != sourceLoadSequence) {
+					return;
+				}
+				directoryScopePanel.setSourceDirectories(dirs);
+				directoryScopePanel.setSourceWarning(warnFinal);
+			});
+		}, "docfinder-source-load").start();
+	}
+
+	/**
+	 * Opens a Lucene search service off the EDT and publishes it through the
+	 * single setSearchService path (D8). Stale candidates (window closed,
+	 * rebuild started, superseded by a newer open) are closed, never
+	 * published.
+	 */
+	public void reopenSearchServiceAsync(java.nio.file.Path indexDir,
+			org.abitware.docfinder.index.IndexSettings settings) {
+		reopenSearchServiceAsync(indexDir, settings, null);
+	}
+
+	/**
+	 * completionStatus, when non-null, is the fixed status text shown after a
+	 * successful publish — used after partial index failures so "Ready" does
+	 * not overwrite the failure notice (D8).
+	 */
+	void reopenSearchServiceAsync(java.nio.file.Path indexDir,
+			org.abitware.docfinder.index.IndexSettings settings, String completionStatus) {
+		final long seq = ++openServiceSequence;
+		new Thread(() -> {
+			SearchService candidate = null;
+			try {
+				candidate = openSearchService(indexDir, settings);
+			} catch (java.io.IOException e) {
+				log.warn("Could not open search service at {}: {}", indexDir, e.getMessage());
+			}
+			final SearchService opened = candidate;
+			SwingUtilities.invokeLater(() -> {
+				if (seq != openServiceSequence || opened == null) {
+					// Stale or failed candidate: release, never publish.
+					if (opened != null) {
+						opened.close();
+					}
+					if (opened == null && seq == openServiceSequence) {
+						statusLabel.setText(org.abitware.docfinder.search.SearchErrorMessages
+								.forCode(org.abitware.docfinder.search.SearchException.Code.INDEX_UNAVAILABLE));
+					}
+					return;
+				}
+				setSearchService(opened);
+				if (completionStatus != null) {
+					statusLabel.setText(completionStatus);
+				}
+				refreshSourceDirectoriesAsync();
+			});
+		}, "docfinder-service-open").start();
+	}
+
+	/**
+	 * Factory hook for the harness: the ONLY place production code may
+	 * construct LuceneSearchService (D8). Tests may override to return fakes
+	 * or control timing.
+	 */
+	protected SearchService openSearchService(java.nio.file.Path indexDir,
+			org.abitware.docfinder.index.IndexSettings settings) throws java.io.IOException {
+		return new org.abitware.docfinder.search.LuceneSearchService(indexDir, settings);
 	}
 
 	private SearchScope getSelectedScope() {
@@ -1738,7 +1881,9 @@ public class MainWindow extends JFrame implements MenuBarPanel.MenuListener {
 
 		if (searchService == null) {
 
-			statusLabel.setText("Search index is still initializing, please retry in a moment.");
+			statusLabel.setText(org.abitware.docfinder.search.SearchErrorMessages
+
+					.forCode(org.abitware.docfinder.search.SearchException.Code.INDEX_UNAVAILABLE));
 
 			return;
 
@@ -1749,6 +1894,7 @@ public class MainWindow extends JFrame implements MenuBarPanel.MenuListener {
 		FilterState filters = buildFilterState();
 
 		String q = getQueryText();
+		String directory = directoryScopePanel.getDirectoryPath();
 
 		lastQuery = q;
 
@@ -1780,7 +1926,7 @@ public class MainWindow extends JFrame implements MenuBarPanel.MenuListener {
 
 		long token = ++searchSequence;
 
-		SearchWorker worker = new SearchWorker(token, q, filters, getSelectedScope(), getSelectedMatchMode());
+		SearchWorker worker = new SearchWorker(token, q, filters, getSelectedScope(), getSelectedMatchMode(), directory);
 
 		activeSearchWorker = worker;
 
@@ -1857,16 +2003,19 @@ public class MainWindow extends JFrame implements MenuBarPanel.MenuListener {
 
 		private final MatchMode matchMode;
 
+		private final String directoryPath;
+
 		private final long startedAt = System.currentTimeMillis();
 
 
 
-		SearchWorker(long token, String query, FilterState filter, SearchScope scope, MatchMode matchMode) {
+		SearchWorker(long token, String query, FilterState filter, SearchScope scope, MatchMode matchMode, String directoryPath) {
 			this.token = token;
 			this.query = query;
 			this.filter = filter;
 			this.scope = (scope == null) ? SearchScope.ALL : scope;
 			this.matchMode = (matchMode == null) ? MatchMode.FUZZY : matchMode;
+			this.directoryPath = directoryPath;
 			log.debug("SearchWorker created for query: {} with token: {}", query, token);
 		}
 
@@ -1880,15 +2029,21 @@ public class MainWindow extends JFrame implements MenuBarPanel.MenuListener {
 				log.debug("SearchWorker.doInBackground() for token {} was cancelled before execution.", token);
 				return Collections.emptyList();
 			}
-			if (searchService == null) {
+			// Read the volatile field exactly once into a local (D8); a null
+			// here means the index went away after submission and must be
+			// reported, not shown as "No results".
+			SearchService svc = searchService;
+			if (svc == null) {
 				log.warn("SearchService is null in SearchWorker.doInBackground() for token: {}", token);
-				return Collections.emptyList();
+				throw new org.abitware.docfinder.search.SearchException(
+						org.abitware.docfinder.search.SearchException.Code.INDEX_UNAVAILABLE,
+						"search service became unavailable before the worker ran");
 
 			}
 
-			SearchRequest request = new SearchRequest(query, 100, filter, scope, matchMode);
+			SearchRequest request = new SearchRequest(query, 100, filter, scope, matchMode, directoryPath);
 			log.debug("Executing search for token: {}", token);
-			List<SearchResult> results = searchService.search(request);
+			List<SearchResult> results = svc.search(request);
 			log.debug("Search for token {} completed with {} results.", token, results.size());
 			return results;
 
@@ -1940,14 +2095,25 @@ public class MainWindow extends JFrame implements MenuBarPanel.MenuListener {
 			} catch (java.util.concurrent.ExecutionException ex) {
 
 				Throwable cause = ex.getCause();
-
-				statusLabel.setText("Search failed: " + (cause != null ? cause.getMessage() : ex.getMessage()));
+				// Map typed failures to fixed text; never leak raw messages
+				// or stack traces into the status bar (D3).
+				org.abitware.docfinder.search.SearchException.Code code =
+						org.abitware.docfinder.search.SearchException.Code.SEARCH_FAILED;
+				if (cause instanceof org.abitware.docfinder.search.SearchException) {
+					code = ((org.abitware.docfinder.search.SearchException) cause).getCode();
+				} else {
+					log.warn("Search failed for token {}: {}", token, String.valueOf(cause));
+				}
+				clearResultsForError();
+				statusLabel.setText(org.abitware.docfinder.search.SearchErrorMessages.forCode(code));
 
 				return;
 
 			} catch (Exception ex) {
 
-				statusLabel.setText("Search failed: " + ex.getMessage());
+				clearResultsForError();
+				statusLabel.setText(org.abitware.docfinder.search.SearchErrorMessages
+						.forCode(org.abitware.docfinder.search.SearchException.Code.SEARCH_FAILED));
 
 				return;
 
@@ -1972,6 +2138,34 @@ public class MainWindow extends JFrame implements MenuBarPanel.MenuListener {
 	}
 
 
+
+	private static java.nio.file.Path parentOfSafe(String path) {
+		try {
+			return java.nio.file.Paths.get(path).getParent();
+		} catch (Exception e) {
+			return null;
+		}
+	}
+
+	/**
+	 * Commits a directory scope chosen from a result row and re-runs the
+	 * current query exactly once. Programmatic set does not fire the panel
+	 * callback — the single doSearch() below is the only submission (A5b).
+	 */
+	void searchInDirectory(String directoryPath) {
+		if (directoryPath == null || directoryPath.trim().isEmpty()) {
+			return;
+		}
+		directoryScopePanel.setDirectoryPath(directoryPath);
+		doSearch();
+	}
+
+	private void clearResultsForError() {
+		model.setRowCount(0);
+		resultTable.clearSelection();
+		currentResults = java.util.Collections.emptyList();
+		updatePreviewInner("Search failed.");
+	}
 
 	private void addToHistory(String q) {
 		q = (q == null) ? "" : q.trim();
@@ -2014,10 +2208,38 @@ public class MainWindow extends JFrame implements MenuBarPanel.MenuListener {
 		openWith.add(rememberedOpenWithItem);
 
         // 组装菜单
+		// Directory-scope quick actions (A5b/DS-11): folder → itself,
+		// file → its parent directory; keeps the current query/filters and
+		// commits exactly once via the panel's programmatic setter + doSearch.
+		JMenuItem searchInThisFolder = this.searchInThisFolderItem = new JMenuItem("Search in this folder");
+		searchInThisFolder.setToolTipText("Limit search to this folder and all its subfolders");
+		searchInThisFolder.addActionListener(e -> {
+			SearchResult r = getSelectedResult();
+			if (r == null || !r.directory) return;
+			searchInDirectory(r.path);
+		});
+		JMenuItem searchInContaining = this.searchInContainingItem = new JMenuItem("Search in containing folder");
+		searchInContaining.setToolTipText("Limit search to the folder containing this file");
+		searchInContaining.addActionListener(e -> {
+			SearchResult r = getSelectedResult();
+			if (r == null || r.directory) return;
+			try {
+				java.nio.file.Path parent = java.nio.file.Paths.get(r.path).getParent();
+				if (parent != null) {
+					searchInDirectory(parent.toString());
+				}
+			} catch (Exception ex) {
+				log.warn("Cannot resolve parent of {}: {}", r.path, ex.getMessage());
+			}
+		});
+
 		rowPopup.add(openItem);
 		rowPopup.add(openWith);
 		rowPopup.add(revealItem);
 		rowPopup.add(showProperty);
+		rowPopup.addSeparator();
+		rowPopup.add(searchInThisFolder);
+		rowPopup.add(searchInContaining);
 		rowPopup.addSeparator();
 		rowPopup.add(copyMenu);
 
@@ -2043,10 +2265,15 @@ public class MainWindow extends JFrame implements MenuBarPanel.MenuListener {
 			statusLabel.setText("Web link copied: " + link);
 		});
 		rowPopup.add(copyWebLink);
-		// Dynamically enable/disable copyWebLink based on web server state when the popup opens
+		// Dynamically enable/disable items when the popup opens
 		rowPopup.addPopupMenuListener(new javax.swing.event.PopupMenuListener() {
 			@Override public void popupMenuWillBecomeVisible(javax.swing.event.PopupMenuEvent ev) {
 				copyWebLink.setEnabled(webServer != null && webServer.isRunning());
+				SearchResult r = getSelectedResult();
+				boolean folderRow = r != null && r.directory;
+				searchInThisFolder.setEnabled(folderRow && !isIndexing);
+				searchInContaining.setEnabled(r != null && !folderRow && !isIndexing
+						&& parentOfSafe(r.path) != null);
 			}
 			@Override public void popupMenuWillBecomeInvisible(javax.swing.event.PopupMenuEvent ev) {}
 			@Override public void popupMenuCanceled(javax.swing.event.PopupMenuEvent ev) {}
@@ -2650,9 +2877,19 @@ public class MainWindow extends JFrame implements MenuBarPanel.MenuListener {
 		return statusLabel;
 	}
 
+	/** Current search service, for tests/harness only. */
+	protected SearchService getCurrentSearchService() {
+		return searchService;
+	}
+
+	/** Directory-scope panel, for tests/harness only. */
+	protected org.abitware.docfinder.ui.components.DirectoryScopePanel getDirectoryScopePanel() {
+		return directoryScopePanel;
+	}
+
 	public void setSearchService(SearchService newSvc) {
-		if (this.searchService != null) {
-			this.searchService.close(); // Close the old service
+		if (this.searchService != null && this.searchService != newSvc) {
+			this.searchService.close(); // Close the old service (same instance is kept)
 		}
 		this.searchService = newSvc;
 		// Keep the web server in sync with the latest search service
@@ -2677,6 +2914,8 @@ public class MainWindow extends JFrame implements MenuBarPanel.MenuListener {
 			UIManager.removePropertyChangeListener(lafListener);
 		} catch (Exception ignore) {
 		}
+		openServiceSequence++; // invalidate pending service opens; late candidates get closed
+		sourceLoadSequence++;
 		if (searchService != null) { // Close search service on dispose
 			searchService.close();
 		}
