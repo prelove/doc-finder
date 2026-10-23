@@ -3,6 +3,8 @@
 ## Project Structure & Module Organization
 DocFinder is a Java 8 desktop search utility organized under `src/main/java/org/abitware/docfinder`. Core entry point lives in `App.java`, while feature-specific packages break down as: `index` (Lucene index lifecycle), `search` (query orchestration), `ui` (Swing + FlatLaf screens), `util` (shared helpers), `watch` (background file system monitor), and `web` (embedded HTTP server, search/preview/share handlers). UI assets sit in `src/main/resources/icons`, and web static assets live in `src/main/resources/web`. Generated artifacts land in `target/` (shaded JARs, compiled classes). Keep usage docs and scripts (`README.md`, `UsageGuide.md`, `run-docfinder.bat`) in the repository root.
 
+Note: consult `pom.xml` for exact dependency choices and build profiles used by the project (for example FlatLaf 3.2 and theme packages, Lucene 8.11.2, Tika 2.9.2, and a `native` profile that builds a GraalVM native image using Java 17). This file is the single source of truth for versions and the native build configuration.
+
 ## Build, Test & Development Commands
 - `mvn clean package` - compiles, runs tests, and produces the shaded JAR via `maven-shade-plugin`.
 - `mvn -Pnative package` - builds a GraalVM native binary (`target/docfinder` or `target/docfinder.exe`) using the `native` profile; requires GraalVM + native-image and Java 17 toolchain.
@@ -21,3 +23,6 @@ Follow the existing Conventional Commit style (`feat:`, `fix:`, `chore:`) with i
 
 ## Configuration & Data Tips
 The app reads and writes runtime data under `~/.docfinder`; do not check that directory into source control. Key files include `config.properties` (app/web settings) and `shares.properties` (web share links). Document new configuration keys in `README.md` and provide safe defaults. When touching watchers or Lucene analyzers, highlight any platform-specific prerequisites (e.g., permissions on network shares) in your PR description.
+
+- Logging: runtime logging is configured via `src/main/resources/logback.xml`. By default runtime logs are written under `~/.docfinder/logs/docfinder.log` (the app also exposes "Help → View Log" in the UI). See `logback.xml` and `pom.xml` for the logging dependencies (SLF4J + Logback, and log4j-to-slf4j bridging).
+
