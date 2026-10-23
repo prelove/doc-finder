@@ -29,7 +29,7 @@ _Local file name & content search. Fast, read‑only, and multilingual._
   - 同时会自动添加 `ext:` 过滤以加速 `*.ext` 的检索。
 - 允许 **前导通配**（`*.xlsx`），也可直接输入 `*.xlsx`（无字段时默认当作文件名通配）。
 - 多语言支持：英文（Standard）、中文（SmartChinese）、日文（Kuromoji）。
-- **目录范围（Search in）**：搜索框下方可选择一个已配置来源作为检索范围，或直接输入该来源内的绝对路径后按 Enter；`Clear` / `All sources` 恢复全局搜索。范围包含所选目录的全部子目录，仅检索已索引内容。范围之外的目录会提示先添加来源，而不会自动扫描或建库。
+- **目录范围（Search in）**：搜索框下方可选择一个已配置来源作为检索范围，或直接输入该来源内的绝对路径后按 Enter；`Clear` / `All sources` 恢复全局搜索。选择 `All sources` 时路径框与 Browse / Clear 置灰；选择 `Custom` 或某个来源后才可输入、浏览。索引或重建进行期间，范围控件和 Filters（含 Ext/From/To/Apply）一并禁用。范围包含所选目录的全部子目录，仅检索已索引内容。范围之外的目录会提示先添加来源，而不会自动扫描或建库。
 - 非法查询语法（例如不匹配的括号 `report (final`）现在会明确提示语法错误，而不是静默返回空结果，且不会记入查询历史。含 `+`、`:` 等保留字符的输入行为以实际分词器为准；需要字面匹配时可使用双引号短语（`"a+b"`）或 `name:` 字段语法。
 - 旧索引在限定目录搜索时会提示先执行 **Index All Sources** 补齐内部字段；存在残留旧记录时才需备份后手动 **Rebuild Index (Full)**。
 
