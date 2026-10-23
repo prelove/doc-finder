@@ -338,6 +338,29 @@ class DirectoryScopeDesktopHarnessTest {
     }
 
     @Test
+    void shouldLockFiltersAndScopeControlsWhileIndexing() throws Exception {
+        win = new HarnessWindow(new FakeService());
+        Method lock = MainWindow.class.getDeclaredMethod("setIndexingUiEnabled", boolean.class);
+        lock.setAccessible(true);
+        String[] names = { "toggleFiltersBtn", "applyFiltersBtn", "extField", "fromField", "toField" };
+        for (boolean enabled : new boolean[] { false, true }) {
+            onEdt(() -> {
+                try {
+                    lock.invoke(win, enabled);
+                    for (String n : names) {
+                        java.lang.reflect.Field f = MainWindow.class.getDeclaredField(n);
+                        f.setAccessible(true);
+                        assertEquals(enabled, ((java.awt.Component) f.get(win)).isEnabled(), n);
+                    }
+                    assertEquals(enabled, win.getDirectoryScopePanel().getSourceCombo().isEnabled());
+                } catch (Exception e) {
+                    throw new RuntimeException(e);
+                }
+            });
+        }
+    }
+
+    @Test
     void shouldNotRepublishServiceAfterFullRebuildFailure() throws Exception {
         win = new HarnessWindow(null);
         FakeService old = new FakeService();

@@ -94,6 +94,8 @@ public class MainWindow extends JFrame implements MenuBarPanel.MenuListener {
 	private final JTextField extField = new JTextField(); // Comma-separated extensions
 	private JFormattedTextField fromField; // yyyy-MM-dd
 	private JFormattedTextField toField; // yyyy-MM-dd
+	private final JButton toggleFiltersBtn = new JButton("Filters");
+	private final JButton applyFiltersBtn = new JButton("Apply");
 	private final JPanel filterBar = new JPanel(new BorderLayout(6, 6)); // Collapsible filter bar
 
 	// Center: results + preview
@@ -231,7 +233,7 @@ public class MainWindow extends JFrame implements MenuBarPanel.MenuListener {
 
 	/** Top search bar (includes Filters button) */
 	private JComponent buildTopBar() {
-		JPanel top = new JPanel(new BorderLayout(8, 8));
+		JPanel top = new JPanel(new BorderLayout(6, 0));
 		top.setBorder(BorderFactory.createEmptyBorder(8, 8, 0, 8));
 
 		scopeBox.setToolTipText("Search scope");
@@ -276,22 +278,31 @@ public class MainWindow extends JFrame implements MenuBarPanel.MenuListener {
 		suppressQueryActions = false;
 		searchField.requestFocusInWindow(); // Focus search field
 
-		JButton toggleFilters = new JButton("Filters");
-		toggleFilters.addActionListener(e -> filterBar.setVisible(!filterBar.isVisible()));
+		toggleFiltersBtn.addActionListener(e -> filterBar.setVisible(!filterBar.isVisible()));
 
 		scopeBox.addActionListener(e -> rerunIfQueryPresent());
 		matchModeBox.addActionListener(e -> rerunIfQueryPresent());
 
-		JPanel centerStrip = new JPanel(new BorderLayout(6, 0));
-		centerStrip.add(scopeBox, BorderLayout.WEST);
-		centerStrip.add(queryBox, BorderLayout.CENTER);
+		JLabel scopeLabel = new JLabel("Scope:");
+		JPanel leftStrip = new JPanel(new BorderLayout(6, 0));
+		leftStrip.add(scopeLabel, BorderLayout.WEST);
+		leftStrip.add(scopeBox, BorderLayout.CENTER);
 
 		JPanel eastStrip = new JPanel(new FlowLayout(FlowLayout.RIGHT, 6, 0));
 		eastStrip.add(matchModeBox);
-		eastStrip.add(toggleFilters);
-		top.add(new JLabel("Scope:"), BorderLayout.WEST);
-		top.add(centerStrip, BorderLayout.CENTER);
+		eastStrip.add(toggleFiltersBtn);
+		top.add(leftStrip, BorderLayout.WEST);
+		top.add(queryBox, BorderLayout.CENTER);
 		top.add(eastStrip, BorderLayout.EAST);
+
+		// Share one label column, combo width and east width with the "Search in" row.
+		int labelW = Math.max(scopeLabel.getPreferredSize().width, directoryScopePanel.getLabelPreferredWidth());
+		int comboW = Math.max(scopeBox.getPreferredSize().width, 170);
+		int eastW = Math.max(eastStrip.getPreferredSize().width, directoryScopePanel.getEastPreferredWidth());
+		eastStrip.setPreferredSize(new Dimension(eastW, eastStrip.getPreferredSize().height));
+		scopeLabel.setPreferredSize(new Dimension(labelW, scopeLabel.getPreferredSize().height));
+		scopeBox.setPreferredSize(new Dimension(comboW, scopeBox.getPreferredSize().height));
+		directoryScopePanel.alignWith(labelW, comboW, eastW);
 		return top;
 	}
 
@@ -344,9 +355,8 @@ public class MainWindow extends JFrame implements MenuBarPanel.MenuListener {
 		row.add(new JLabel("To:"));
 		row.add(toField);
 
-		JButton applyBtn = new JButton("Apply");
-		applyBtn.addActionListener(e -> doSearch());
-		row.add(applyBtn);
+		applyFiltersBtn.addActionListener(e -> doSearch());
+		row.add(applyFiltersBtn);
 
 		filterBar.add(row, BorderLayout.CENTER);
 		filterBar.setBorder(BorderFactory.createEmptyBorder(6, 8, 6, 8));
@@ -474,6 +484,11 @@ public class MainWindow extends JFrame implements MenuBarPanel.MenuListener {
 		scopeBox.setEnabled(enabled);
 		matchModeBox.setEnabled(enabled);
 		directoryScopePanel.setScopeControlsEnabled(enabled);
+		toggleFiltersBtn.setEnabled(enabled);
+		applyFiltersBtn.setEnabled(enabled);
+		extField.setEnabled(enabled);
+		fromField.setEnabled(enabled);
+		toField.setEnabled(enabled);
 		if (webServerToggle != null) webServerToggle.setEnabled(enabled);
 	}
 

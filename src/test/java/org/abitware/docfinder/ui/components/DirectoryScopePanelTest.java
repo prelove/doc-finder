@@ -155,10 +155,35 @@ class DirectoryScopePanelTest {
     @Test
     void shouldDisableControls() {
         DirectoryScopePanel p = newPanel(new AtomicInteger());
+        p.setDirectoryPath("E:\\Docs");
+        assertTrue(p.getPathField().isEnabled());
         p.setScopeControlsEnabled(false);
         assertFalse(p.getSourceCombo().isEnabled());
         assertFalse(p.getPathField().isEnabled());
         p.setScopeControlsEnabled(true);
         assertTrue(p.getSourceCombo().isEnabled());
+        assertTrue(p.getPathField().isEnabled());
+    }
+
+    @Test
+    void shouldGreyOutPathControlsForAllSourcesAndEnableForCustom() {
+        AtomicInteger calls = new AtomicInteger();
+        DirectoryScopePanel p = newPanel(calls);
+        assertTrue(p.getSourceCombo().isEnabled());
+        assertFalse(p.getPathField().isEnabled(), "All sources: path field greyed out");
+
+        p.getSourceCombo().setSelectedItem("Custom");
+        assertTrue(p.getPathField().isEnabled(), "Custom enables typing");
+        assertEquals(0, calls.get(), "choosing Custom never commits");
+
+        p.getPathField().setText("E:\\Typed");
+        p.getPathField().setText("");
+        assertTrue(p.getPathField().isEnabled(), "emptying the text while typing must not lock the field");
+
+        p.clearDirectory();
+        assertFalse(p.getPathField().isEnabled(), "Clear returns to the greyed All sources state");
+        p.setScopeControlsEnabled(false);
+        p.setScopeControlsEnabled(true);
+        assertFalse(p.getPathField().isEnabled(), "re-enabling controls keeps All sources greyed");
     }
 }

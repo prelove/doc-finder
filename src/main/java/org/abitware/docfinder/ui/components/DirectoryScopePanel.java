@@ -12,6 +12,7 @@ import javax.swing.JTextField;
 import javax.swing.event.DocumentEvent;
 import javax.swing.event.DocumentListener;
 import java.awt.BorderLayout;
+import java.awt.Dimension;
 import java.awt.FlowLayout;
 import java.io.File;
 import java.util.ArrayList;
@@ -43,49 +44,78 @@ public class DirectoryScopePanel extends JPanel {
     private final JLabel warningLabel = new JLabel(
             "Some source entries were skipped. See Help > View Log.");
 
+    private final JLabel searchInLabel = new JLabel("Search in:");
+    private final JPanel right = new JPanel(new FlowLayout(FlowLayout.RIGHT, 6, 0));
     private final List<String> sources = new ArrayList<>();
     private String committedPath = "";
     private boolean suppressComboEvents = false;
+    private boolean controlsEnabled = true;
+    private boolean customEditing = false;
 
     public DirectoryScopePanel(Runnable onScopeChanged) {
         super(new BorderLayout(6, 4));
         this.onScopeChanged = onScopeChanged;
-        setBorder(BorderFactory.createEmptyBorder(2, 8, 2, 8));
+        setBorder(BorderFactory.createEmptyBorder(4, 8, 2, 8));
 
         warningLabel.setVisible(false);
 
-        JPanel left = new JPanel(new FlowLayout(FlowLayout.LEFT, 6, 0));
-        left.add(new JLabel("Search in:"));
+        JPanel left = new JPanel(new BorderLayout(6, 0));
+        left.add(searchInLabel, BorderLayout.WEST);
         rebuildComboItems();
         sourceCombo.addActionListener(e -> onComboSelected());
-        left.add(sourceCombo);
+        left.add(sourceCombo, BorderLayout.CENTER);
 
-        JPanel right = new JPanel(new FlowLayout(FlowLayout.LEFT, 6, 0));
         right.add(browseButton);
         right.add(clearButton);
 
         pathField.setColumns(32);
         pathField.addActionListener(e -> commit(pathField.getText()));
         pathField.getDocument().addDocumentListener(new DocumentListener() {
-            @Override public void insertUpdate(DocumentEvent e) { refreshComboDisplay(); }
-            @Override public void removeUpdate(DocumentEvent e) { refreshComboDisplay(); }
-            @Override public void changedUpdate(DocumentEvent e) { refreshComboDisplay(); }
+            @Override public void insertUpdate(DocumentEvent e) { onTextEdited(); }
+            @Override public void removeUpdate(DocumentEvent e) { onTextEdited(); }
+            @Override public void changedUpdate(DocumentEvent e) { onTextEdited(); }
         });
 
         browseButton.addActionListener(e -> onBrowse());
         clearButton.addActionListener(e -> clearDirectory());
 
-        JPanel center = new JPanel(new BorderLayout(6, 0));
-        center.add(pathField, BorderLayout.CENTER);
-        center.add(right, BorderLayout.EAST);
-
         JPanel south = new JPanel(new BorderLayout(6, 0));
         south.add(hintLabel, BorderLayout.WEST);
         south.add(warningLabel, BorderLayout.EAST);
 
-        add(left, BorderLayout.WEST);
+        JPanel center = new JPanel(new BorderLayout(0, 2));
+        center.add(pathField, BorderLayout.NORTH);
+        center.add(south, BorderLayout.CENTER);
+
+        JPanel eastWrap = new JPanel(new BorderLayout());
+        eastWrap.add(right, BorderLayout.NORTH);
+
+        JPanel leftWrap = new JPanel(new BorderLayout());
+        leftWrap.add(left, BorderLayout.NORTH);
+
+        add(leftWrap, BorderLayout.WEST);
         add(center, BorderLayout.CENTER);
-        add(south, BorderLayout.SOUTH);
+        add(eastWrap, BorderLayout.EAST);
+        applyEnabledState();
+    }
+
+    /**
+     * Aligns this row with the top search bar: same label column, same combo
+     * width, and an east button area as wide as the bar's east strip.
+     */
+    public void alignWith(int labelWidth, int comboWidth, int eastWidth) {
+        searchInLabel.setPreferredSize(new Dimension(labelWidth, searchInLabel.getPreferredSize().height));
+        sourceCombo.setPreferredSize(new Dimension(comboWidth, sourceCombo.getPreferredSize().height));
+        right.setPreferredSize(new Dimension(eastWidth, right.getPreferredSize().height));
+        revalidate();
+    }
+
+    public int getEastPreferredWidth() {
+        return right.getPreferredSize().width;
+    }
+
+    public int getLabelPreferredWidth() {
+        return searchInLabel.getPreferredSize().width;
     }
 
     /** The committed directory scope; empty string means unrestricted. */
@@ -96,8 +126,10 @@ public class DirectoryScopePanel extends JPanel {
     /** Programmatic set: updates editing state only, never commits. */
     public void setDirectoryPath(String directoryPath) {
         committedPath = (directoryPath == null) ? "" : directoryPath;
+        customEditing = !committedPath.isEmpty();
         pathField.setText(committedPath);
         refreshComboDisplay();
+        applyEnabledState();
     }
 
     /** Refresh the source list; keeps text and committed value untouched. */
@@ -117,16 +149,16 @@ public class DirectoryScopePanel extends JPanel {
     /** Clears the scope, selects All sources, commits once. */
     public void clearDirectory() {
         committedPath = "";
+        customEditing = false;
         pathField.setText("");
         refreshComboDisplay();
+        applyEnabledState();
         fireScopeChanged();
     }
 
     public void setScopeControlsEnabled(boolean enabled) {
-        sourceCombo.setEnabled(enabled);
-        pathField.setEnabled(enabled);
-        browseButton.setEnabled(enabled);
-        clearButton.setEnabled(enabled);
+        controlsEnabled = enabled;
+        applyEnabledState();
     }
 
     /** One-time non-modal warning about skipped source rows. */
@@ -209,8 +241,14 @@ public class DirectoryScopePanel extends JPanel {
             return;
         }
         Object sel = sourceCombo.getSelectedItem();
-        if (sel == null || CUSTOM.equals(sel)) {
-            return; // Custom is a display state, never a real source choice
+        if (sel == null) {
+            return;
+        }
+        if (CUSTOM.equals(sel)) {
+            customEditing = true; // enables the path field; never commits by itself
+            applyEnabledState();
+            pathField.requestFocusInWindow();
+            return;
         }
         if (ALL_SOURCES.equals(sel)) {
             clearDirectory();
@@ -238,9 +276,28 @@ public class DirectoryScopePanel extends JPanel {
 
     private void commit(String directoryPath) {
         committedPath = (directoryPath == null) ? "" : directoryPath.trim();
+        customEditing = !committedPath.isEmpty();
         pathField.setText(committedPath);
         refreshComboDisplay();
+        applyEnabledState();
         fireScopeChanged();
+    }
+
+    private void onTextEdited() {
+        if (!pathField.getText().isEmpty()) {
+            customEditing = true;
+        }
+        refreshComboDisplay();
+        applyEnabledState();
+    }
+
+    /** In the All-sources state there is no directory scope, so the path controls are greyed out; Custom re-enables them. */
+    private void applyEnabledState() {
+        boolean scoped = customEditing || !committedPath.isEmpty() || !pathField.getText().isEmpty();
+        sourceCombo.setEnabled(controlsEnabled);
+        pathField.setEnabled(controlsEnabled && scoped);
+        browseButton.setEnabled(controlsEnabled && scoped);
+        clearButton.setEnabled(controlsEnabled && scoped);
     }
 
     private void fireScopeChanged() {

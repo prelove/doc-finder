@@ -65,3 +65,10 @@
 - Java 8 运行时：mvn test -Djvm=D:\Java\java8\bin\java.exe，fork 实际为 JDK 1.8.0_40（surefire 报告 java.home=D:\Java\java8 已核对）；145 项，0 失败/错误，2 跳过，BUILD SUCCESS。日志 java8-test.log。说明：这证明测试在 Java 8 JVM 上可运行，未覆盖 Java 8 下的桌面 GUI 手工验收。
 - B11（德语区域，真实 harness 内嵌 Web，-Duser.language=de -Duser.country=DE）：全局与目录限定响应的 score 均为小数点（2.8643），PowerShell ConvertFrom-Json 均可解析（3 条/2 条）。解析器不是浏览器 JSON.parse，但 JSON 语法判定等价；此前失败的是 B11a/B11b，现已不复现。
 - 仍未验证：POSIX 主机、native profile、真实 UNC/大规模网络来源、M-01～M-06 实机。
+
+## 手测反馈修复（UI）
+
+- 选 All sources 时路径框与 Browse/Clear 置灰；选 Custom/具体来源后可用；输入过程中删空文本不会锁死输入框；Clear 回到置灰。
+- Scope 行与 Search in 行对齐：共用标签列宽、下拉宽度（≥170）、右侧按钮区宽度，输入框左右边缘对齐；此前 Clear 被截断也一并修正（实机截图核对）。
+- 索引/重建期间 Filters 按钮、Ext/From/To 与 Apply 一并禁用（此前仅禁用范围与搜索框）。
+- 回归：DirectoryScopePanelTest（All 置灰/Custom 启用/删空不锁）、DirectoryScopeDesktopHarnessTest#shouldLockFiltersAndScopeControlsWhileIndexing。verify（无 clean，Explorer 窗口占用 target 导致 clean 失败）：147 项，0 失败，2 跳过。
