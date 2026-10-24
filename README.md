@@ -306,11 +306,11 @@ Paths are relative to the JVM working directory (`user.dir`), which may differ f
 ---
 
 ## Roadmap
-- A: directory-scoped implementation and automated remediation verified; the user confirmed latest manual acceptance fully successful. Authorized delivery/archive is being finalized.
+- A: directory-scoped implementation and automated remediation verified; the user confirmed latest manual acceptance fully successful. Accepted specifications are synchronized and the completed change is archived.
 - B: `improve-name-search-experience` proposal under review; implementation not approved.
 - C1/C2: index consistency, watcher recovery and staged content extraction remain future work.
 - D: selected Java8-compatible dependency upgrades implemented; supported newer-Java stacks and native validation remain separate.
-- [Product sequence](docs/roadmap.md) and [delivery status](openspec/changes/add-directory-scoped-search/delivery-status.yaml) define current gates.
+- [Product sequence](docs/roadmap.md) and [delivery status](openspec/changes/archive/2026-10-24-add-directory-scoped-search/delivery-status.yaml) define current gates.
 
 ---
 

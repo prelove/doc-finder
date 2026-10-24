@@ -4,6 +4,10 @@
 
 在不改变产品行为与 Java 8 基线的前提下，把全部可升级依赖与构建插件升到其 Java 8 兼容线内 proposal 版本表逐项指定的稳定版本（个别组件显式不追最新，如 FlatLaf 3.6.2）。所选线本身可能已是上游 EOL 线（logback 1.3.x、Tika 2.x），EOL 风险如实登记，不宣称消除。
 
+## Sources
+
+已验收版本与方案记录见 [归档变更](../../changes/archive/2026-10-24-modernize-java-dependencies/proposal.md)；当前依赖版本以仓库pom.xml为准，历史版本/风险以归档方案为准。
+
 ## Requirements
 
 ### Requirement: MOD-01 Java 8 兼容边界

@@ -8,7 +8,7 @@
 
 ## B 名称定位体验
 
-当前change：[improve-name-search-experience](../improve-name-search-experience/proposal.md) 已创建0.1提案；Codex评审CHANGES_REQUESTED，待0.2修订/Claude复核及用户实施批准，当前0/22实施任务。
+当前change：[improve-name-search-experience](../../improve-name-search-experience/proposal.md) 已创建0.1提案；Codex评审CHANGES_REQUESTED，待0.2修订/Claude复核及用户实施批准，当前0/22实施任务。
 
 目标：输入名称中段能稳定找到文件/目录；NAME与ALL的名称匹配一致；类型语义与名称/正文区分清楚。
 交付候选：普通字面名称子串、多词/大小写/单字符/符号规则、显式高级模式、输入防抖约250ms和取消队列、结果上限提示、完整名称/前缀排序优先。

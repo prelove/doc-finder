@@ -148,3 +148,21 @@ R24两种EDT顺序与Index All时序/实际提交已由169套件及16追加检�
 ## 最新用户验收结论（2026-10-24，替代之前未执行状态）
 
 用户明确“手动验收完全成功”，原文及版本边界见 [User-Acceptance-2026-10-24.md](User-Acceptance-2026-10-24.md)。M-01/02/03/04/05/06用户整体手测结论为PASS_USER_REPORTED；用户未附逐步日志/截图/JVM/JAR hash，不补造。此前Codex实测与工具限制继续作为其原执行范围。该用户接受与既有自动证据共同关闭A验收；native/POSIX宿主/真实UNC仍未新增验证。
+
+
+## 0e8de6d Devin 主机验收执行记录（2026-10-24，归档当日补充轮）
+
+执行者Devin；Windows10/JDK17/Playwright托管Chromium；受测SHA=0e8de6dcefe155fb7d8e938df332ea3d14942ca4，JAR SHA-256=dd16841b316e3cd8ffaf64ac25048d51f7bd4bde411a7996d1ace616855b1b4b。隔离根 `E:\qa\dirscope`（各场景独立 work/.docfinder，统一隔离 user.home）；验收前后真实仓库四控制文件SHA完全一致。手段：EDT级探针驱动真实可见 MainWindow + 真实 Lucene + 真实 WebServer（等价真实入口），浏览器项为 Playwright 真实交互 + fetch 门控竞态，HTTP 项为真实 socket。本轮与用户 PASS_USER_REPORTED 验收互为独立佐证，均在同一 SHA 上通过。
+
+| 项 | 本轮结果 | 范围说明 |
+| --- | --- | --- |
+| M-01 | PASS（可自动项） | 12项全过；JFileChooser原生弹窗/右键弹出本身/ManageSources模态/UNC盘根禁用态未点（以等价真实入口驱动） |
+| M-02 | PASS | 8项错误文案全过，无原始异常泄漏，失败词不入历史 |
+| M-03 | PASS（可自动项） | 快速切换末次生效；阻塞/reopen失败/IndexAll瞬间时序由169套件本轮全绿覆盖 |
+| M-04 | PASS | API 13项（422/400/409/503/FOLDER根/特殊编码/de-DE JSON小数点）+ 浏览器13项（范围说明持久化/Clear/行内快捷/真实剪贴板/排序/历史排除） |
+| M-05 | PASS | fetch门控实测：迟到成功不覆盖、在途清空0请求、恢复正常 |
+| M-06 | PASS（可自动项） | 首建免重启/旧索引409/增量不愈合幽灵文档/全量重建503窗口+固定失败文案+锁文件恢复；ACL真实权限失败与窗口关闭中断未执行 |
+
+新观察（非失败，供 B/后续参考）：①搜索在途时 done() 历史回写可覆盖正在输入的编辑文本（建议并入B阶段防抖设计约束）；②Rebuild 成功文案 "Rebuilt files:N" 随后被 "Ready"/空查询文案覆盖（部分失败路径有 completionStatus 保护，成功路径无）。
+
+逐条明细见 [Devin-Host-Acceptance-2026-10-24.md](Devin-Host-Acceptance-2026-10-24.md)，探针源码存证 `qa-20261024-devin/DevinAcceptanceProbe.java`。

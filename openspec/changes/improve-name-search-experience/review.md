@@ -1,5 +1,8 @@
 # B 方案0.1：Codex产品/架构评审
 
+> 最新：0.2方案提交91cc637的独立复核仍为CHANGES_REQUESTED（1P1/4P2/1P3建议），见 [codex-0.2](reviews/codex-0.2.md)。以下0.1评审保留历史；产品评审五项基线已固定，B实施仍未批准。
+
+
 日期：2026-10-24；代码基线 `0e8de6dcefe155fb7d8e938df332ea3d14942ca4`。范围：proposal/design/spec/tasks及实际查询/桌面调用链。结论：**CHANGES_REQUESTED，仅修订方案，暂不实施**。方向符合roadmap B；当前设计有3项P1语义缺陷及6项P2契约/证据缺口。A的修复与B的方案审批分别管理，不把代码已交付理解为A8已完成。
 
 ## 主要发现与修订要求
@@ -30,3 +33,13 @@ B-05来源：[Lucene8.11.2 IndexSearcher](https://lucene.apache.org/core/8_11_2/
 ## 允许推进的下一步
 
 Devin仅修订0.2的proposal/design/spec/tasks及验收/状态材料，逐条回B-01～09；同步草案用户示例，不把未实现功能写进当前帮助。排序/分类/超限规则应有可直接执行的用例，不以“实现时调参”代替契约。然后交Claude复核和用户批准；批准前0/22实施任务保持未勾选。相关旧QueryBuilder/QueryExecutor若要清理，单独证明无生产引用并保留小差异，不能成为功能前置大重构。
+
+
+## A验收归档后的基线调整
+
+A及Java8依赖过渡版已由用户接受；主规格现已同步。B-09还需在0.2明确Modified Capabilities与DS-03名称匹配/评分兼容边界，不能继续写主规格库为空。B仍CHANGES_REQUESTED，当前用户接受A不等于批准B代码。交付基线源提交为 `c90aa58bf6905468f284e50382ccfd802c44834c`；最新交接见仓库docs/handoffs/2026-10-24-name-search-plan.md。
+
+
+## 补充B-08：历史回写不得覆盖新草稿
+
+Devin补充主机报告记录搜索在途编辑新词会被旧完成回调回滚；静态核对MainWindow.populateResults→addToHistory最终无条件setQueryText(q)支持该风险。将它并入B-08：历史列表刷新必须保留当前编辑草稿/光标，不重启重复timer；加“旧查询完成时已键入新词”的回归。它不改变A已接受范围，也不授权提前实施B。补充来源在已归档A的Devin-Host-Acceptance报告，等价驱动边界仍保留。

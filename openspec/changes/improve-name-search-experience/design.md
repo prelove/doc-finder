@@ -1,6 +1,6 @@
 # Design
 
-> 方案 0.2（2026-10-24）：按 Codex 评审 B-01～B-09 逐条修订（见 [review.md](review.md)）。未批准草案；实施须经 Claude 复核 + 用户批准。
+> 方案 0.3（2026-10-24）：0.2 按 B-01～B-09 修订后，Codex 第二轮复核指出排序方案存在阻断缺陷——正文 BM25 无上界可越过常量档、被 Top-N 截掉的高档结果无法靠呈现层重排找回、呈现层推导依赖未存储的 `name_raw`。0.3 将分档改为**名称/正文双列表结构合并**（见 D4），不依赖分数上界假设。五项既定方向不变：冻结真实 EXACT、ALL 不混目录、不做分页或精确总数、保留单字符子串、通配先行。未批准草案；实施须经 Claude 复核 + 用户批准。
 
 ## Context
 
@@ -15,7 +15,7 @@
 **Goals:**
 
 - 字面输入的名称子串命中：NAME/FOLDER 走纯名称条件；ALL 为名称条件 OR 正文分支；CONTENT 不变。
-- 命中分档可证明：完整名称 > 前缀 > 子串 > 仅正文；档位在查询侧保证候选不被低档挤出 Top-N，呈现序确定性分档。
+- 命中分档可证明：完整名称 > 前缀 > 子串 > 仅正文；名称命中与仅正文命中分属两个查询列表，档位由查询结构保证而非分数上界假设；Top-N 在结构上不可能丢失高档名称结果。
 - 桌面 ~250ms 防抖：编辑即失效在途请求、Timer 只延迟提交、立即提交取消挂起 Timer。
 - 截断提示：limit+1 可靠 hasMore，桌面/Web 一致，不虚构精确总数。
 - 性能门槛实测驱动实现选择，不引入迁移为默认。
@@ -40,12 +40,12 @@
 
 输入分类先行（D3）；仅"普通字面 + FUZZY"走本路径。
 
-- 每词构造三档名称子句：`TermQuery(name_raw,tok)`、`PrefixQuery(name_raw,tok)`、`WildcardQuery(name_raw,*tok*)`，经 `DisjunctionMaxQuery(tieBreaker=0)` 取最高档常量分（见 D4 排序）。
-- 多词：各词的名称子句组间 **AND**（全部词子串命中同一名称才算名称命中）。
+- 每词构造三档名称子句：`BoostQuery(ConstantScoreQuery(TermQuery(name_raw,tok)),4)`、`BoostQuery(ConstantScoreQuery(PrefixQuery(name_raw,tok)),3)`、`BoostQuery(ConstantScoreQuery(WildcardQuery(name_raw,*tok*)),2)`，经 `DisjunctionMaxQuery(tieBreaker=0)` 输出该词最高档常量分 ∈ {4,3,2}。
+- 多词：各词的名称子句组间 **AND**（全部词子串命中同一名称才算名称命中）；文档名称分 = 各词档常量之和，故分值的整数部分精确编码档位构成。
 - 范围映射（B-01/B-02）：
   - `NAME`/`FOLDER`：根查询 = 名称条件 MUST（+ `kind` FILTER）。**名称命中必须由名称条件满足全部词**；旧 parsed 的 name 多词 OR 路径不再进入名称命中（正文命中与名称命中分开解释；FOLDER 原本就只查名称）。
   - `CONTENT`：根查询 = 既有 parsed 正文路径，不变。
-  - `ALL`：根查询 = `(名称条件 OR 既有 parsed 正文分支)` 两个 SHOULD、minShouldMatch=1；即"完整名称条件分支或既有正文分支至少一个成立"。
+  - `ALL`：不按单查询 OR 拼接，改走 D4 的双列表合并；语义等价"名称条件 OR 既有正文分支至少一个成立"，但结构上分列求值。
 - 目录限定与 `kind` 仍以 FILTER 子句叠加，先于 Top-N 生效。
 - 高级语法（含 `name:`/`*`/`?`/`"`/括号/字段前缀/布尔算符标记的输入）与 EXACT 模式完全沿用旧解析路径，不套用本子串扩展。
 
@@ -60,14 +60,17 @@
 
 约束：字面词按空白切分；词数上限 16、单词长度上限 64 字符，超限 → INVALID_QUERY 固定文案（可验收契约，非实现期再定）。
 
-### D4 命中分档：常量分档 + 呈现层确定性重排
+### D4 命中分档：名称/正文双列表结构合并（可证明，不依赖分数上界）
 
-- 档位常量：`DisjunctionMaxQuery` 输出 `exact=4.0 / prefix=3.0 / substring=2.0`（`ConstantScoreQuery` 包装，档内不吃 tf/idf）；正文分支保留自然 BM25 分。
-- 呈现序（结果落地前按存储字段 `name_raw` 实测档位确定性 stable-sort）：
-  1. 完整名称档 → 2. 前缀档 → 3. 子串档 → 4. 仅正文命中；
-  同档内按 Lucene 总分降序；同分按 `path` 字典序 tie-break。
-- Top-N 不漏高档：档位常量量级（≥2.0，间隔 1.0）确保名称命中在候选集中天然高于一般正文命中；高正文评分/高词频对抗样本进基准夹具实测验证无越档（若实测出现越档，记录并按"呈现层重排仍保证高档优先于低档展示"的规格语义交付——排序契约定义的是命中分类序，不承诺跨类别的绝对分数隔离）。
-- 目录限定开/关不改变档位规则。
+0.2 的单查询常量+BM25 叠加被否：正文 BM25 无上界，可越过常量档；Top-N 截掉的高档名称结果呈现层无法找回；且 `name_raw` 为 `Store.NO`（DocumentBuilder 实测），呈现层无法按其推导档位。0.3 改为**双列表结构合并**：
+
+- **列表 1（名称命中）**：仅 `名称条件` + `kind`/`path_scope` FILTER，取 `limit+1`。该查询只含 `DisjunctionMax` 常量档（单词文档得分 ∈ {4,3,2}，多词为各词档常量之和）——**正文/解析分完全不参与此列表**，故"名称命中排在仅正文命中之前"由查询结构保证，无需任何分数上界假设。
+- **列表 2（仅正文命中）**：`parsed 正文分支 MUST + 名称条件 MUST_NOT`（+ 同套 FILTER），取 `limit+1`，保留自然 BM25 序。`MUST_NOT` 使两列表不相交，名称+正文双命中文档只进列表 1。
+- **合并**：列表 1 全量（截断至 limit+1）→ 列表 2 补齐余量；hasMore = (两列表实际取回数之和 > limit)。Top-N 分别作用于两列表内部：列表 1 内高档不可能被低档挤出（分值即档常量之和，天然单调）；列表 2 内纯 BM25。
+- **名称列表内呈现序**：分值降序（= 档常量之和降序，词数相同时即档序）→ 同分按存储字段 `name` 长度升序（短名优先，子串占比更大）→ 再按 `path` 字典序。仅依赖已物化的 `SearchResult` 名称/路径（`name`/`path` 均 `Store.YES`），不读取 `name_raw`。
+- **NAME/FOLDER/CONTENT**：单查询即可（NAME/FOLDER 仅列表 1 结构 + `kind` FILTER；CONTENT 沿用旧路径），无合并成本。
+- **ALL 代价**：两次搜索/查询（名称 + 排他正文），成本进 B0 基准门槛口径；EXACT/高级语法路径不变仍为单次。
+- **Match 字段**：对最终返回的 ≤limit+1 文档按文档求 `explain`（名称条件 / 正文分支分别判定）得到 `name`/`content`/`name+content`，保证真实反映命中来源。
 
 ### D5 截断提示：limit+1 可靠 hasMore，不提供精确总数
 
@@ -96,11 +99,11 @@
 ## Risks / Trade-offs
 
 - [前导 `*` 通配扫描词项集] → D1 完整门槛定义 + 高命中短词样本实测；不达标回评审，不自动迁移。
-- [常量档与正文分数越档] → D4 对抗样本实测；越档时按定义语义交付并记录。
+- [ALL 双查询成本翻倍] → 列表 2 仅排他正文 + 各取 limit+1，开销进 B0 门槛实测；EXACT/高级路径不受影响。
 - [防抖少搜观感/回写冲突] → D6 立即失效 + Timer 只延迟提交 + 编辑期不回写约束。
 - [`searchDetailed` 兼容实现信息不足] → 默认 `hasMore=false`/unknown 声明，不伪装精确（B-05）。
 - [n-gram 分支若批准将要求全量重建] → 覆盖检测复用 `path_scope` leaf 统计模式（泛化字段参数），方案另审。
-- [`detectMatchType` 解释] → 子串命中落 `name_raw`，现有 Explanation 已标记 name，不改。
+- [`detectMatchType` 解释] → 合并后按返回文档 `explain` 名称/正文分支判定，Match 字段如实反映来源；不按 `name_raw` 在场与否推断。
 
 ## Migration Plan
 

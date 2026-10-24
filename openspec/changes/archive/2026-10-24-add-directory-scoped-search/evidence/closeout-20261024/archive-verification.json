@@ -1,0 +1,32 @@
+{
+  "date": "2026-10-24",
+  "source_delivery_commit": "c90aa58bf6905468f284e50382ccfd802c44834c",
+  "archive_commit": "the Git commit containing this record",
+  "user_manual_acceptance": "PASS_USER_REPORTED from direct user message; no invented step logs or runtime hash",
+  "A_tasks": "56/56",
+  "dependency_tasks": "6/6",
+  "B_implementation": "0/22; not authorized",
+  "main_specs": {
+    "directory-scoped-search": 12,
+    "build-modernization": 4
+  },
+  "requirements_bodies_equal_accepted_deltas": true,
+  "strict_validation": "3 passed /0 failed: 2 main specs and B active plan",
+  "markdown_link_validation": "73 documents checked; 0 unresolved repository links",
+  "rewritten_link_count": 11,
+  "source_tree_unchanged_since_delivery": true,
+  "historical_approval_manifest_files_unchanged": true,
+  "runtime_controls_sha256": {
+    "config.properties": "19c4a612b9f02bc22c36cb786222b0028aace031ef5f58b475219ee38f5b72d8",
+    "sources.txt": "1e65af854f098bd1ee627564894d73c12dadf6100217216e78cccca290565287",
+    "shares.properties": "2446b78d81bc213466d78fdffca0e107e42baa5d3b5b8bc496d989b680db4b28",
+    "history.txt": "8bc98e5f52ed8bb855ca4c44a67b2b4316dfdbc70ff0f20262c68e3aa15b3f65"
+  },
+  "local_artifacts_excluded": [
+    ".playwright-mcp/"
+  ],
+  "native_POSIX_real_UNC_new_validation": false,
+  "B_current_plan": "0.2 submitted91cc637; independent review changes requested1P1/4P2 plus1P3; implementation not authorized",
+  "parallel_C1": "read-only diagnosis instruction; product changes not authorized",
+  "supplemental_Devin_host_evidence": "preserved with explicit user-acceptance state correction"
+}

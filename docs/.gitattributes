@@ -1,0 +1,6 @@
+# Keep delivery fingerprint inputs reproducible on Windows and other hosts.
+.gitattributes text eol=lf
+roadmap.md text eol=lf
+handoffs/*.md text eol=lf
+deliveries/*.md text eol=lf
+deliveries/*.sha256 text eol=lf

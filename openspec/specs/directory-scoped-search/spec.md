@@ -4,6 +4,10 @@
 
 让用户在已配置索引来源内选择一个目录，将名称、正文或目录名称检索限定到该目录及整棵子目录树；同时建立路径边界、来源校验、旧索引提示和桌面/Web 一致契约，避免将范围错误或执行失败解释为没有匹配。
 
+## Sources
+
+已验收版本与方案记录见 [归档变更](../../changes/archive/2026-10-24-add-directory-scoped-search/proposal.md)；当前依赖版本以仓库pom.xml为准，历史版本/风险以归档方案为准。
+
 ## Requirements
 
 ### Requirement: DS-01 默认整树范围

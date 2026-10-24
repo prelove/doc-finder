@@ -3,7 +3,7 @@ change: add-directory-scoped-search
 package_version: "0.4"
 updated_at: 2026-10-24
 timezone: Asia/Tokyo
-phase: USER_ACCEPTED_AUTHORIZED_DELIVERY_IN_PROGRESS
+phase: ARCHIVED_USER_ACCEPTED
 implementation_authorized: true
 source_head_at_planning: 9a1c26ad1f3261c16548f55693b3380d5db67790
 review_baseline: review-baseline.sha256
@@ -58,7 +58,7 @@ gates:
     quote: 批准以 0.4 交给 Devin 实施，包含 A0 测试配置修改。
     test_pom_configuration_authorized: true
   implementation:
-    status: A0_A7_implementation_and_user_acceptance_complete
+    status: complete_accepted_and_archived
     task_source: tasks.md
     completed_packages:
       - A0
@@ -90,7 +90,7 @@ gates:
       - a0b6caf
       - 93c2981
       - 0e8de6dcefe155fb7d8e938df332ea3d14942ca4
-    current_head: 0e8de6dcefe155fb7d8e938df332ea3d14942ca4
+    current_head: c90aa58bf6905468f284e50382ccfd802c44834c
     delivered_packages:
       - A0
       - A1
@@ -104,10 +104,10 @@ gates:
     reopened_packages: []
     tested_feature_head: c7f33f41a4f5a1e6986b412f447d23420cd00931
     tested_combined_head: 0e8de6dcefe155fb7d8e938df332ea3d14942ca4
-    observed_remote_main: 0e8de6dcefe155fb7d8e938df332ea3d14942ca4
+    observed_remote_main: c90aa58bf6905468f284e50382ccfd802c44834c
     remote_observation_date: 2026-10-24
-    remote_observation_method: Independent GitHub GET git/ref/heads/main matches HEAD
-    progress_note: 55/56 tasks closed; actual authorized commit/push and archive close10.2
+    remote_observation_method: Source delivery push succeeded before documentation-only archive commit
+    progress_note: 56/56 complete; source delivered;12 main requirements synced and accepted change archived
     historical_tested_combined_head: 4eb417b4283665ec586538ef5a0670f29eeed7fd
   independent_implementation_review:
     status: R24_01_to_06_closed_no_new_A_implementation_findings_in_review_scope
@@ -167,20 +167,20 @@ gates:
       jar_sha256: 9eac540be14c0266f229b4d3d73daf9b2b0d911aca85a61390f72110f46b956c
       patch: evidence/finalqa-20261024/help-copy.diff
   acceptance:
-    status: PASS_USER_REPORTED_A8_ACCEPTED
+    status: PASS_USER_REPORTED_A8_COMPLETE
     execution_owner: Codex
     authority: user
     evidence: evidence/M-Acceptance-Runbook.md
     user_report: 最新版手动验收完全成功（用户直接确认）
     latest_evidence: evidence/User-Acceptance-2026-10-24.md
     remediation_evidence: evidence/Devin-QA24-Remediation-2026-10-24.md; evidence/Devin-R24-Remediation-2026-10-24.md
-    manual:
-      M-01: partial_components_picker_pass_current_native_screenshot_timeout_click_record_pending
-      M-02: partial_all_codes_and_clear_probes_pass_full_native_record_pending
-      M-03: controlled_EDT_IndexAll_latches_pass_native_full_checklist_pending
-      M-04: 8_actual_current_browser_flows_pass_full_matrix_pending
-      M-05: prior_controlled_scenarios_pass_unchanged_web_code_and_assets_identity_checked_not_rerun
-      M-06: real_IndexAll_partial_failure_reader_HTTP_suite_pass_watchdog5pass_full_click_workflow_pending
+    manual: &a1
+      M-01: PASS_USER_REPORTED
+      M-02: PASS_USER_REPORTED
+      M-03: PASS_USER_REPORTED
+      M-04: PASS_USER_REPORTED
+      M-05: PASS_USER_REPORTED
+      M-06: PASS_USER_REPORTED
     performance: P-00_measured_serial_computations_1_1_2; P-01_global_scoped_p95_21.02_20.19ms_gateOK; no_B_substring_benchmark
     java8: actual_1.8.0_40_169_total_167pass_2POSIXskip_original_and_help_copy_variant
     current_suite: independent_0e8de6d_plus_help_copy_variant_both_clean_verify_169_total_167pass_0fail_2skip
@@ -194,14 +194,17 @@ gates:
       actual_user_jar_sha256: not_supplied
       step_logs_or_screenshots: not_supplied_do_not_invent
       evidence: evidence/User-Acceptance-2026-10-24.md
-    manual_user_attestation:
-      M-01: PASS_USER_REPORTED
-      M-02: PASS_USER_REPORTED
-      M-03: PASS_USER_REPORTED
-      M-04: PASS_USER_REPORTED
-      M-05: PASS_USER_REPORTED
-      M-06: PASS_USER_REPORTED
+    manual_user_attestation: *a1
     codex_native_click_execution: not_claimed; prior capture timeouts retained as historical limitation
+    historical_codex_manual_scope:
+      M-01: partial_components_picker_pass_current_native_screenshot_timeout_click_record_pending
+      M-02: partial_all_codes_and_clear_probes_pass_full_native_record_pending
+      M-03: controlled_EDT_IndexAll_latches_pass_native_full_checklist_pending
+      M-04: 8_actual_current_browser_flows_pass_full_matrix_pending
+      M-05: prior_controlled_scenarios_pass_unchanged_web_code_and_assets_identity_checked_not_rerun
+      M-06: real_IndexAll_partial_failure_reader_HTTP_suite_pass_watchdog5pass_full_click_workflow_pending
+    latest_independent_closeout: evidence/closeout-20261024/verification.json
+    devin_supplemental_host_report: evidence/Devin-Host-Acceptance-2026-10-24.md
   delivery_authorization:
     status: granted
     target_branch: main
@@ -210,10 +213,16 @@ gates:
     evidence: evidence/User-Acceptance-2026-10-24.md
     scope: submit verified current revisions; synchronize accepted main specs and archive A plus selected dependency change per established closure workflow; B plan only
   delivery:
-    status: authorized_delivery_in_progress
-    delivered_sha: null
-    evidence: evidence/User-Acceptance-2026-10-24.md
-    source_remote_head: 0e8de6dcefe155fb7d8e938df332ea3d14942ca4
+    status: source_delivered_and_change_archived
+    delivered_sha: c90aa58bf6905468f284e50382ccfd802c44834c
+    source_remote_head: c90aa58bf6905468f284e50382ccfd802c44834c
+    evidence: ../../../../docs/deliveries/2026-10-24-a-closeout.md
+    archive_path: openspec/changes/archive/2026-10-24-add-directory-scoped-search
+    main_spec: openspec/specs/directory-scoped-search/spec.md
+    requirements_synced: 12
+    sync_verified_before_archive: true
+    archive_cli_skip_specs_reason: already_synced_and_validated_before_move
+    closure_commit: Git commit containing this final archive record
   previous_plan_review:
     reviewed_package: "0.3"
     status: pass_plan_sufficiency
@@ -223,17 +232,17 @@ gates:
     open_p0_p1: 0
     closed_findings: F-001_to_F-013
   devin_handoff:
-    status: B_plan_revision_instructions_prepared_UI_send_not_performed_capture_failed
-    current_batch: B0_2_plan_revision_only_A_R24_closed
-    task_ids: []
-    prompt: evidence/Next-Dispatch-2026-10-24.md
-    connection: User opened Devin Local; instructions reference the shared local workspace.
+    status: next_B_plan_only_handoff_ready
     execution_mode: local
     workspace: E:/idea_projects/doc-finder
+    prompt: ../../../../docs/handoffs/2026-10-24-name-search-plan.md
+    new_product_implementation_authorized: false
 next_action:
-  owner: Codex
-  action: fresh_verify_then_commit_push_sync_specs_archive_A_and_dependencies_then_dispatch_B_plan_revision
-  status: AUTHORIZED_DELIVERY_IN_PROGRESS
+  owner: Devin
+  change: improve-name-search-experience
+  action: revise_B_0_2_plan_then_Claude_review_then_explicit_user_implementation_approval
+  input: ../../../../docs/handoffs/2026-10-24-name-search-plan.md
+  status: A_CLOSED_B_PLAN_ONLY
 progress_rules:
   task_checkboxes: tasks.md为唯一实施完成度来源
   verified_results: acceptance.md及evidence为依据
@@ -244,11 +253,4 @@ baseline:
   new_feature_tests: 0e8de6d and current help-copy variant each JDK17 clean verify and realJava8:169total/167pass/0fail/2skip;16focused pass
   capability_microbenchmark: P-00 serial computations1_to1_to2 measured; P-01 p95global21.02/scoped20.19ms gateOK
   gui_browser_native: 8 actual browser flows pass; native screenshot timed out again; full M pending; native_POSIX_UNC_not_verified
-  dirty_worktree: current Codex documentation/help updates uncommitted; .playwright-mcp preserved; no B product implementation
-parallel_next_action:
-  owner: Devin
-  change: improve-name-search-experience
-  action: revise_plan0_2_B_01_to_09_then_Claude_review_then_user_implementation_approval
-  product_code_allowed: false
-  input: evidence/Next-Dispatch-2026-10-24.md; ../improve-name-search-experience/review.md
-  status: B_PLAN_REVISION_NEXT_AFTER_A_DELIVERY
+  dirty_worktree: Accepted source was pushed; final archive/links/receipt are documentation-only in this commit; local .playwright-mcp intentionally excluded

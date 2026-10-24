@@ -2,24 +2,18 @@
 
 ## Current Snapshot (2026-10-24)
 
-- **Observed source/remote**: 0e8de6d at local HEAD and independently queried origin main. New local documentation/help updates are uncommitted.
-- **A implementation**: R24-01..06 independently closed. JDK17 clean verify and real Java8 each 169 total /167 pass /0 fail /2 platform skips; current help-copy variant separately rerun with same result. 16 additional checks pass, including 5 watchdog injections.
-- **Host acceptance**: user subsequently confirmed latest manual acceptance fully successful and asked to continue submission/delivery. PASS_USER_REPORTED; A8 accepted. Earlier NOT_EXECUTED and native-tool limits are historical observations, not current user acceptance status.
-- **Dependency modernization**: selected Java8-compatible versions verified with A; remaining upstream EOL risks documented. No blanket latest/security guarantee.
-- **Cleanup commits**: unused ui.workers classes removed; source references and full build checked. Launcher keeps -Xmx2048m, with corrected native-memory/commit guidance; raising Xmx is not a proven fix for the recorded native mmap failure.
-- **Live-data report**: implementer reported a legacy index without path_scope and later scoped-search recovery. Codex did not scan or rebuild business data; this report is not a replacement for formal M records.
-- **B proposal**: improve-name-search-experience exists, 0/22 implementation tasks. Codex CHANGES_REQUESTED (3 P1, 6 P2 plan issues); revise0.2, Claude review, user approval before coding.
-- **Documentation**: README/README_CN/UsageGuide and in-app help synchronized with current scope, actual data locations/preview routes, existing EXACT semantics and future-feature boundary.
-- **Housekeeping**: .playwright-mcp remains local untracked artifacts; no jerr4.txt currently reported by git. Leave unrelated/runtime artifacts untouched.
+- **A directory scope**: accepted and archived;56/56 tasks. User explicitly confirmed latest manual acceptance fully successful (PASS_USER_REPORTED); independent verification and runtime provenance retained.
+- **Dependency transition**: accepted with A and archived;6/6 tasks. Selected Java8 versions and residual EOL risks remain documented.
+- **Delivered source**: `c90aa58bf6905468f284e50382ccfd802c44834c` pushed to origin/main. The current archive/receipt commit changes documentation only.
+- **Fresh verification**: isolated clean verify169 total/167 passed/0 failures/errors/2 POSIX skips; actual Java8 and16 additional checks retained from independent evidence; no new functional changes.
+- **Main specs**: directory-scoped-search12 requirements; build-modernization4 requirements, both synced and validated before archive.
+- **B name experience**: only active change;0/22 implementation tasks.0.2 submitted in91cc637; independent review CHANGES_REQUESTED (1P1/4P2/1P3 suggestion); next step is0.3 revision then Claude/user review. C1 readonly analysis has a separate bounded handoff.
+- **Documentation**: current README/README_CN/UsageGuide/in-app help updated; long-term [roadmap](../docs/roadmap.md) and [handoff](../docs/handoffs/2026-10-24-name-search-plan.md) are stable entry points.
+- **Local artifacts**: .playwright-mcp kept untracked; business data untouched. native/POSIX host/real UNC and large-network validation are not added to the acceptance claim.
 
-### Next actions
+Next owner: Devin for B plan revision only. Codex owns review/acceptance coordination; C1/C2 and major runtime upgrades remain separate future work.
 
-1. Codex completes authorized commit/push, main-spec sync and archive of accepted A/dependency changes.
-2. Devin revises B proposal only against [B review](../openspec/changes/improve-name-search-experience/review.md); no B implementation permission is inferred.
-3. Claude reviews revised B plan, user approves its actual fingerprint and implementation scope.
-4. A8 is accepted; record actual delivery SHA and archive locations, then continue B plan revision without new implementation authorization.
-
-Latest A evidence: [final review](../openspec/changes/add-directory-scoped-search/evidence/Codex-Final-Review-2026-10-24.md). PM handoff: [next dispatch](../openspec/changes/add-directory-scoped-search/evidence/Next-Dispatch-2026-10-24.md).
+Delivery record: [A closeout](../docs/deliveries/2026-10-24-a-closeout.md).
 
 ---
 

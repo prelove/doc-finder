@@ -24,14 +24,14 @@
 - [x] 3.1 QA24-10/R24-06：proposal/design/spec/tasks已统一为"指定版本兼容升级+显式例外"，无条件的"线内最新"承诺已移除；Logback1.3/Tika2仍EOL、FlatLaf3.6.2非上游最新均保留明示。未改变Java8基线，未升级依赖。
 - [x] 3.2 【2026-10-24用户组合验收及独立验证闭环】与目录检索tasks第12组闭环后，核对最终受测SHA、远端实查SHA及A8状态，不把旧用户冒烟或方案PASS当升级后正式验收。
 
-独立运行：4eb417b在JDK17 clean verify与真实Java8 test各149总数/148通过/0失败/1平台跳过；c7只跑基线构建，新增偏差探针在4eb执行；本轮不作依赖升级引入偏差的因果判断。证据：[Codex-QA-2026-10-24](../add-directory-scoped-search/evidence/Codex-QA-2026-10-24.md)。当前验收仍需目录检索修复/复验与用户决定。
+独立运行：4eb417b在JDK17 clean verify与真实Java8 test各149总数/148通过/0失败/1平台跳过；c7只跑基线构建，新增偏差探针在4eb执行；本轮不作依赖升级引入偏差的因果判断。证据：[Codex-QA-2026-10-24](../2026-10-24-add-directory-scoped-search/evidence/Codex-QA-2026-10-24.md)。当前验收仍需目录检索修复/复验与用户决定。
 
 
 ## 4f56d0d独立复验补正
 
-JDK17 clean verify和真实Java8均164总数/162通过/0失败/2平台跳过（带隔离探针）。EOL已明示；3.1仍未关闭：“最高兼容线内最新”与已写明FlatLaf未追更新的例外仍有内部矛盾，统一为指定版本兼容升级及明确例外（R24-06/目录检索tasks13.6）。不因改文档再升级依赖。3.2及A8仍需目录检索残留闭环。最新证据：[Codex-Reverification-2026-10-24](../add-directory-scoped-search/evidence/Codex-Reverification-2026-10-24.md)。
+JDK17 clean verify和真实Java8均164总数/162通过/0失败/2平台跳过（带隔离探针）。EOL已明示；3.1仍未关闭：“最高兼容线内最新”与已写明FlatLaf未追更新的例外仍有内部矛盾，统一为指定版本兼容升级及明确例外（R24-06/目录检索tasks13.6）。不因改文档再升级依赖。3.2及A8仍需目录检索残留闭环。最新证据：[Codex-Reverification-2026-10-24](../2026-10-24-add-directory-scoped-search/evidence/Codex-Reverification-2026-10-24.md)。
 
 
 ## 组合验收通过（2026-10-24）
 
-用户确认最新版手动验收完全成功，依赖过渡版随A接受；指定版本/Java8验证/残留EOL边界不变。完整原文与来源见 [用户验收记录](../add-directory-scoped-search/evidence/User-Acceptance-2026-10-24.md)。本批6/6任务完成，交付归档与A一并收尾。
+用户确认最新版手动验收完全成功，依赖过渡版随A接受；指定版本/Java8验证/残留EOL边界不变。完整原文与来源见 [用户验收记录](../2026-10-24-add-directory-scoped-search/evidence/User-Acceptance-2026-10-24.md)。本批6/6任务完成，交付归档与A一并收尾。
