@@ -1,6 +1,6 @@
 # DocFinder 目录检索交接包
 
-版本0.4；2026-10-23（Asia/Tokyo）。Claude对0.3按计划充分性PASS，F-001～013关闭、无残留P0/P1。0.4补全部9项非阻断发现，等待用户最终实施批准；尚未启动Devin。
+版本0.4；2026-10-23（Asia/Tokyo）。Claude对0.3按计划充分性PASS，F-001～013关闭、无残留P0/P1。0.4实施已获用户批准并完成：A0–A7及Codex报告缺陷F01–F07修复全部落地（HEAD 36139f5，147项自动测试通过），用户冒烟手测报告无问题；当前仅剩A8用户最终验收与授权交付。
 
 ## 目标与产品选择
 
@@ -21,12 +21,12 @@ Full Rebuild先清空再解析、非原子、期间不可搜，失败可留空/�
 | [proposal.md](proposal.md) | A范围/兼容/迁移代价 |
 | [specs/directory-scoped-search/spec.md](specs/directory-scoped-search/spec.md) | DS-01～12唯一行为契约 |
 | [design.md](design.md) | 统一接口、错误、路径、服务生命周期/隔离 |
-| [tasks.md](tasks.md) | 10包31步唯一实施清单，全部未完成 |
+| [tasks.md](tasks.md) | 10包31步唯一实施清单；A0–A7与第11组已完成，A8待用户 |
 | [acceptance.md](acceptance.md) | 自动测试、Codex主机验收与P-00/P-01 |
 | [review.md](review.md) | 原13项关闭、新9项逐项处理及是否再审说明 |
 | [decisions.md](decisions.md) | 用户已确认的五项选择 |
 | [handoff.md](handoff.md) | Devin执行提示、可选Claude补丁核对 |
-| [delivery-status.yaml](delivery-status.yaml) | 关口与未授予的实施授权 |
+| [delivery-status.yaml](delivery-status.yaml) | 关口状态；实施授权已授予，交付授权未授予 |
 | [analysis.md](analysis.md) / [roadmap.md](roadmap.md) | 源码依据、风险、后续B/C/D |
 | [planning-validation.md](planning-validation.md) | 文档检查，非功能通过 |
 | [reviews/claude-0.2.txt](reviews/claude-0.2.txt) | 0.2外部原文 |
@@ -41,6 +41,6 @@ Full Rebuild先清空再解析、非原子、期间不可搜，失败可留空/�
 
 ## 下一步
 
-PM判断这些是已批准产品方向下的实施细节，不要求再做整包评审；可选请Claude只看三项P2及argLine补丁。0.3 PASS不是“已审0.4”，最终实施批准须指向新指纹。
-用户批准后才交Devin按任务执行，Codex复核证据并安排真实主机验收，用户最终接受。没有自动联系Claude/Devin或发布。OpenSpec结构通过不等于功能、性能或用户验收通过。
+当前下一步：完成全功能独立实现审查与最终clean verify后，由Codex补齐M-01～M-06正式记录形成验收候选；用户接受（A8）并指定交付目标后才可归档/PR/合并。POSIX主机、native构建、真实UNC/大规模网络来源仍未验证，单列不合并。
+没有自动联系Claude/Devin或发布。OpenSpec结构通过不等于功能、性能或用户验收通过。
 

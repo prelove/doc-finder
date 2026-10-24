@@ -61,16 +61,17 @@ gates:
     status: completed_pending_host_acceptance
     task_source: tasks.md
     completed_packages: [A0, A1, A2, A3, A4, A5a, A5b, A6, A7]
-    implementation_commits: [f52dc97, ca98939, 4da19eb, af6bd77, cff430e, 4571a89]
-    current_head: 4571a89
+    implementation_commits: [f52dc97, ca98939, 4da19eb, af6bd77, cff430e, 4571a89, cbe8967, 36139f5]
+    current_head: 36139f5
   independent_implementation_review:
-    status: partial_remediation_diff_only_full_feature_review_pending
+    status: remediation_diff_review_done_full_feature_review_in_progress
     evidence: evidence/Codex-Remediation-2026-10-23.md
   acceptance:
-    status: not_started
+    status: user_smoke_test_reported_pass_formal_M_records_pending
     execution_owner: Codex
     authority: user
-    evidence: null
+    evidence: evidence/M-Acceptance-Runbook.md
+    user_report: "2026-10-23 用户报告手动测试完毕、功能暂时无问题、此前UI问题已解决（基于 cbe8967/36139f5 的打包构建）；逐项 M 正式记录与环境/SHA 仍未补齐"
   delivery_authorization:
     status: not_granted
     target_branch: null
@@ -98,9 +99,9 @@ gates:
     workspace: E:/idea_projects/doc-finder
 next_action:
   owner: Codex
-  action: independent_implementation_review_then_host_acceptance_M-01_to_M-06
-  input: git diff 9a1c26a..4571a89, evidence/A0-A7.md, evidence/M-Acceptance-Runbook.md, acceptance.md
-  expected_output: review blockers closed, M-01..M-06 records, then user acceptance decision (A8)
+  action: full_feature_independent_review_then_final_clean_verify_then_formal_M_records_then_user_A8
+  input: git diff 9a1c26a..36139f5, evidence/A0-A7.md, evidence/M-Acceptance-Runbook.md, acceptance.md
+  expected_output: review blockers closed, clean verify + strict validate at HEAD, M-01..M-06 records, then user acceptance decision (A8)
   status: WAITING_FOR_HOST_ACCEPTANCE
 progress_rules:
   task_checkboxes: tasks.md为唯一实施完成度来源
@@ -109,7 +110,7 @@ progress_rules:
   no_automatic_external_dispatch: true
 baseline:
   existing_tests: historical_43_passed_not_current_feature_evidence
-  new_feature_tests: passed_145_tests_clean_verify_at_4571a89_see_Codex-Remediation
-  capability_microbenchmark: P-00_P-01_recorded_in_A4_A7
-  gui_browser_native: not_verified
-  dirty_worktree: head_4571a89_pushed_to_origin_main
+  new_feature_tests: passed_147_tests_verify_at_36139f5_final_clean_verify_pending_see_Codex-Remediation
+  capability_microbenchmark: P-00_P-01_recorded_in_A4_A7_and_Codex-Remediation
+  gui_browser_native: user_smoke_tested_gui_and_web_native_not_verified
+  dirty_worktree: head_36139f5_pushed_to_origin_main

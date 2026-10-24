@@ -1,23 +1,23 @@
 # Acceptance and Evidence
 
-文档0.4。当前：新功能未实施、自动/手工/性能未执行，用户未验收。此前43项既有测试通过只作历史基线，不替代本包验证。
+文档0.4。当前：实现与自动验证已完成（HEAD 36139f5，147项通过0失败2跳过，见evidence/A0–A7与Codex-Remediation）；用户报告冒烟手测无问题，逐项M正式记录仍未补齐；未执行POSIX/native/真实UNC项单列；用户未做最终验收（A8）。此前43项既有测试通过只作历史基线，不替代本包验证。
 
 ## Traceability
 
 | DS | 自动验证（拟新增/扩展） | 任务包 | 交互 | 当前结果 |
 | --- | --- | --- | --- | --- |
-| DS-01 整树/根自身/兄弟 | DirectoryScopedSearchTest、DirectoryScopeEndToEndTest | A3/A7 | M-01/M-04 | 未执行 |
-| DS-02 路径 | PathScopeTest、HTTP编码测试 | A1/A6 | M-01/M-04 | 未执行 |
-| DS-03 条件/Top-N/类型 | LuceneSearchServiceTest、DirectoryScopedSearchTest | A0/A3 | M-01 | 未执行 |
-| DS-04 来源/离线/状态 | SourceManagerSearchRootsTest、DirectorySourceValidationTest（含好坏行混合）、无提交HTTP fixture | A1/A3/A6 | M-02/M-04 | 未执行 |
-| DS-05 旧/混合/刷新 | DirectoryScopeCompatibilityTest | A4 | M-06 | 未执行 |
-| DS-06 实际全量/upsert | LuceneIndexerPathScopeTest、DocumentBuilderTest、EndToEnd | A2/A7 | M-06 | 未执行 |
-| DS-07 桌面 | DirectoryScopePanelTest（含路径等价/坏行警告）、DesktopHarness | A5a | M-01/M-02/M-03 | 未执行 |
-| DS-08 Web | SearchHandlerTest、WebAssetsOfflineTest（仅资源） | A6 | M-04/M-05 | 未执行 |
-| DS-09 错误 | SearchErrorMessagesTest、DesktopHarness八Code/未知消息映射、HTTP映射 | A3/A4/A5a/A6 | M-02/M-04 | 未执行 |
-| DS-10 空词/兼容 | provider计数=0、旧请求回归 | A0/A3/A6 | M-03/M-05 | 未执行 |
-| DS-11 快捷定位/复制 | EDT动作/服务器parentDirectory/前端受控响应测试 | A5a/A5b/A6 | M-01/M-04 | 未执行 |
-| DS-12 首次建库/重建恢复 | DesktopHarness、HTTP unavailable/恢复与集成测试 | A5a/A6/A7 | M-02/M-06 | 未执行 |
+| DS-01 整树/根自身/兄弟 | DirectoryScopedSearchTest、DirectoryScopeEndToEndTest | A3/A7 | M-01/M-04 | 自动绿（A3/A7 evidence）；M 实机：用户冒烟通过，逐项记录待补 |
+| DS-02 路径 | PathScopeTest、HTTP编码测试 | A1/A6 | M-01/M-04 | 自动绿（A1/A6）；M 实机：用户冒烟通过，逐项记录待补 |
+| DS-03 条件/Top-N/类型 | LuceneSearchServiceTest、DirectoryScopedSearchTest | A0/A3 | M-01 | 自动绿（A0/A3）；M-01 实机记录待补 |
+| DS-04 来源/离线/状态 | SourceManagerSearchRootsTest、DirectorySourceValidationTest（含好坏行混合）、无提交HTTP fixture | A1/A3/A6 | M-02/M-04 | 自动绿（A1/A3/A6）；M-02/M-04 实机记录待补 |
+| DS-05 旧/混合/刷新 | DirectoryScopeCompatibilityTest | A4 | M-06 | 自动绿（A4）；M-06 实机未执行 |
+| DS-06 实际全量/upsert | LuceneIndexerPathScopeTest、DocumentBuilderTest、EndToEnd | A2/A7 | M-06 | 自动绿（A2/A7）；M-06 实机未执行 |
+| DS-07 桌面 | DirectoryScopePanelTest（含路径等价/坏行警告）、DesktopHarness | A5a | M-01/M-02/M-03 | 自动绿（A5a）；M-01～03 用户冒烟通过，逐项记录待补 |
+| DS-08 Web | SearchHandlerTest、WebAssetsOfflineTest（仅资源） | A6 | M-04/M-05 | 自动绿+Playwright场景复测（A6/Remediation）；M-04/M-05 逐项记录待补 |
+| DS-09 错误 | SearchErrorMessagesTest、DesktopHarness八Code/未知消息映射、HTTP映射 | A3/A4/A5a/A6 | M-02/M-04 | 自动绿（A5a/A6）；M-02/M-04 实机记录待补 |
+| DS-10 空词/兼容 | provider计数=0、旧请求回归 | A0/A3/A6 | M-03/M-05 | 自动绿（A3/A6/F05修复）；M-03/M-05 实机记录待补 |
+| DS-11 快捷定位/复制 | EDT动作/服务器parentDirectory/前端受控响应测试 | A5a/A5b/A6 | M-01/M-04 | 自动绿（A5b/A6）；M-01/M-04 实机记录待补 |
+| DS-12 首次建库/重建恢复 | DesktopHarness、HTTP unavailable/恢复与集成测试 | A5a/A6/A7 | M-02/M-06 | 自动绿（A5a/A7/F02修复）；M-02/M-06 实机未执行 |
 
 实现者不得以“测试类存在/代码看起来支持”标通过。每行引用真实报告或观察记录；平台skip、仅stub、未跑GUI均单列。
 

@@ -1,6 +1,6 @@
 # Tasks
 
-目录限定检索 Implementation Plan，文档0.4。唯一实施进度来源；当前全部未开始。用户仅批准评审修订，未批准实施。
+目录限定检索 Implementation Plan，文档0.4。唯一实施进度来源。实施已于2026-10-23获用户批准；A0–A7及第11组修复全部完成（HEAD 36139f5），仅剩第10组A8用户验收与授权交付。
 
 > **For agentic workers:** 获得当前版本最终实施批准后，Devin按Superpowers executing-plans/TDD或handoff等价流程执行。每包目标RED→最小实现→GREEN→证据→审查；环境失败不算RED。
 
