@@ -61,10 +61,10 @@ gates:
     status: completed_pending_host_acceptance
     task_source: tasks.md
     completed_packages: [A0, A1, A2, A3, A4, A5a, A5b, A6, A7]
-    implementation_commits: [f52dc97, ca98939, 4da19eb, af6bd77, cff430e, 4571a89, cbe8967, 36139f5]
-    current_head: 36139f5
+    implementation_commits: [f52dc97, ca98939, 4da19eb, af6bd77, cff430e, 4571a89, cbe8967, 36139f5, b166f1c, bdec8aa]
+    current_head: bdec8aa
   independent_implementation_review:
-    status: remediation_diff_review_done_full_feature_review_in_progress
+    status: full_feature_review_pass_no_p0_p1_residual_findings_dispositioned
     evidence: evidence/Codex-Remediation-2026-10-23.md
   acceptance:
     status: user_smoke_test_reported_pass_formal_M_records_pending
@@ -110,7 +110,7 @@ progress_rules:
   no_automatic_external_dispatch: true
 baseline:
   existing_tests: historical_43_passed_not_current_feature_evidence
-  new_feature_tests: passed_147_tests_verify_at_36139f5_final_clean_verify_pending_see_Codex-Remediation
+  new_feature_tests: passed_149_tests_clean_verify_at_bdec8aa_see_Codex-Remediation
   capability_microbenchmark: P-00_P-01_recorded_in_A4_A7_and_Codex-Remediation
   gui_browser_native: user_smoke_tested_gui_and_web_native_not_verified
-  dirty_worktree: head_36139f5_pushed_to_origin_main
+  dirty_worktree: head_bdec8aa_clean_commits_64bb36f_b166f1c_bdec8aa_unpushed

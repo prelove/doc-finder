@@ -72,3 +72,15 @@
 - Scope 行与 Search in 行对齐：共用标签列宽、下拉宽度（≥170）、右侧按钮区宽度，输入框左右边缘对齐；此前 Clear 被截断也一并修正（实机截图核对）。
 - 索引/重建期间 Filters 按钮、Ext/From/To 与 Apply 一并禁用（此前仅禁用范围与搜索框）。
 - 回归：DirectoryScopePanelTest（All 置灰/Custom 启用/删空不锁）、DirectoryScopeDesktopHarnessTest#shouldLockFiltersAndScopeControlsWhileIndexing。verify（无 clean，Explorer 窗口占用 target 导致 clean 失败）：147 项，0 失败，2 跳过。
+
+## 全功能独立实现审查与残余项清零（2026-10-24）
+
+- 全量独立实现审查（只读子代理，覆盖 9a1c26a..36139f5 全部功能面：LuceneSearchService/PathScope/SourceManager/Indexer/DocumentBuilder/MainWindow/DirectoryScopePanel/SearchHandler/WebServer/index.html）：**无 P0/P1，判定可进 A8**（待 M 实机记录）。
+- 审查发现及处置：
+  - P2 锁恢复绕过 setSearchService（Web 在锁清理窗口会拿到已关闭服务、报 500 而非 503）→ **已修**：`stopIndexServicesForLockRecovery` 改走 `setSearchService(null)`，后台线程经 invokeAndWait 同步关闭，保证删索引文件前完成且不死锁。回归 `shouldSyncWebServerWhenLockRecoveryStopsService`。
+  - P3 `handleFullRebuildFailure` 自身不递增 searchSequence → **已修**：方法内独立递增并取消在途 worker。回归 `shouldInvalidateCompletedSearchWhenFullRebuildFailsBeforeDone`。
+  - P3 打开服务失败泄漏 FSDirectory/NRTCachingDirectory（LuceneSearchService 构造器）→ **已修**：SearcherManager 构造失败时先关 directory 再抛出。泄漏在单测层不可直接观测（NIOFSDirectory 空目录无锁/句柄），以定向回归证明路径无异常。
+  - 记录不修（审查判定不可达/纯外观）：doSearch 空词与 null-service 判定顺序（索引中提交空词显示不可用而非"请输入"）；openServiceSequence++ 跨线程非原子（方向 fail-safe）；Custom 模式清空文本后下拉显示 All 而控件仍可用。
+- 提交：`b166f1c`（锁恢复+重建失效两项修复，12/12 harness 测试通过）、`bdec8aa`（目录关闭修复，相关定向 33 项通过）。
+- 最终验证（HEAD `bdec8aa`）：`mvn -B clean verify "-DargLine=-Xmx768m"` BUILD SUCCESS，149 项，0 失败/错误，2 跳过（预期平台跳过）；`openspec validate --strict` 通过。
+- 结论：F01–F07、全部审查残余可执行项与本轮新发现均已清零；剩余不可执行项仅为 M-01～M-06 逐项实机记录（用户已冒烟通过）、POSIX/native/真实UNC/大规模网络（无环境），以及 A8 用户验收与交付授权。
