@@ -29,6 +29,13 @@
 
 ## Not tested / risk
 
-- 真实 Java 8 JVM 上以 `-Djvm=D:\Java\java8\bin\java.exe` 重跑未执行（构建仍产 1.8 字节码，且全部依赖均为 Java 8 线；如需可跑）。
 - GraalVM native 构建未执行（无 GraalVM 环境）；native-maven-plugin 0.10.6 与 0.10.3 同线，native profile 仅在本机有 GraalVM 时使用。
 - 用户实机 UI 冒烟（FlatLaf 3.2→3.6.2 的外观细节差异）建议在 M 记录轮次一并核对。
+
+## Java 8 兼容性实证（用户要求复核后补验）
+
+两层验证，均通过：
+
+1. **字节码全量扫描**：`dependency:build-classpath` 解析出的全部 111 个 jar（含全部传递依赖）逐个抽查 class 主版本号，全部 ≤52（Java 8）；multi-release JAR 的高版本类只存在于 `META-INF/versions/`，Java 8 下不加载。
+2. **真实 Java 8 运行时全套测试**：`mvn -B test "-Djvm=D:\Java\java8\bin\java.exe" "-DargLine=-Xmx768m"` → 149 项，0 失败/错误，2 跳过；surefire XML 报告确认 fork JVM `java.home=D:\Java\java8`、`java.version=1.8.0_40`。含真实构造 MainWindow/加载 FlatLaf 3.6.2 的 GUI 测试。
+3. 首轮无 -Xmx 运行因宿主内存压力 fork OOM（环境性，与之前 JDK17 下偶发同因），加 -Xmx768m 后通过；非兼容性问题。
