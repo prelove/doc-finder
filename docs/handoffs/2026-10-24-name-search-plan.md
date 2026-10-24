@@ -12,3 +12,16 @@
 不新增依赖，不改业务索引，不实现分页/精确总数、不启动C1修复或D大版本。出现必须新增字段/迁移/改变既定语义的阻断，给具体案例和最小选择再反馈。
 
 范围参考：`openspec/changes/improve-name-search-experience/` 的当前任务与D10；Codex只要求保留简短任务进度及验收结果，不再扩充流程文档。
+
+## 当前接续：修正独立复验发现的两处回归
+
+基线 `81978a2`，功能已实现；不再重写方案。Devin 可立即修下面两项，补对应回归测试后提交。
+
+1. **EXACT 路由回归**：同一真实 indexer 夹具含 `foo bar draft.txt`、`foo AND bar note.txt`、`report draft.txt`。旧版 EXACT 查询 `foo AND bar` 仅返回第二个文件；新版还返回第一个。旧版 EXACT 查询 `report (` 返回第三个文件，新版返回 INVALID_QUERY。NAME/ALL 均复现。新增布尔 token 与左括号识别不能改变冻结路径；按 D10/R1 让新分类仅作用于本次 FUZZY NAME/FOLDER/ALL，保留旧 EXACT/CONTENT 路由。请加入上述两种输入的旧行为断言。
+2. **Enter 重复提交**：实际 `MainWindow.getSearchField().setText("report")` 后，在 EDT 调用 `postActionEvent()`，替换 executor 的计数探针记录 **2 次** submit；相同文本再次 Enter 为 1 次。编辑型 JComboBox 的双事件需去重，不能靠取消第一个 worker 掩盖。补实际输入框 Enter、历史选择、范围切换、Timer、程序化写入的确定性测试；每次动作请求数必须符合约定。
+
+复现源码/日志位于本机 `C:\Users\Administrator\AppData\Local\Temp\docfinder-b-qa-20261024-3zl64vxw\contracts\`（FrozenSearchProbe.java、DesktopDebounceProbe.java 及 old/new/desktop-results.log）。探针独立于产品代码，使用隔离索引与配置。Devin 负责产品及回归测试；Codex 继续 HTTP/性能与最终复验，避免同时修改同一文件。
+
+另请修复本次被错误转码的 `tasks.md` 中文，以及检查修改过的使用说明/内置帮助和输入框示例是否可读。恢复 UTF-8 原文后保留真实任务勾选；不要趁机扩充文档。历史 RED 过程不补录伪证据，不作为交付阻塞。C1 继续暂停。
+
+修复中追加：Enter 去重请按组合框的编辑提交/历史选择事件区分，避免以“同文本100ms内忽略”替代事件处理；那会吞掉两次合法的快速 Enter。测试须包含两次独立 Enter（短于100ms）各一次提交。README.md:106/310 与 README_CN.md:39 仍称 B 未实施/未授权，请与 UsageGuide 及内置帮助一起更新为实际行为。Codex 已完成 Java8 真实 HTTP 22 场景，以及 Web 页面排序/整树限定/50条截断提示验证；无需重复写新方案。
