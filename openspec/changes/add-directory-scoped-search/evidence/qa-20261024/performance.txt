@@ -1,0 +1,20 @@
+===== P-00 scope-check microbenchmark =====
+docs=100000
+index build: 4977 ms
+leaves=2 maxDoc=100000 numDocs=100000
+first call: 596.24 ms
+same-reader repeat: p50=0.00 ms p95=0.03 ms
+exact fallback query (no missing): 213.50 ms
+deleted-doc index: maxDoc=1000 numDocs=999 (fast path may not trigger, exact fallback used)
+deleted-doc check: 0.03 ms
+[INFO] Tests run: 1, Failures: 0, Errors: 0, Skipped: 0, Time elapsed: 6.763 s -- in org.abitware.docfinder.search.DirectoryScopeCheckBenchmark
+===== P-01 scoped vs unscoped =====
+index build: 7675 ms
+unscoped 'alpha' hot: p50=12.93 ms p95=18.46 ms (n=100)
+scoped   'alpha' hot: p50=9.76 ms p95=22.21 ms (n=200)
+P-01 gate: OK (scoped p95 > 2x unscoped AND +>200ms would flag P1 investigation)
+[INFO] Tests run: 1, Failures: 0, Errors: 0, Skipped: 0, Time elapsed: 12.64 s -- in org.abitware.docfinder.search.DirectoryScopedSearchPerfBenchmark
+[INFO] Tests run: 2, Failures: 0, Errors: 0, Skipped: 0
+[INFO] BUILD SUCCESS
+[INFO] Total time:  25.999 s
+[INFO] Finished at: 2026-10-24T10:26:36+09:00

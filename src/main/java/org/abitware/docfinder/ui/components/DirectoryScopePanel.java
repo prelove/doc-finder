@@ -39,8 +39,7 @@ public class DirectoryScopePanel extends JPanel {
     private final JTextField pathField = new JTextField();
     private final JButton browseButton = new JButton("Browse");
     private final JButton clearButton = new JButton("Clear");
-    private final JLabel hintLabel = new JLabel(
-            "Includes all subfolders. Searches indexed content only.");
+    private final JLabel hintLabel = new JLabel();
     private final JLabel warningLabel = new JLabel(
             "Some source entries were skipped. See Help > View Log.");
 
@@ -96,6 +95,7 @@ public class DirectoryScopePanel extends JPanel {
         add(leftWrap, BorderLayout.WEST);
         add(center, BorderLayout.CENTER);
         add(eastWrap, BorderLayout.EAST);
+        updateHint();
         applyEnabledState();
     }
 
@@ -129,6 +129,7 @@ public class DirectoryScopePanel extends JPanel {
         customEditing = !committedPath.isEmpty();
         pathField.setText(committedPath);
         refreshComboDisplay();
+        updateHint();
         applyEnabledState();
     }
 
@@ -152,6 +153,7 @@ public class DirectoryScopePanel extends JPanel {
         customEditing = false;
         pathField.setText("");
         refreshComboDisplay();
+        updateHint();
         applyEnabledState();
         fireScopeChanged();
     }
@@ -279,6 +281,7 @@ public class DirectoryScopePanel extends JPanel {
         customEditing = !committedPath.isEmpty();
         pathField.setText(committedPath);
         refreshComboDisplay();
+        updateHint();
         applyEnabledState();
         fireScopeChanged();
     }
@@ -289,6 +292,21 @@ public class DirectoryScopePanel extends JPanel {
         }
         refreshComboDisplay();
         applyEnabledState();
+    }
+
+    /**
+     * The hint line always shows the actually applied (committed) scope so a
+     * draft being typed cannot be mistaken for the active scope (QA24-02):
+     * "Applied: <path>" while the user edits something else, "All sources"
+     * when unrestricted.
+     */
+    private void updateHint() {
+        if (committedPath.isEmpty()) {
+            hintLabel.setText("All sources. Searches indexed content only.");
+        } else {
+            hintLabel.setText("Applied: " + committedPath
+                    + " — includes all subfolders. Searches indexed content only.");
+        }
     }
 
     /** In the All-sources state there is no directory scope, so the path controls are greyed out; Custom re-enables them. */

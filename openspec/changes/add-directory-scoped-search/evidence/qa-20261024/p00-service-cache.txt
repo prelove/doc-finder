@@ -1,0 +1,17 @@
+﻿===== P-00 scope-check microbenchmark =====
+docs=100000
+index build: 3838 ms
+leaves=2 maxDoc=100000 numDocs=100000
+first call: 508.82 ms
+same-reader repeat: p50=0.00 ms p95=0.03 ms
+exact fallback query (no missing): 196.48 ms
+deleted-doc index: maxDoc=1000 numDocs=999 (fast path may not trigger, exact fallback used)
+deleted-doc check: 0.06 ms
+service first call: 0.71 ms
+service cache-hit over 100 calls: p50=0.00 ms p95=0.00 ms (enumerations=1)
+service first call after refresh: 0.06 ms
+service cache-hit after refresh (100 calls): p50=0.00 ms p95=0.00 ms
+service check, old doc deleted: 1.79 ms
+service check, new doc deleted (legacy live): 10.53 ms -> 409
+=========================================
+

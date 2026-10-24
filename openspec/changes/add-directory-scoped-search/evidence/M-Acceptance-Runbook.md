@@ -23,7 +23,7 @@ java -Xmx384m "-Duser.home=$root\home" -cp "$repo\target\test-classes;$repo\targ
    - 工作目录必须是 `<root>\work`，否则 harness 直接拒绝启动（应用数据全在 `user.dir\.docfinder`）。
    - 夹具树：`source\ProjectA`（含 `sub\deep`）、`ProjectAB`（兄弟，未配置为来源）、`ProjectB`；每个目录一个含 `alpha` 的 txt。来源配置为 ProjectA 与 ProjectB。
    - 追加 `--empty` 得到无来源、无索引的全新环境（M-06 首次建库用）。每个场景需要全新环境时：关闭进程，删除 `<root>\work\.docfinder`，重启。
-4. 验收开始和结束各记一次真实 `~\.docfinder` 清单（文件数、最近修改时间），确认没有变化。
+4. 验收前后核对真实仓库 `user.dir\.docfinder` 的控制文件哈希/必要清单，并核对旧home迁移目录（若存在）。应用数据主根是user.dir，不可只核对 `~\.docfinder` 就声称隔离；确认临时进程cwd/home均正确。
 
 ## M-01 桌面主流程（DS-01/02/03/07/11/12）
 
@@ -95,3 +95,21 @@ java -Xmx384m "-Duser.home=$root\home" -cp "$repo\target\test-classes;$repo\targ
 | M-06 |  |  |  |  |  |  |
 
 补充：P-00/P-01、Java 8 运行时、POSIX、native、UNC 若未执行，在此单列“未执行”，不得合并成通过。
+
+
+## 2026-10-24 Codex 实际执行记录
+
+OS=Windows10，JDK17；浏览器Chrome155；受测4eb417b（本地8d41b0c的产品树相同）；JAR SHA-256=`a69e51ff33d4739ed604fda0f900c029dbeac21deceadb23176fc839ebf6aa39`。临时根 `C:\Users\Administrator\AppData\Local\Temp\docfinder-qa-20261024-up0jca24`；源码/日志及真实WebServer夹具均隔离，端口14970。执行者Codex，未让用户代签结果。
+
+| 项 | 结果 | 实际观察 / 剩余范围 |
+| --- | --- | --- |
+| M-01 | PARTIAL / FAIL | 真实JFileChooser确认一次回调、取消零次通过；已提交A/草稿B没有applied A显示，QA24-02失败；其余来源管理、坏行警告、真实右键/UNC全流程未逐项执行 |
+| M-02 | FAIL / PARTIAL | 显示结果后null服务搜索或重建失败仍1行，QA24-01失败；常规错误映射套件通过，完整真实八错误/ACL/预览清理待复验 |
+| M-03 | PARTIAL | 常规token/空词测试通过；Index All真实入口时序及关闭交错需补，不能全项PASS |
+| M-04 | PARTIAL | 真实页面整树2结果、Unicode/空格/&#+[]单引号编码1结果、根folder1、422/400清旧显示、排序快捷/复制分支通过；复制用受控clipboard，真实409/503/区域/真实根全表未跑 |
+| M-05 | PASS（规定受控场景） | 延迟A后B成功，A迟到成功/422/网络拒绝均不覆盖；空词提交/Clear零请求；当前失败清结果/选择/预览；撤拦截真实搜索恢复，失败/迟到不入历史 |
+| M-06 | PARTIAL / 未完成 | 现有集成通过，部分写失败用例没有真实失败（QA24-06）；首次建库、实际部分失败、完整重建成功/失败、打开/分享主机流程未全跑 |
+
+逐项数据与受控脚本：[browser-results.json](qa-20261024/browser-results.json)、[失败探针](qa-20261024/regression-failures.txt)、[选择器/显示测试](qa-20261024/CodexScopeDisplayProbeTest.java)。完整边界见 [独立QA报告](Codex-QA-2026-10-24.md)。原149项套件在真实Java8 fork也通过（148通过、1 POSIX跳过）；不是native/App正式启动全验证。P-01门槛OK，P-00完整缓存证明未满足；POSIX宿主/真实UNC/native/真实大网络未跑。
+
+本轮前后真实仓库config.properties/sources.txt/shares.properties/history.txt四控制文件SHA相同；临时cwd/home属性已核对。没有全量业务索引逐字节证明。临时服务已停止、QA页面已关闭，原始证据保留。以上失败交Devin，Codex修复后复验；不据此推进用户A8。

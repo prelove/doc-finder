@@ -1,0 +1,32 @@
+### Result
+[
+  {
+    "name": "clipboard denied falls back to manual path without false success",
+    "passed": true,
+    "promptPath": "C:\\Users\\Administrator\\AppData\\Local\\Temp\\docfinder-qa-20261024-up0jca24\\web-fixture\\source\\资料 空格&#+[草稿]'单引号\\alpha'&#.txt"
+  },
+  {
+    "name": "clipboard success copies exact Unicode path",
+    "passed": true,
+    "copied": "C:\\Users\\Administrator\\AppData\\Local\\Temp\\docfinder-qa-20261024-up0jca24\\web-fixture\\source\\资料 空格&#+[草稿]'单引号\\alpha'&#.txt"
+  },
+  {
+    "name": "sorted file parent shortcut submits exactly once and preserves conditions",
+    "passed": true,
+    "target": "C:\\Users\\Administrator\\AppData\\Local\\Temp\\docfinder-qa-20261024-up0jca24\\web-fixture\\source\\ProjectA",
+    "requests": 1
+  },
+  {
+    "name": "folder root shortcut does not loop",
+    "passed": true,
+    "requests": 1
+  },
+  {
+    "name": "Clear preserves keyword and submits one global query",
+    "passed": true
+  }
+]
+### Ran Playwright code
+```js
+await page.evaluate('async () => {\n const results=[],pause=ms=>new Promise(r=>setTimeout(r,ms));const orig=window.qaOriginalFetch;const requests=[];\n window.fetch=(...args)=>{if(String(args[0]).includes(\'/api/search\'))requests.push(String(args[0]));return orig(...args);};\n const copy=document.querySelector(\'tbody button[title="Copy path"]\');const wanted=document.querySelector(\'tbody tr td:nth-child(2)\').innerText;\n const oldClip=Object.getOwnPropertyDescriptor(navigator,\'clipboard\'),oldCmd=document.execCommand,oldPrompt=window.prompt;let prompts=[];\n try{Object.defineProperty(navigator,\'clipboard\',{configurable:true,value:{writeText:async()=>{throw new DOMException(\'denied\',\'NotAllowedError\')}}});document.execCommand=()=>false;window.prompt=(message,value)=>{prompts.push({message,value});return null;};copy.click();await pause(100);results.push({name:\'clipboard denied falls back to manual path without false success\',passed:prompts.length===1&&prompts[0].value===wanted&&!copy.textContent.includes(\'✓\'),promptPath:prompts[0]?.value});}\n finally{if(oldClip)Object.defineProperty(navigator,\'clipboard\',oldClip);else delete navigator.clipboard;document.execCommand=oldCmd;window.prompt=oldPrompt;}\n let copied=null;\n try{Object.defineProperty(navigator,\'clipboard\',{configurable:true,value:{writeText:async(text)=>{copied=text;}}});copy.click();await pause(80);results.push({name:\'clipboard success copies exact Unicode path\',passed:copied===wanted,copied});}finally{if(oldClip)Object.defineProperty(navigator,\'clipboard\',oldClip);else delete navigator.clipboard;}\n const q=document.querySelector(\'#queryInput\'),d=document.querySelector(\'#dirInput\'),s=document.querySelector(\'#scopeSelect\'),btn=document.querySelector(\'#searchBtn\');\n q.value=\'alpha\';d.value=\'\';s.value=\'ALL\';btn.click();for(let i=0;i<100&&document.querySelectorAll(\'tbody tr\').length!==6;i++)await pause(30);await pause(50);\n document.querySelectorAll(\'thead th\')[0].click();await pause(30);\n const button=[...document.querySelectorAll(\'tbody button[title="Search in containing folder"]\')].find(b=>b.dataset.dir.includes(\'\\\\source\\\\\'));\n const target=button.dataset.dir;const before=requests.length;const fields={q:q.value,scope:s.value,mode:document.querySelector(\'#modeSelect\').value,ext:document.querySelector(\'#extInput\').value,limit:document.querySelector(\'#limitSelect\').value};button.click();await pause(200);\n const after={q:q.value,scope:s.value,mode:document.querySelector(\'#modeSelect\').value,ext:document.querySelector(\'#extInput\').value,limit:document.querySelector(\'#limitSelect\').value};\n results.push({name:\'sorted file parent shortcut submits exactly once and preserves conditions\',passed:requests.length===before+1&&d.value===target&&JSON.stringify(fields)===JSON.stringify(after),target,requests:requests.length-before});\n q.value=\'ProjectA\';d.value="C:\\\\Users\\\\Administrator\\\\AppData\\\\Local\\\\Temp\\\\docfinder-qa-20261024-up0jca24\\\\web-fixture\\\\source\\\\ProjectA";s.value=\'FOLDER\';btn.click();await pause(200);\n const folder=document.querySelector(\'tbody button[title="Search in this folder"]\');if(!folder)throw Error(\'missing folder shortcut\');const beforeFolder=requests.length;const folderPath=folder.dataset.dir;folder.click();await pause(180);results.push({name:\'folder root shortcut does not loop\',passed:requests.length===beforeFolder+1&&d.value===folderPath,requests:requests.length-beforeFolder});\n const beforeClear=requests.length;document.querySelector(\'#clearDirBtn\').click();await pause(180);results.push({name:\'Clear preserves keyword and submits one global query\',passed:requests.length===beforeClear+1&&d.value===\'\'&&q.value===\'ProjectA\'});\n window.qaActionsResults=results;window.fetch=orig;return results;\n}');
+```

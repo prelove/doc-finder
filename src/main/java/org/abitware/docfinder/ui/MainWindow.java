@@ -1725,6 +1725,7 @@ public class MainWindow extends JFrame implements MenuBarPanel.MenuListener {
 			activeSearchWorker = null;
 		}
 		setSearchService(null);
+		clearPresentedResults("Rebuild failed.");
 		statusLabel.setText("Rebuild failed. Search is unavailable until the index is rebuilt. See the application log.");
 	}
 
@@ -1877,6 +1878,11 @@ public class MainWindow extends JFrame implements MenuBarPanel.MenuListener {
 						opened.close();
 					}
 					if (opened == null && seq == openServiceSequence) {
+						// A failed open means the index is unavailable — the old
+						// service must not silently keep answering queries while
+						// the UI reports unavailable (DS-12).
+						setSearchService(null);
+						clearPresentedResults("Search index is unavailable.");
 						statusLabel.setText(org.abitware.docfinder.search.SearchErrorMessages
 								.forCode(org.abitware.docfinder.search.SearchException.Code.INDEX_UNAVAILABLE));
 					}
@@ -1915,11 +1921,16 @@ public class MainWindow extends JFrame implements MenuBarPanel.MenuListener {
 		log.debug("doSearch() called.");
 		long token = ++searchSequence;
 		if (isIndexing) {
+			clearPresentedResults("Indexing in progress.");
 			statusLabel.setText("Indexing in progress, searching is disabled.");
 			return;
 		}
 
 		if (searchService == null) {
+
+			clearPresentedResults(org.abitware.docfinder.search.SearchErrorMessages
+
+					.forCode(org.abitware.docfinder.search.SearchException.Code.INDEX_UNAVAILABLE));
 
 			statusLabel.setText(org.abitware.docfinder.search.SearchErrorMessages
 
@@ -2199,10 +2210,14 @@ public class MainWindow extends JFrame implements MenuBarPanel.MenuListener {
 	}
 
 	private void clearResultsForError() {
+		clearPresentedResults("Search failed.");
+	}
+
+	private void clearPresentedResults(String previewText) {
 		model.setRowCount(0);
 		resultTable.clearSelection();
 		currentResults = java.util.Collections.emptyList();
-		updatePreviewInner("Search failed.");
+		updatePreviewInner(previewText);
 	}
 
 	private void addToHistory(String q) {

@@ -1,0 +1,14 @@
+{
+  "observed_on": "2026-10-24",
+  "method": "GitHub connector GET https://api.github.com/repos/prelove/doc-finder/git/ref/heads/main",
+  "response": {
+    "ref": "refs/heads/main",
+    "node_id": "REF_kwDOPw6IlK9yZWZzL2hlYWRzL21haW4",
+    "url": "https://api.github.com/repos/prelove/doc-finder/git/refs/heads/main",
+    "object": {
+      "sha": "36139f5a81f98d011a7c3b3c0b4f9582c17940ff",
+      "type": "commit",
+      "url": "https://api.github.com/repos/prelove/doc-finder/git/commits/36139f5a81f98d011a7c3b3c0b4f9582c17940ff"
+    }
+  }
+}

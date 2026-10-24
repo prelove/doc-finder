@@ -1,23 +1,23 @@
 # Acceptance and Evidence
 
-文档0.4。当前：实现与自动验证已完成（HEAD 36139f5，147项通过0失败2跳过，见evidence/A0–A7与Codex-Remediation）；用户报告冒烟手测无问题，逐项M正式记录仍未补齐；未执行POSIX/native/真实UNC项单列；用户未做最终验收（A8）。此前43项既有测试通过只作历史基线，不替代本包验证。
+批准版本0.4；当前验收快照2026-10-24：c7与4eb常规clean verify各149项（148通过、0失败/错误、1平台跳过），4eb真实Java8同结果；新增8个定向探针中7失败/1通过，22个浏览器检查通过。A7修复批次已完成——QA24-01..11 全部实施并以本轮 `clean verify`（164项：161通过、0失败/错误、3平台跳过）与定向45项回归验证；等待Codex复验。A8未通过。详见 [Codex独立验证](evidence/Codex-QA-2026-10-24.md) 与 [修复复验记录](evidence/Devin-QA24-Remediation-2026-10-24.md)；此前用户冒烟与旧报告保留为历史，不替代本轮失败闭环。
 
 ## Traceability
 
 | DS | 自动验证（拟新增/扩展） | 任务包 | 交互 | 当前结果 |
 | --- | --- | --- | --- | --- |
-| DS-01 整树/根自身/兄弟 | DirectoryScopedSearchTest、DirectoryScopeEndToEndTest | A3/A7 | M-01/M-04 | 自动绿（A3/A7 evidence）；M 实机：用户冒烟通过，逐项记录待补 |
-| DS-02 路径 | PathScopeTest、HTTP编码测试 | A1/A6 | M-01/M-04 | 自动绿（A1/A6）；M 实机：用户冒烟通过，逐项记录待补 |
-| DS-03 条件/Top-N/类型 | LuceneSearchServiceTest、DirectoryScopedSearchTest | A0/A3 | M-01 | 自动绿（A0/A3）；M-01 实机记录待补 |
-| DS-04 来源/离线/状态 | SourceManagerSearchRootsTest、DirectorySourceValidationTest（含好坏行混合）、无提交HTTP fixture | A1/A3/A6 | M-02/M-04 | 自动绿（A1/A3/A6）；M-02/M-04 实机记录待补 |
-| DS-05 旧/混合/刷新 | DirectoryScopeCompatibilityTest | A4 | M-06 | 自动绿（A4）；M-06 实机未执行 |
-| DS-06 实际全量/upsert | LuceneIndexerPathScopeTest、DocumentBuilderTest、EndToEnd | A2/A7 | M-06 | 自动绿（A2/A7）；M-06 实机未执行 |
-| DS-07 桌面 | DirectoryScopePanelTest（含路径等价/坏行警告）、DesktopHarness | A5a | M-01/M-02/M-03 | 自动绿（A5a）；M-01～03 用户冒烟通过，逐项记录待补 |
-| DS-08 Web | SearchHandlerTest、WebAssetsOfflineTest（仅资源） | A6 | M-04/M-05 | 自动绿+Playwright场景复测（A6/Remediation）；M-04/M-05 逐项记录待补 |
-| DS-09 错误 | SearchErrorMessagesTest、DesktopHarness八Code/未知消息映射、HTTP映射 | A3/A4/A5a/A6 | M-02/M-04 | 自动绿（A5a/A6）；M-02/M-04 实机记录待补 |
-| DS-10 空词/兼容 | provider计数=0、旧请求回归 | A0/A3/A6 | M-03/M-05 | 自动绿（A3/A6/F05修复）；M-03/M-05 实机记录待补 |
-| DS-11 快捷定位/复制 | EDT动作/服务器parentDirectory/前端受控响应测试 | A5a/A5b/A6 | M-01/M-04 | 自动绿（A5b/A6）；M-01/M-04 实机记录待补 |
-| DS-12 首次建库/重建恢复 | DesktopHarness、HTTP unavailable/恢复与集成测试 | A5a/A6/A7 | M-02/M-06 | 自动绿（A5a/A7/F02修复）；M-02/M-06 实机未执行 |
+| DS-01 整树/根自身/兄弟 | DirectoryScopedSearchTest、DirectoryScopeEndToEndTest | A3/A7 | M-01/M-04 | 常规套件通过；真实Web整树/根自身/兄弟检查通过；桌面全清单未完成 |
+| DS-02 路径 | PathScopeTest、HTTP编码测试 | A1/A6 | M-01/M-04 | 常规套件及Web特殊路径编码通过；真实选择器确认/取消通过；POSIX/UNC宿主未跑 |
+| DS-03 条件/Top-N/类型 | LuceneSearchServiceTest、DirectoryScopedSearchTest | A0/A3 | M-01 | 常规过滤/Top-N通过；显式name命中解释已修（QA24-03 GREEN，2026-10-24复验） |
+| DS-04 来源/离线/状态 | SourceManagerSearchRootsTest、DirectorySourceValidationTest（含好坏行混合）、无提交HTTP fixture | A1/A3/A6 | M-02/M-04 | 常规来源套件/真实422通过；读取故障→SOURCE_CONFIG_UNAVAILABLE 已修并加ACL故障测试（QA24-05 GREEN） |
+| DS-05 旧/混合/刷新 | DirectoryScopeCompatibilityTest | A4 | M-06 | 兼容套件通过；两种删除反例（NoMergePolicy钉统计）、close交错 latch、P-00服务缓存入口测量均已补（QA24-07/08/11） |
+| DS-06 实际全量/upsert | LuceneIndexerPathScopeTest、DocumentBuilderTest、EndToEnd | A2/A7 | M-06 | 常规实际indexer/upsert通过；ACL拒写真实部分失败+真实IndexAll生命周期已补（QA24-06），M-06主机迁移待补 |
+| DS-07 桌面 | DirectoryScopePanelTest（含路径等价/坏行警告）、DesktopHarness | A5a | M-01/M-02/M-03 | 选择器通过；已应用范围独立显示已修（QA24-02 GREEN），M-01/03尚未全完成 |
+| DS-08 Web | SearchHandlerTest、WebAssetsOfflineTest（仅资源） | A6 | M-04/M-05 | 本轮22个浏览器检查通过（含受控故障）；持久索引内容提示已加（QA24-09）；M-04真实409/503等尚未全完成 |
+| DS-09 错误 | SearchErrorMessagesTest、DesktopHarness八Code/未知消息映射、HTTP映射 | A3/A4/A5a/A6 | M-02/M-04 | 常规映射通过；桌面不可用/失败残留清除已修（QA24-01 GREEN） |
+| DS-10 空词/兼容 | provider计数=0、旧请求回归 | A0/A3/A6 | M-03/M-05 | 常规空词/token及本轮Web迟到/清空通过；真实Index All入口时序已补（QA24-06 harness） |
+| DS-11 快捷定位/复制 | EDT动作/服务器parentDirectory/前端受控响应测试 | A5a/A5b/A6 | M-01/M-04 | Web排序/快捷/复制分支通过；clipboard受控验证，桌面全流程/真实根仍待补 |
+| DS-12 首次建库/重建恢复 | DesktopHarness、HTTP unavailable/恢复与集成测试 | A5a/A6/A7 | M-02/M-06 | 常规恢复测试通过；旧服务重开失败unpublish已修（QA24-04）+真实部分失败ACL证明已补（QA24-06） |
 
 实现者不得以“测试类存在/代码看起来支持”标通过。每行引用真实报告或观察记录；平台skip、仅stub、未跑GUI均单列。
 
@@ -67,7 +67,7 @@ source/
 
 ## P-00 Capability microbenchmark
 
-Devin在获实施批准后的A4.1执行，当前未执行。原生Lucene writer建10万唯一path_scope文档，分全新、混合、删旧、删新、全删leaf；先原开放range、再统计快路径、再reader缓存。
+2026-10-24 复验后由 QA24-11 补全：真实服务缓存入口（`checkScopeSupport`）与 raw helper（`ensureDirectoryScopeSupported`）分开测量；首次、同 reader 重复 100 次、刷新后首次与重复 100 次均有样本；删旧→通过、删新→409 两个场景计时；枚举/计算次数由 `scopeSupportCacheSize` 断言钉死（每 reader key 恰好 1 次计算，关闭后 key 清理）。原始数字见 [Devin-QA24-Remediation-2026-10-24](evidence/Devin-QA24-Remediation-2026-10-24.md) 与 [p00-service-cache.txt](evidence/qa-20261024/p00-service-cache.txt)。原生Lucene writer建10万唯一path_scope文档，分全新、混合、删旧、删新、全删leaf；先原开放range、再统计快路径、再reader缓存。
 记录首次、同reader重复、刷新后首次，至少100次热样本，p50/p95、term枚举/精确查询调用次数及可得分配统计；不可得指标写明，不杜撰。比较numDocs与maxDoc的两个反例必须有正确性测试。helper=null、I/O失败不缓存、并发refresh/close和key清理用测试证明。
 top=1不约束重写成本；普通单测不设脆弱耗时阈值。没有实测不得声称缓存收益；效果不符先反馈Codex/Claude，不自行换方案。
 
@@ -106,3 +106,11 @@ A0既有特征测试可写无RED；固定隔离属于测试基础的必要交付
 ## Baseline provenance
 
 2026-10-23此前分析会话，Java17/Maven3.9.12，有限堆-Xms32m -Xmx256m、-DforkCount=0执行43项既有测试全绿，0失败/错误/跳过。该轮已核对旧home/.docfinder不存在，未发生旧数据迁移；此事实不能代替下轮隔离。没有新功能测试、GUI/Web/native或P-01结果。
+
+## 2026-10-24 最新 M/P 快照（覆盖旧“待执行”概括，不删除历史）
+
+实际版本/JAR/环境/步骤见 [独立报告](evidence/Codex-QA-2026-10-24.md) 和 [主机记录](evidence/M-Acceptance-Runbook.md)。M-01部分通过但范围显示失败；M-02残留旧结果失败；M-03仅部分自动时序通过；M-04范围/编码/快捷/复制/400/422/预览通过，完整409/503与真实根等未全跑；M-05规定受控浏览器竞态通过；M-06常规集成通过但实际部分失败与完整主机迁移未完成。8个新增探针7失败/1通过不计入149项既有套件，不混合为“全绿”。
+
+P-01本轮global/scoped热p95=18.46/22.21ms，未触发退化调查门槛；单机合成夹具，不是SLA。P-00服务缓存入口已按QA24-11补证（100热样本/刷新/删旧删新/枚举计数，见Devin-QA24-Remediation-2026-10-24）。Java8真实fork通过；native、POSIX宿主、真实UNC、大网络来源未执行。四个真实配置/来源/分享/历史控制文件前后SHA相同，未声称全业务索引逐字节验证。
+
+2026-10-24 修复批次：QA24-01..11 全部修复并验证（`clean verify` BUILD SUCCESS：Tests run: 164, Failures: 0, Errors: 0, Skipped: 3——PathScopeTest POSIX 用例、TestEnvironmentIsolationTest、SearchHandlerTest POSIX 根断言均按平台跳过）。定向45项回归全绿。待 Codex 复验后 A8 才可推进；A8保持待用户决定。

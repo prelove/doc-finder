@@ -175,10 +175,19 @@ public class SourceManager {
     }
 
     static SearchRootsSnapshot readSearchRootsSnapshot(Path file) throws IOException {
-        if (file == null || !Files.exists(file)) {
+        if (file == null) {
             return new SearchRootsSnapshot(Collections.emptyList(), Collections.emptyList());
         }
-        List<String> lines = Files.readAllLines(file, StandardCharsets.UTF_8);
+        List<String> lines;
+        try {
+            // Only a definite "file does not exist" means no sources. Any
+            // other I/O failure (access denied, unreadable parent, ...)
+            // propagates so callers report SOURCE_CONFIG_UNAVAILABLE rather
+            // than silently treating sources as empty (QA24-05).
+            lines = Files.readAllLines(file, StandardCharsets.UTF_8);
+        } catch (NoSuchFileException e) {
+            return new SearchRootsSnapshot(Collections.emptyList(), Collections.emptyList());
+        }
         List<Path> out = new ArrayList<>();
         List<Integer> skipped = new ArrayList<>();
         int dataLines = 0;

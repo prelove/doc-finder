@@ -83,6 +83,13 @@ public class LuceneSearchService implements SearchService {
             new java.util.concurrent.ConcurrentHashMap<>();
     private final java.util.Set<Object> scopeListenerKeys =
             java.util.Collections.synchronizedSet(new java.util.HashSet<>());
+    /**
+     * close() clears the cache and flips this flag under scopePublishLock;
+     * a check that started before close() must not publish its verdict
+     * afterwards (QA24-07).
+     */
+    private volatile boolean closed = false;
+    private final Object scopePublishLock = new Object();
 
     // SearcherManager based on Directory (read-only) to avoid write.lock ownership in search service
     private volatile SearcherManager searcherManager;
@@ -208,14 +215,32 @@ public class LuceneSearchService implements SearchService {
         } catch (SearchException e) {
             // Only the deterministic coverage verdict is cacheable; transient
             // I/O/check failures must be re-evaluated on the next request.
-            if (key != null && e.getCode() == SearchException.Code.INDEX_REBUILD_REQUIRED
-                    && registerCloseListener(reader, key)) {
-                scopeSupportCache.put(key, Boolean.FALSE);
+            if (key != null && e.getCode() == SearchException.Code.INDEX_REBUILD_REQUIRED) {
+                publishScopeVerdict(reader, key, Boolean.FALSE);
             }
             throw e;
         }
-        if (key != null && registerCloseListener(reader, key)) {
-            scopeSupportCache.put(key, Boolean.TRUE);
+        if (key != null) {
+            publishScopeVerdict(reader, key, Boolean.TRUE);
+        }
+    }
+
+    /**
+     * Test seam (QA24-07): invoked after a scope verdict is computed, before
+     * it is published into the cache.
+     */
+    void onScopeVerdictComputed() {
+    }
+
+    private void publishScopeVerdict(IndexReader reader, Object key, boolean verdict) {
+        onScopeVerdictComputed();
+        synchronized (scopePublishLock) {
+            if (closed || key == null) {
+                return;
+            }
+            if (registerCloseListener(reader, key)) {
+                scopeSupportCache.put(key, verdict);
+            }
         }
     }
 
@@ -355,7 +380,8 @@ public class LuceneSearchService implements SearchService {
                 root.add(userQuery, BooleanClause.Occur.MUST);
             }
 
-            addNameWildcardMust(root, np.nameWildcards);
+            List<Query> nameClauses = new ArrayList<>();
+            addNameWildcardMust(root, np.nameWildcards, nameClauses);
 
             if (scope == SearchScope.FOLDER) {
                 root.add(new TermQuery(new Term(FIELD_KIND, KIND_FOLDER)), BooleanClause.Occur.MUST);
@@ -389,8 +415,10 @@ public class LuceneSearchService implements SearchService {
 
                 // Explain only the keyword/name query, not directory/type/time
                 // filters, so a POSIX dir literally named "name:" cannot be
-                // misreported as a name-source hit (D4).
-                String match = isFolder ? "folder" : detectMatchType(searcher, userQuery, sd.doc);
+                // misreported as a name-source hit (D4). Explicit name:
+                // patterns are part of the explained query (QA24-03).
+                Query explainQuery = buildExplainQuery(userQuery, nameClauses);
+                String match = isFolder ? "folder" : detectMatchType(searcher, explainQuery, sd.doc);
 
                 out.add(new SearchResult(name, path, sd.score, ctime, atime, match, size, isFolder));
             }
@@ -435,8 +463,11 @@ public class LuceneSearchService implements SearchService {
 
     @Override
     public void close() {
-        scopeSupportCache.clear();
-        scopeListenerKeys.clear();
+        synchronized (scopePublishLock) {
+            closed = true;
+            scopeSupportCache.clear();
+            scopeListenerKeys.clear();
+        }
         try {
             if (searcherManager != null) {
                 searcherManager.close();
@@ -590,7 +621,8 @@ public class LuceneSearchService implements SearchService {
         return false;
     }
 
-    private void addNameWildcardMust(BooleanQuery.Builder root, List<String> patterns) {
+    private void addNameWildcardMust(BooleanQuery.Builder root, List<String> patterns,
+                                     List<Query> explainCollector) {
         if (patterns == null || patterns.isEmpty()) return;
 
         for (String pat : patterns) {
@@ -605,7 +637,9 @@ public class LuceneSearchService implements SearchService {
                     && p.indexOf('*', dot) < 0 && p.indexOf('?', dot) < 0) {
                 String ext = p.substring(dot + 1);
                 if (ext.matches("[\\p{Alnum}_-]+")) {
-                    root.add(new TermQuery(new Term(FIELD_EXT, ext)), BooleanClause.Occur.MUST);
+                    Query extQuery = new TermQuery(new Term(FIELD_EXT, ext));
+                    root.add(extQuery, BooleanClause.Occur.MUST);
+                    explainCollector.add(extQuery);
                 }
             }
 
@@ -627,11 +661,34 @@ public class LuceneSearchService implements SearchService {
                 BooleanQuery.Builder either = new BooleanQuery.Builder();
                 either.add(qPrimary, BooleanClause.Occur.SHOULD);
                 either.add(qFallback, BooleanClause.Occur.SHOULD);
-                root.add(either.build(), BooleanClause.Occur.MUST);
+                Query eitherQ = either.build();
+                root.add(eitherQ, BooleanClause.Occur.MUST);
+                explainCollector.add(eitherQ);
             } else {
                 root.add(qPrimary, BooleanClause.Occur.MUST);
+                explainCollector.add(qPrimary);
             }
         }
+    }
+
+    /**
+     * Query used only for match-source explanation: the user keyword query
+     * plus explicit name:/wildcard name clauses. Directory/type/time filters
+     * are deliberately excluded (D4/QA24-03).
+     */
+    private Query buildExplainQuery(Query userQuery, List<Query> nameClauses) {
+        BooleanQuery.Builder eb = new BooleanQuery.Builder();
+        boolean any = false;
+        if (userQuery != null
+                && !(userQuery instanceof BooleanQuery && ((BooleanQuery) userQuery).clauses().isEmpty())) {
+            eb.add(userQuery, BooleanClause.Occur.MUST);
+            any = true;
+        }
+        for (Query c : nameClauses) {
+            eb.add(c, BooleanClause.Occur.MUST);
+            any = true;
+        }
+        return any ? eb.build() : null;
     }
 
     /** 应用扩展名与时间范围过滤（沿用你的 FilterState） */
@@ -672,7 +729,9 @@ public class LuceneSearchService implements SearchService {
     
     private void walk(Explanation e, boolean[] f) {
         String desc = e.getDescription().toLowerCase(Locale.ROOT);
-        if (desc.contains("name:")) f[0] = true;
+        // "name_raw" is the untokenized name field used by explicit name:
+        // patterns and prefix matching; it is still a name-source hit.
+        if (desc.contains("name:") || desc.contains("name_raw:") || desc.contains("ext:")) f[0] = true;
         if (desc.contains("content:") || desc.contains("content_zh:") || desc.contains("content_ja:")) f[1] = true;
         for (Explanation d : e.getDetails()) walk(d, f);
     }

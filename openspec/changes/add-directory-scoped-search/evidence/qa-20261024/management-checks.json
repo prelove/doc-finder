@@ -1,0 +1,55 @@
+{
+  "date": "2026-10-24",
+  "executor": "Codex",
+  "head": "8d41b0ca00abf970f51309c0a857a22d3cfb601b",
+  "tree_identity": {
+    "src/main": "3cb1f7fe27e8ea308ac0a4b9f9b35988c1cc3430",
+    "src/test": "3fa41a1be38c34e5f8b28b6113898824986d8482",
+    "pom.xml": "2bbc837d09b881aba94c8147b156ee89a305958e"
+  },
+  "tracked_changes_only_management_docs": true,
+  "control_files": {
+    "config.properties": "19c4a612b9f02bc22c36cb786222b0028aace031ef5f58b475219ee38f5b72d8",
+    "sources.txt": "1e65af854f098bd1ee627564894d73c12dadf6100217216e78cccca290565287",
+    "shares.properties": "2446b78d81bc213466d78fdffca0e107e42baa5d3b5b8bc496d989b680db4b28",
+    "history.txt": "8bc98e5f52ed8bb855ca4c44a67b2b4316dfdbc70ff0f20262c68e3aa15b3f65"
+  },
+  "tasks": {
+    "total": 50,
+    "checked": 26
+  },
+  "browser": {
+    "total": 22,
+    "passed": 22
+  },
+  "baseline_xml": {
+    "modernized": {
+      "classes": 22,
+      "tests": 149,
+      "failures": 0,
+      "errors": 0,
+      "skipped": 1
+    },
+    "feature": {
+      "classes": 22,
+      "tests": 149,
+      "failures": 0,
+      "errors": 0,
+      "skipped": 1
+    }
+  },
+  "new_markdown_local_links_checked": [
+    "openspec\\changes\\add-directory-scoped-search\\acceptance.md",
+    "openspec\\changes\\add-directory-scoped-search\\evidence\\A7.md",
+    "openspec\\changes\\add-directory-scoped-search\\evidence\\M-Acceptance-Runbook.md",
+    "openspec\\changes\\add-directory-scoped-search\\review.md",
+    "openspec\\changes\\add-directory-scoped-search\\tasks.md",
+    "openspec\\changes\\modernize-java-dependencies\\evidence\\upgrade-verification.md",
+    "openspec\\changes\\modernize-java-dependencies\\tasks.md",
+    "openspec\\changes\\add-directory-scoped-search\\evidence\\Codex-QA-2026-10-24.md",
+    "openspec\\changes\\add-directory-scoped-search\\evidence\\Devin-Followup-2026-10-24.md"
+  ],
+  "qa_server_stopped": true,
+  "qa_browser_page_closed": true,
+  "original_review_manifest_untouched": true
+}

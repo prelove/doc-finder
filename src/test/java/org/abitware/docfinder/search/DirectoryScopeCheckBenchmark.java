@@ -1,5 +1,6 @@
 package org.abitware.docfinder.search;
 
+import org.abitware.docfinder.index.IndexSettings;
 import org.apache.lucene.analysis.standard.StandardAnalyzer;
 import org.apache.lucene.document.Document;
 import org.apache.lucene.document.Field;
@@ -141,6 +142,111 @@ class DirectoryScopeCheckBenchmark {
             LuceneSearchService.ensureDirectoryScopeSupported(s); // must pass
             report.append(String.format("deleted-doc check: %.2f ms%n",
                     (System.nanoTime() - t) / 1_000_000.0));
+        }
+
+        // --- Scenario: REAL service-cache entry (QA24-11) -----------------
+        // Unlike the raw helper above, this measures the actual cached
+        // entry point used by production requests. Call counts are proven
+        // via scopeSupportCacheSize: 100 hot calls must produce ZERO new
+        // cached verdicts while the reader stays open.
+        {
+            LuceneSearchService svc = new LuceneSearchService(index,
+                    new IndexSettings(), () -> Collections.singletonList(src));
+            try (IndexReader r = DirectoryReader.open(FSDirectory.open(index))) {
+                IndexSearcher s = new IndexSearcher(r);
+                long t = System.nanoTime();
+                svc.checkScopeSupport(s); // cold — computes + publishes
+                report.append(String.format("service first call: %.2f ms%n",
+                        (System.nanoTime() - t) / 1_000_000.0));
+                assertEquals(1, svc.scopeSupportCacheSize());
+
+                List<Long> times = new ArrayList<>();
+                for (int i = 0; i < 100; i++) {
+                    long x = System.nanoTime();
+                    svc.checkScopeSupport(s);
+                    times.add(System.nanoTime() - x);
+                }
+                report.append(String.format(
+                        "service cache-hit over 100 calls: p50=%.2f ms p95=%.2f ms (enumerations=1)%n",
+                        median(times), p95(times)));
+                assertEquals(1, svc.scopeSupportCacheSize(),
+                        "hot calls must not recompute while the reader lives");
+            }
+            // refresh scenario: new commit → new reader → verdict recomputed
+            try (IndexWriter w = new IndexWriter(FSDirectory.open(index),
+                    new IndexWriterConfig(new StandardAnalyzer()))) {
+                w.addDocument(doc(src, DOC_COUNT + 1, true));
+                w.commit();
+            }
+            try (IndexReader r2 = DirectoryReader.open(FSDirectory.open(index))) {
+                IndexSearcher s2 = new IndexSearcher(r2);
+                long t = System.nanoTime();
+                svc.checkScopeSupport(s2);
+                report.append(String.format("service first call after refresh: %.2f ms%n",
+                        (System.nanoTime() - t) / 1_000_000.0));
+                List<Long> times = new ArrayList<>();
+                for (int i = 0; i < 100; i++) {
+                    long x = System.nanoTime();
+                    svc.checkScopeSupport(s2);
+                    times.add(System.nanoTime() - x);
+                }
+                report.append(String.format(
+                        "service cache-hit after refresh (100 calls): p50=%.2f ms p95=%.2f ms%n",
+                        median(times), p95(times)));
+                assertEquals(1, svc.scopeSupportCacheSize(),
+                        "closed reader key evicted; refreshed reader caches exactly once");
+            }
+            svc.close();
+            assertEquals(0, svc.scopeSupportCacheSize());
+        }
+
+        // --- Deletion scenarios through the service entry (QA24-11) -------
+        {
+            // old doc deleted → supported; new doc deleted → 409. Both timed
+            // through checkScopeSupport so the cost is on the service path.
+            Path delA = fixtureRoot.resolve("idx-svc-del-a");
+            Files.createDirectories(delA);
+            try (IndexWriter w = new IndexWriter(FSDirectory.open(delA),
+                    new IndexWriterConfig(new StandardAnalyzer()))) {
+                w.addDocument(doc(src, -1, false));
+                for (int i = 0; i < 1000; i++) w.addDocument(doc(src, i, true));
+                w.commit();
+                w.deleteDocuments(new Term("path", src.resolve("d-1").resolve("f-1.txt").toString()));
+                w.commit();
+            }
+            LuceneSearchService svc = new LuceneSearchService(delA,
+                    new IndexSettings(), () -> Collections.singletonList(src));
+            try (IndexReader r = DirectoryReader.open(FSDirectory.open(delA))) {
+                long t = System.nanoTime();
+                svc.checkScopeSupport(new IndexSearcher(r)); // must pass
+                report.append(String.format("service check, old doc deleted: %.2f ms%n",
+                        (System.nanoTime() - t) / 1_000_000.0));
+            }
+            svc.close();
+
+            Path delB = fixtureRoot.resolve("idx-svc-del-b");
+            Files.createDirectories(delB);
+            try (IndexWriter w = new IndexWriter(FSDirectory.open(delB),
+                    new IndexWriterConfig(new StandardAnalyzer()))) {
+                w.addDocument(doc(src, -2, false)); // live legacy doc stays
+                for (int i = 0; i < 1000; i++) w.addDocument(doc(src, i, true));
+                w.commit();
+                w.deleteDocuments(new Term("path",
+                        src.resolve("d0").resolve("f0.txt").toString()));
+                w.commit();
+            }
+            LuceneSearchService svcB = new LuceneSearchService(delB,
+                    new IndexSettings(), () -> Collections.singletonList(src));
+            try (IndexReader r = DirectoryReader.open(FSDirectory.open(delB))) {
+                long t = System.nanoTime();
+                SearchException ex = assertThrows(SearchException.class,
+                        () -> svcB.checkScopeSupport(new IndexSearcher(r)));
+                assertEquals(SearchException.Code.INDEX_REBUILD_REQUIRED, ex.getCode());
+                report.append(String.format(
+                        "service check, new doc deleted (legacy live): %.2f ms -> 409%n",
+                        (System.nanoTime() - t) / 1_000_000.0));
+            }
+            svcB.close();
         }
 
         // --- Scenario: mixed index verdict correctness ---

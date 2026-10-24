@@ -1,18 +1,18 @@
 # Tasks
 
-目录限定检索 Implementation Plan，文档0.4。唯一实施进度来源。实施已于2026-10-23获用户批准；A0–A7及第11组修复全部完成（HEAD 36139f5），仅剩第10组A8用户验收与授权交付。
+目录限定检索 Implementation Plan，批准版本0.4。唯一实施进度来源。2026-10-24 Codex 独立验证：A0–A7已有实现交付，常规套件149项中148通过/0失败/1跳过；补充8项中7个断言失败、1通过，发现4类产品偏差。A7待修复复验，A8未通过。当前事实以 evidence/Codex-QA-2026-10-24.md 与第12组为准；历史完成记录不删除。
 
 > **For agentic workers:** 获得当前版本最终实施批准后，Devin按Superpowers executing-plans/TDD或handoff等价流程执行。每包目标RED→最小实现→GREEN→证据→审查；环境失败不算RED。
 
 **Goal:** 来源内整树查询与便利操作，包含首次建库恢复、非破坏迁移优先、统一语法错误。
 **Architecture:** 原path不变，path_scope字段、来源快照、reader能力判定及按reader生命周期缓存；实际MainWindow与HTTP链路。
-**Tech Stack:** Java8/既有依赖；可改既有Surefire测试隔离配置，不新增/升级依赖。
+**Tech Stack:** Java8；本change不擅自新增/升级依赖。并行的modernize-java-dependencies已修改pom版本，本次分别验证c7目录检索基线与4eb升级组合，不把并行变更伪装成原0.4批准范围。
 **Spec:** design.md、specs/directory-scoped-search/spec.md；证据acceptance.md；评审review.md。
 
 ## Global Constraints
 
-- 当前delivery-status实施授权=false；Claude复核及用户最终批准前不得写产品代码/运行迁移/业务索引。
-- 任务号重新编排为10包31步，沿用0.3编号；review按A包/DS引用，不使用过期行号。
+- 实施授权=true（2026-10-23用户批准0.4及A0测试配置）；该批准不等于最终验收或发布。当前仅修复既定契约并补验证，禁止操作真实业务索引。
+- A包/DS编号保留；第11组为历史修复，第12组为2026-10-24新复核任务；任务总数由当前勾选项计算，不沿用最初31步。
 - A0固定隔离是后续前提；只有A0首次验证用临时工作树，之后普通mvn命令使用受控fork/home/work；nofork不受该保证。
 - source/index夹具为系统临时兄弟目录，不在user.dir子树；真实.docfinder不得访问/修改，禁止真实全量重建/强制解锁。
 - 新行为先目标失败，既有特征测试可即绿；每包同步使用说明和evidence，不把扫描计数当成功文档数。
@@ -45,7 +45,7 @@
 **Assertions:** 索引/查询规范输出一致；Windows大小写/.与../UNC/盘根；POSIX保持case；扩展命名空间显式拒绝；有效+坏行继续且记录行号；全部坏/不可读错误；缺/空文件空来源；snapshot有跳过行号，provider仍只返回roots。
 
 - [x] 2.1 先写以上参数化/来源格式/不可变快照/构造兼容测试，运行取得目标RED，不依赖真实sources.txt或真实UNC。
-- [x] 2.2 实现统一规范和坏行容错读取，保留path旧主键；无网络探测，I/O不吞；定向GREEN并记录平台skip。
+- [ ] 2.2 【2026-10-24重新打开：QA24-05】实现统一规范和坏行容错读取，保留path旧主键；无网络探测，I/O不吞；定向GREEN并记录平台skip。
 - [x] 2.3 更新路径限制/坏行修复帮助及A1 evidence及日志行号断言，snapshot供桌面警告，不把跳过坏行等同于健康。
 
 **Verify:** `mvn -B "-Dtest=PathScopeTest,SourceManagerSearchRootsTest,SearchRequestTest" test`。
@@ -69,7 +69,7 @@
 **Interfaces:** provider构造；D3八code；D4目录自身folder OR后代FILTER。
 
 - [x] 4.1 写根自身/深层/兄弟、limit=2前过滤、源外拒绝/来源变更、空词和无限定provider零调用、真正故障；同一report AND (在有效限定/全局均INVALID_QUERY；C++/转义输入按现有parser特征测试记录，不全部强制报错；POSIX含name:目录不误标命中来源；运行RED。
-- [x] 4.2 实现来源快照、查询前目录/类型过滤、仅关键词Explanation判别、有/无目录ParseException一致，用户语法错误不记500；定向GREEN并跑A0回归，确认finally release。
+- [ ] 4.2 【2026-10-24重新打开：QA24-03】实现来源快照、查询前目录/类型过滤、仅关键词Explanation判别、有/无目录ParseException一致，用户语法错误不记500；定向GREEN并跑A0回归，确认finally release。
 - [x] 4.3 补模式/扩展名/时间、有效空commit/离线根/误输文件路径组合；同步兼容变化与错误帮助，记录A3 evidence。不得改变合法词的子串/精确规则。
 
 **Verify:** `mvn -B "-Dtest=DirectoryScopedSearchTest,DirectorySourceValidationTest,LuceneSearchServiceTest" test`。
@@ -80,10 +80,10 @@
 **Files:** LuceneSearchService.java；DirectoryScopeCompatibilityTest、test-only DirectoryScopeCheckBenchmark.java。
 **Interfaces:** ensureDirectoryScopeSupported(IndexSearcher)、reader CacheHelper key/closed listener；服务实例缓存仅SUPPORTED/REBUILD_REQUIRED。
 
-- [x] 5.1 在隔离10万doc fixture做P-00微基准，对比原开放range、leaf快路径、reader缓存的首次/重复/刷新成本；记录真实枚举次数和耗时，不把top1当O(1)，证据不支持时回文档复核，不虚报收益。
-- [x] 5.2 写纯旧/混合/全新/删除/全删除leaf、maxDoc=3 numDocs=2 docCount=2两种相反结果、helper=null/统计未知、I/O重试、同key复用、新key重验、并发refresh/close/缓存清理；取得目标RED。
-- [x] 5.3 实现D4充分条件快路径、不确定时精确live-doc回退及reader缓存生命周期；测试GREEN，禁止core key、错误缓存和关闭后迟到发布。
-- [x] 5.4 测Index All补字段无陈旧时可用、有已删除文件/移除来源、来源离线/权限不足/部分失败旧live doc时仍409，提示检查可达性，手动Full Rebuild才兜底；更新迁移/回退说明和A4 evidence。不自动触发破坏操作。
+- [x] 5.1 【2026-10-24重新打开：QA24-11→已补证】在隔离10万doc fixture做P-00微基准，对比原开放range、leaf快路径、reader缓存的首次/重复/刷新成本；记录真实枚举次数和耗时，不把top1当O(1)，证据不支持时回文档复核，不虚报收益。→ 本轮数字见 evidence/Devin-QA24-Remediation-2026-10-24.md。
+- [x] 5.2 【2026-10-24重新打开：QA24-07/08→已补】写纯旧/混合/全新/删除/全删除leaf、maxDoc=3 numDocs=2 docCount=2两种相反结果（NoMergePolicy钉住）、helper=null/统计未知、I/O重试、同key复用、新key重验、并发refresh/close/缓存清理；取得目标RED。
+- [x] 5.3 【2026-10-24重新打开：QA24-07→已补】实现D4充分条件快路径、不确定时精确live-doc回退及reader缓存生命周期；测试GREEN，禁止core key、错误缓存和关闭后迟到发布（closed gate + scopePublishLock）。
+- [x] 5.4 【2026-10-24重新打开：QA24-06→已补】测Index All补字段无陈旧时可用、有已删除文件/移除来源、来源离线/权限不足/部分失败旧live doc时仍409（离线live doc 409测试已加），提示检查可达性，手动Full Rebuild才兜底；更新迁移/回退说明和A4 evidence。不自动触发破坏操作。
 
 **Verify:** `mvn -B "-Dtest=DirectoryScopeCompatibilityTest,DirectoryScopedSearchTest,DirectorySourceValidationTest" test`。P-00耗时不作为普通单测断言，M-06实机迁移归Codex。
 
@@ -93,8 +93,8 @@
 **Files:** 新DirectoryScopePanel.java/测试、DirectoryScopeDesktopHarness.java、search/SearchErrorMessages.java及SearchErrorMessagesTest；改MainWindow.java和App.java。
 **Interfaces:** D5面板接口（含setSourceWarning）；D8 reopenSearchServiceAsync(Path,IndexSettings)；受控harness工厂钩子只为构造/时序验证，不新建全局框架。
 
-- [x] 6.1 写All/来源/Custom状态、仅编辑不提交、Clear一次、刷新不改文本/不提交/失效来源保留；增加Windows等价路径显示来源、非法编辑只Custom、坏行刷新警告及修复清除；headless八Code固定文案，fake逐个抛八Code/未知异常断言实际状态无原始消息/堆栈；latch测提交后service变null、错误不入历史/重建失效token；测首次Index All、部分commit后整体失败仍恢复且保留失败状态、旧候选迟到/关闭释放；记录RED（需GUI的部分交Codex执行，不虚报）。
-- [x] 6.2 实现面板和活跃MainWindow请求快照、来源三类刷新、后台服务打开和统一发布，逐一替换App启动、MainWindow添加单文件夹完成、完整重建完成三处new（0.3行77/1431/1636），生产new仅允许后台工厂；MainWindow服务字段volatile发布、worker局部捕获，null抛INDEX_UNAVAILABLE，done按Code固定映射而非getMessage；部分失败也恢复commit且Ready不覆盖失败；重建失效旧查询/Web不可用；组件GREEN，打开不在EDT。
+- [x] 6.1 【2026-10-24重新打开：QA24-01/02/04/06→已补】写All/来源/Custom状态、仅编辑不提交、Clear一次、刷新不改文本/不提交/失效来源保留；增加Windows等价路径显示来源、非法编辑只Custom、坏行刷新警告及修复清除；headless八Code固定文案，fake逐个抛八Code/未知异常断言实际状态无原始消息/堆栈；latch测提交后service变null、错误不入历史/重建失效token；测首次Index All、部分commit后整体失败仍恢复且保留失败状态、旧候选迟到/关闭释放；记录RED（需GUI的部分交Codex执行，不虚报）。
+- [x] 6.2 【2026-10-24重新打开：QA24-01/02/04→已补】实现面板和活跃MainWindow请求快照、来源三类刷新、后台服务打开和统一发布，逐一替换App启动、MainWindow添加单文件夹完成、完整重建完成三处new（0.3行77/1431/1636），生产new仅允许后台工厂；MainWindow服务字段volatile发布、worker局部捕获，null抛INDEX_UNAVAILABLE，done按Code固定映射而非getMessage；部分失败也恢复commit且Ready不覆盖失败；重建失效旧查询/Web不可用；组件GREEN，打开不在EDT。
 - [x] 6.3 提供可复现harness/夹具/启动命令给Codex，自动测试与差异GREEN，同步UsageGuide及A5a evidence，附生产new全仓搜索只剩工厂的结果，并明确错误不入历史/保留字符转义；登记M-01/02/03/06待实机，不因Devin无GUI长期占住开发包，也不能标手工通过。
 
 **Verify:** `mvn -B "-Dtest=DirectoryScopePanelTest,SearchErrorMessagesTest" test`；真正首次建库/服务恢复由M-06及A7组合检验。
@@ -117,7 +117,7 @@
 **Files:** SearchHandler.java、resources/web/index.html；SearchHandlerTest、WebAssetsOfflineTest。
 **Interfaces:** directory、兼容parentDirectory、八code/status；service=null固定INDEX_UNAVAILABLE，空词优先。
 
-- [x] 8.1 写编码、八类错误、全局/限定INVALID_QUERY一致、null服务503与空词、无commit不建库、非英语score/控制字符JSON、服务器父目录盘根/UNC/POSIX根；运行RED。→ `SearchHandlerTest` 11 用例，新增即 RED（8 失败：directory/parentDirectory/code 映射缺失），实现后全绿。
+- [x] 8.1 【2026-10-24重新打开：QA24-08→已补】写编码、八类错误、全局/限定INVALID_QUERY一致、null服务503与空词、无commit不建库、非英语score/控制字符JSON、服务器父目录盘根/UNC/POSIX根；运行RED。→ `SearchHandlerTest` 11+ 用例（含盘根/UNC/POSIX根断言），实现后全绿。
 - [x] 8.2 实现handler/JSON和页面目录/Clear/范围/快捷/复制/token/安全DOM，自动GREEN，不新增来源列表或浏览API；422覆盖探测风险有文档。→ `SearchHandler`（directory 参数、parentDirectory 字段、八 code→status、`{error,code}` 固定文案、控制字符 `\u00XX` 转义）；`index.html`（dirInput/ClearDirBtn/范围说明/dirscope-btn/copypath-btn/剪贴板失败回退）；`WebAssetsOfflineTest` 断言无 `/api/sources`、`/api/browse`。422 泄露风险已在 design 记录、evidence 复述。
 - [x] 8.3 交浏览器fixture/可复现请求/受控fetch步骤，给Codex做M-04/05（含复制拒绝、排序、迟到与空词）；同步API/帮助及A6 evidence，静态资源检查不代替交互。→ UsageGuide Web/API 段已更新；`evidence/A6.md` 含 M-04/05 可复现步骤；**M-04/M-05 实机待 Codex**。
 
@@ -128,9 +128,9 @@
 **Owner:** Devin自动集成；Codex真实主机验收与证据复核，用户可辅助；**Depends:** A5a/A5b/A6。
 **Files:** DirectoryScopeEndToEndTest.java；acceptance/review/evidence。
 
-- [x] 9.1（自动部分已完成；M-01～M-06 实机未完成，步骤见 evidence/M-Acceptance-Runbook.md，不据此宣称通过）真实indexer→service→HTTP测试正文/目录/来源变更/upsert、Index All迁移夹具（正常/陈旧/离线或拒绝访问/部分提交）、未就绪→恢复→重建不可用/恢复，运行自动GREEN；Codex执行M-01～06并记录环境与实际结果。→ `DirectoryScopeEndToEndTest` 8/8（真实 HttpServer+Indexer+Service+Handler）；**M-01～M-06 实机待 Codex**。
+- [ ] 9.1（2026-10-24重新打开：QA24-06及M记录；自动部分已完成；M-01～M-06 实机未完成，步骤见 evidence/M-Acceptance-Runbook.md，不据此宣称通过）真实indexer→service→HTTP测试正文/目录/来源变更/upsert、Index All迁移夹具（正常/陈旧/离线或拒绝访问/部分提交）、未就绪→恢复→重建不可用/恢复，运行自动GREEN；Codex执行M-01～06并记录环境与实际结果。→ `DirectoryScopeEndToEndTest` 8/8（真实 HttpServer+Indexer+Service+Handler）；**M-01～M-06 实机待 Codex**。
 - [x] 9.2 执行P-01、mvn -B clean verify、本次diff空白、OpenSpec严格校验；实际目录不变、Java8编译、lint/static人工审查和平台skip记录；无GUI环境则状态WAITING_FOR_HOST_ACCEPTANCE，不降格验收。→ P-01 OK（scoped p95 15.5ms<unscoped 43.2ms）；clean verify SUCCESS（133 tests, target 1.8）；strict validate 通过；diff 空白仅 AGENTS.md 既有 EOF；`.docfinder` 14662 不变；人工静态审查记录于 A7 evidence。
-- [x] 9.3（交付物已交；独立实现 review 仅覆盖修复差异，完整功能 review 与验收候选待 Codex）交实际SHA/diff/逐DS证据/风险，独立实现review阻断闭环，Codex形成用户验收候选；旧Claude方案复核不替代实现review。→ 交付物：HEAD `9a1c26ad` + 工作树 diff（git status 全量清单见 A7 evidence 与提交说明）、evidence/A0–A7、逐 DS 索引；**review 阻断闭环与验收候选形成待 Codex**。
+- [ ] 9.3（2026-10-24重新打开：独立复核未通过，待修复复验；交付物已交；独立实现 review 仅覆盖修复差异，完整功能 review 与验收候选待 Codex）交实际SHA/diff/逐DS证据/风险，独立实现review阻断闭环，Codex形成用户验收候选；旧Claude方案复核不替代实现review。→ 交付物：HEAD `9a1c26ad` + 工作树 diff（git status 全量清单见 A7 evidence 与提交说明）、evidence/A0–A7、逐 DS 索引；**review 阻断闭环与验收候选形成待 Codex**。
 
 **Verify:** `mvn -B "-Dtest=DirectoryScopeEndToEndTest" test`后完整`mvn -B clean verify`；`openspec validate add-directory-scoped-search --strict`；M/P真实记录齐备。
 
@@ -153,3 +153,22 @@
 - [x] 11.6 F05：桌面空词提交使已完成但 done 尚未执行的旧请求失效，确定性 EDT 回归通过。
 - [x] 11.7 F06：手动编辑目录即时同步来源/Custom/All，不自动提交或查盘，组件回归通过。
 - [x] 11.8 重跑 clean verify、隔离探针、报告中的浏览器失败场景，完成独立修复审查和修复报告；未跑的 M 项明确保留，不据此宣称最终验收。
+
+
+## 12. 2026-10-24 Codex A7 修复与补证
+
+依据 [独立验证报告](evidence/Codex-QA-2026-10-24.md) 与 [Devin Local 指令](evidence/Devin-Followup-2026-10-24.md)。Owner：Devin实施，Codex复验。不是新产品方案，不改变原批准指纹；未勾选表示尚未关闭，静态风险不能假称运行失败。第9组历史数字保留为当时证据，不代表当前验收。
+
+- [x] 12.1 QA24-01（P2）：桌面service=null/完整重建失败时清除已显示结果、选择、预览，保留固定失败提示；合入两条目标失败回归并GREEN，对应6.1/6.2、DS-09/12。
+- [x] 12.2 QA24-02（P2）：草稿编辑与已提交范围独立可见；不自动提交/查盘，测试A已提交、B草稿及Clear，对应6.1/6.2、DS-07。
+- [x] 12.3 QA24-03（P2）：显式name字段及name/content组合准确标记命中来源，全局/限定三条回归GREEN，保持目录FILTER不参与解释，对应4.2。
+- [x] 12.4 QA24-04（P2）：新索引重开失败时服务实际状态与不可用提示一致，不静默沿用旧索引；覆盖资源释放/sequence，对应6.1/6.2、DS-12。
+- [x] 12.5 QA24-05（P2，静态）：仅确定来源文件不存在才空来源，访问/读取失败报SOURCE_CONFIG_UNAVAILABLE；补确定性故障及HTTP映射证据，对应2.2、DS-04。
+- [x] 12.6 QA24-06（P2）：更正"upsert不存在文件产生写失败"的无效证明（改为索引目录 ACL 拒写→commit 真实失败传播）；真实Index All入口失效、A提交/B失败及旧live doc迁移残留补证，M-06仍待主机流程，对应5.4/6.1/9.1。
+- [x] 12.7 QA24-07（P3，静态）：close与能力检查交错的latch测试，关闭后禁止迟到发布（closed gate + scopePublishLock），完成，对应5.3。
+- [x] 12.8 QA24-08（P2）：跨平台fixture与平台条件、真实父目录/盘根/UNC/POSIX根、两种maxDoc=3/numDocs=2/docCount=2删除反例（NoMergePolicy钉住叶统计）；单列未跑POSIX宿主，对应5.2/8.1。
+- [x] 12.9 QA24-09（P3）：Web成功后仍有仅查询索引内容说明——`index.html` 范围提示改为持久可见（含"仅索引内容/整棵子树/必须在已配置来源内"），对应8.2。
+- [x] 12.10 QA24-10（P2文档）：modernize proposal/design/spec/tasks统一具体版本与残留EOL风险（logback 1.3.x/Tika 2.x EOL 明示，FlatLaf 3.6.2非上游最新）；不自动改变Java基线。
+- [x] 12.11 QA24-11（P3）：P-00已分开测真实服务缓存入口与raw helper——100热样本×2（首reader/刷新后）、枚举次数经scopeSupportCacheSize钉死（每reader=1次计算）、删旧/删新两删除场景计时与409判定；报告所有原始数字，不以推演宣称收益。
+
+关闭规则：各修复保留目标RED/GREEN证据；最终SHA重跑必要回归、clean verify/Java8及P项，Codex更新M记录并复核。12.x勾选不自动完成9.1/9.3或A8；用户最终接受和交付授权按10.1/10.2。当前22个浏览器检查与选择器确认/取消已通过，完整M清单仍以acceptance为准。

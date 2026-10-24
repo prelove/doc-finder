@@ -1,0 +1,35 @@
+### Result
+[
+  {
+    "name": "late success ignored after B",
+    "passed": true
+  },
+  {
+    "name": "late business-error ignored after B",
+    "passed": true
+  },
+  {
+    "name": "late network-error ignored after B",
+    "passed": true
+  },
+  {
+    "name": "empty submit/Clear sends zero requests and invalidates A",
+    "passed": true
+  },
+  {
+    "name": "current network failure clears rows and is not saved",
+    "passed": true
+  },
+  {
+    "name": "late queries absent from history",
+    "passed": true,
+    "history": [
+      "alpha",
+      "ProjectA"
+    ]
+  }
+]
+### Ran Playwright code
+```js
+await page.evaluate('async () => {\n const original=window.qaOriginalFetch;const q=document.querySelector(\'#queryInput\'),d=document.querySelector(\'#dirInput\'),s=document.querySelector(\'#scopeSelect\'),btn=document.querySelector(\'#searchBtn\');\n const a="C:\\\\Users\\\\Administrator\\\\AppData\\\\Local\\\\Temp\\\\docfinder-qa-20261024-up0jca24\\\\web-fixture\\\\source\\\\ProjectA";const requests=[],held=[],results=[];\n window.fetch=(...args)=>{const u=String(args[0]);if(!u.includes(\'/api/search\'))return original(...args);requests.push(u);const term=new URL(u,location.href).searchParams.get(\'q\');if(term.startsWith(\'__QA_DELAY__\'))return new Promise((resolve,reject)=>held.push({resolve,reject}));if(term===\'__QA_NETWORK__\')return Promise.reject(new TypeError(\'injected QA network failure\'));return original(...args);};\n const pause=ms=>new Promise(r=>setTimeout(r,ms));const submit=(term)=>{q.value=term;d.value=a;s.value=\'ALL\';btn.click();};\n const waitRows=async n=>{for(let i=0;i<100&&document.querySelectorAll(\'tbody tr\').length!==n;i++)await pause(30);await pause(75);if(document.querySelectorAll(\'tbody tr\').length!==n)throw Error(\'row count \'+n);};\n const late={count:1,results:[{name:\'LATE_SHOULD_NOT_RENDER\',path:a+\'\\\\late.txt\',score:1,ctime:0,atime:0,size:1,match:\'name\',directory:false,parentDirectory:a}]};\n for(const kind of [\'success\',\'business-error\',\'network-error\']){\n   submit(\'__QA_DELAY__\'+kind);await pause(30);submit(\'alpha\');await waitRows(2);\n   const item=held.shift();if(!item)throw Error(\'missing delayed fetch\');\n   if(kind===\'success\')item.resolve(new Response(JSON.stringify(late),{status:200,headers:{\'Content-Type\':\'application/json\'}}));\n   else if(kind===\'business-error\')item.resolve(new Response(JSON.stringify({code:\'DIRECTORY_NOT_INDEXED\',error:\'late QA error\'}),{status:422,headers:{\'Content-Type\':\'application/json\'}}));\n   else item.reject(new TypeError(\'late QA network failure\'));\n   await pause(100);const passed=document.querySelectorAll(\'tbody tr\').length===2&&!document.body.innerText.includes(\'LATE_SHOULD_NOT_RENDER\');\n   results.push({name:\'late \'+kind+\' ignored after B\',passed});if(!passed)throw Error(JSON.stringify(results.at(-1)));\n }\n submit(\'__QA_DELAY__empty\');await pause(30);const before=requests.length;q.value=\'\';btn.click();await waitRows(0);document.querySelector(\'#clearDirBtn\').click();await pause(40);const noRequests=requests.length===before;held.shift().resolve(new Response(JSON.stringify(late),{status:200}));await pause(100);\n results.push({name:\'empty submit/Clear sends zero requests and invalidates A\',passed:noRequests&&document.querySelectorAll(\'tbody tr\').length===0});\n submit(\'alpha\');await waitRows(2);submit(\'__QA_NETWORK__\');await waitRows(0);const history=JSON.parse(localStorage.getItem(\'docfinder-search-history\')||\'[]\');\n results.push({name:\'current network failure clears rows and is not saved\',passed:!history.includes(\'__QA_NETWORK__\')&&document.querySelectorAll(\'tbody tr\').length===0});\n results.push({name:\'late queries absent from history\',passed:!history.some(x=>x.startsWith(\'__QA_DELAY__\')),history});\n window.qaRaceResults=results;window.fetch=original;return results;\n}');
+```

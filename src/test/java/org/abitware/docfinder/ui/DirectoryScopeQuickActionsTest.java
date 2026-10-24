@@ -63,14 +63,19 @@ class DirectoryScopeQuickActionsTest {
     private CapturingService svc;
     private W win;
 
+    /** Real absolute fixture root valid on any host (QA24-08). */
+    private static final java.nio.file.Path ROOT =
+            java.nio.file.Paths.get(System.getProperty("java.io.tmpdir"))
+                    .toAbsolutePath().resolve("Root");
+
     @BeforeEach
     void setUp() throws Exception {
         assumeFalse(GraphicsEnvironment.isHeadless(), "needs a display");
         svc = new CapturingService();
         svc.canned = Arrays.asList(
-                new SearchResult("bbb.txt", "E:\\Root\\bbb.txt", 1f, 0L, 0L, "name", 10L, false),
-                new SearchResult("AaaDir", "E:\\Root\\AaaDir", 2f, 0L, 0L, "folder", 0L, true),
-                new SearchResult("it's.txt", "E:\\Root\\Sub'Dir\\it's.txt", 3f, 0L, 0L, "name", 10L, false));
+                new SearchResult("bbb.txt", ROOT.resolve("bbb.txt").toString(), 1f, 0L, 0L, "name", 10L, false),
+                new SearchResult("AaaDir", ROOT.resolve("AaaDir").toString(), 2f, 0L, 0L, "folder", 0L, true),
+                new SearchResult("it's.txt", ROOT.resolve("Sub'Dir").resolve("it's.txt").toString(), 3f, 0L, 0L, "name", 10L, false));
     }
 
     @AfterEach
@@ -154,14 +159,14 @@ class DirectoryScopeQuickActionsTest {
             ((JMenuItem) fieldUnchecked("searchInThisFolderItem")).doClick();
             committed.set(win.panel().getDirectoryPath());
         });
-        assertEquals("E:\\Root\\AaaDir", committed.get(),
+        assertEquals(ROOT.resolve("AaaDir").toString(), committed.get(),
                 "sorted view row must map back to the folder's model row");
         long deadline = System.currentTimeMillis() + 10_000;
         while (System.currentTimeMillis() < deadline && svc.calls == before) {
             Thread.sleep(50);
         }
         assertEquals(before + 1, svc.calls, "exactly one committed search");
-        assertEquals("E:\\Root\\AaaDir", svc.lastRequest.directoryPath);
+        assertEquals(ROOT.resolve("AaaDir").toString(), svc.lastRequest.directoryPath);
     }
 
     private JMenuItem fieldUnchecked(String name) {
@@ -179,7 +184,7 @@ class DirectoryScopeQuickActionsTest {
         populate();
         onEdt(() -> win.getResultTable().setRowSelectionInterval(0, 0)); // "bbb.txt"
         onEdt(() -> fieldUnchecked("searchInContainingItem").doClick());
-        assertEquals("E:\\Root", win.panel().getDirectoryPath());
+        assertEquals(ROOT.toString(), win.panel().getDirectoryPath());
     }
 
     @Test
@@ -188,7 +193,7 @@ class DirectoryScopeQuickActionsTest {
         sortByNameDescending();
         onEdt(() -> win.getResultTable().setRowSelectionInterval(0, 0)); // "it's.txt"
         onEdt(() -> fieldUnchecked("searchInContainingItem").doClick());
-        assertEquals("E:\\Root\\Sub'Dir", win.panel().getDirectoryPath());
+        assertEquals(ROOT.resolve("Sub'Dir").toString(), win.panel().getDirectoryPath());
     }
 
     @Test
@@ -215,7 +220,7 @@ class DirectoryScopeQuickActionsTest {
         int before = svc.calls;
         onEdt(() -> fieldUnchecked("searchInThisFolderItem").doClick());
         onEdt(() -> fieldUnchecked("searchInThisFolderItem").doClick());
-        assertEquals("E:\\Root\\AaaDir", win.panel().getDirectoryPath(),
+        assertEquals(ROOT.resolve("AaaDir").toString(), win.panel().getDirectoryPath(),
                 "re-applying the same scope is idempotent");
     }
 }

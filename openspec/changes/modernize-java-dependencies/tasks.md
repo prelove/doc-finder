@@ -1,6 +1,6 @@
 # Tasks: modernize-java-dependencies
 
-唯一实施进度来源。目标：Java 8 基线不变，全部可升级依赖/插件升到 Java 8 兼容最新稳定版。
+唯一实施进度来源。目标：Java 8 基线不变，全部可升级依赖/插件升到其 Java 8 兼容线内最新稳定版（非上游绝对最新；EOL 线风险保留并登记）。
 
 ## Global Constraints
 
@@ -12,8 +12,16 @@
 
 - [x] 1.1 pom.xml 版本升级：FlatLaf 三件 3.2→3.6.2；slf4j-api 1.7.36→2.0.17；logback-classic 1.2.11→1.3.16；log4j-to-slf4j/log4j-core 2.17.1→2.23.1；tika-core/tika-parsers-standard-package 2.9.2→2.9.4；junit-jupiter 5.9.3→5.11.4；compiler 3.11.0→3.14.1；shade 3.5.0→3.6.1；surefire 3.0.0→3.5.5；native-maven-plugin 0.10.3→0.10.6。Lucene/jnativehook 不动。
 - [x] 1.2 `mvn -B clean verify "-DargLine=-Xmx768m"` 全绿；核对日志无 SLF4J provider 警告、fork 隔离生效、`target 1.8`。
-- [x] 1.3 记录证据与未验证项（真实 Java 8 JVM 上以 -Djvm 重跑、native 构建不在本环境验证）。
+- [x] 1.3 记录证据与未验证项：真实Java8已由实现者及2026-10-24 Codex独立重跑；Codex带argLine探针为149总数/148通过/0失败/1跳过；native仍未执行，见upgrade-verification及目录检索Codex-QA报告。
 
 ## 2. 交付
 
 - [ ] 2.1 用户确认本变更结果；与 add-directory-scoped-search 的 A8 一并走授权交付，不单独归档。
+
+
+## 3. 2026-10-24 独立验证后的管理补正
+
+- [ ] 3.1 QA24-10：统一proposal/design/spec/tasks中的“全部最新/消除EOL风险”承诺与所选具体版本事实；Logback1.3/Tika2仍EOL，FlatLaf3.6.2并非当前最新。不自动改变Java8基线/升级大版本，补明确残余风险与来源。
+- [ ] 3.2 与目录检索tasks第12组闭环后，核对最终受测SHA、远端实查SHA及A8状态，不把旧用户冒烟或方案PASS当升级后正式验收。
+
+独立运行：4eb417b在JDK17 clean verify与真实Java8 test各149总数/148通过/0失败/1平台跳过；c7只跑基线构建，新增偏差探针在4eb执行；本轮不作依赖升级引入偏差的因果判断。证据：[Codex-QA-2026-10-24](../add-directory-scoped-search/evidence/Codex-QA-2026-10-24.md)。当前验收仍需目录检索修复/复验与用户决定。

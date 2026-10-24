@@ -3,7 +3,7 @@ change: modernize-java-dependencies
 package_version: "1.0"
 updated_at: 2026-10-24
 timezone: Asia/Tokyo
-phase: IMPLEMENTED_PENDING_USER_ACCEPTANCE
+phase: IMPLEMENTED_PENDING_DOCUMENTATION_CORRECTION_AND_ACCEPTANCE
 implementation_authorized: true
 roles:
   acceptance_authority: user
@@ -14,7 +14,15 @@ gates:
     combined_with: add-directory-scoped-search
   delivery_authorization:
     status: not_granted
+  independent_verification:
+    date: 2026-10-24
+    head: 4eb417b4283665ec586538ef5a0670f29eeed7fd
+    jdk17_clean_verify: 149 total /148 passed /0 failures /1 platform skip
+    java8_test: real JVM 1.8.0_40; same counts with argLine probe
+    evidence: ../add-directory-scoped-search/evidence/Codex-QA-2026-10-24.md
+    documentation_issue: QA24-10 latest/EOL claims require reconciliation
+    product_acceptance: directory-search runtime deviations remain; no inferred A8
 next_action:
-  owner: user
-  action: accept_result_then_deliver_together_with_add-directory-scoped-search_A8
-  status: WAITING_FOR_USER_ACCEPTANCE
+  owner: Devin
+  action: reconcile_QA24-10_documentation_then_Codex_final_SHA_reverification_and_user_A8
+  status: DOCUMENTATION_CORRECTION_AND_COMBINED_ACCEPTANCE_PENDING

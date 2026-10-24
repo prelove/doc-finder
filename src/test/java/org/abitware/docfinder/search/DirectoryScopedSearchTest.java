@@ -207,6 +207,31 @@ class DirectoryScopedSearchTest {
     }
 
     @Test
+    void shouldLabelExplicitNameQueryGlobally() {
+        // QA24-03: an explicit name: query must keep "name" as match source.
+        List<SearchResult> hits = service.search(new SearchRequest(
+                "name:alpha-report.txt", 100, null, SearchScope.NAME, MatchMode.FUZZY));
+        assertEquals(1, hits.size());
+        assertEquals("name", hits.get(0).match, "explicit name query must retain name source");
+    }
+
+    @Test
+    void shouldLabelExplicitNameQueryWithinDirectory() {
+        List<SearchResult> hits = scoped("name:alpha-report.txt", source.toString(), SearchScope.NAME);
+        assertEquals(1, hits.size());
+        assertEquals("name", hits.get(0).match, "scoped explicit name must retain source");
+    }
+
+    @Test
+    void shouldLabelExplicitNameAndContent() {
+        List<SearchResult> hits = scoped("name:alpha-report.txt content:alpha",
+                source.toString(), SearchScope.ALL);
+        assertEquals(1, hits.size());
+        assertEquals("name+content", hits.get(0).match,
+                "explicit name + content must expose both sources");
+    }
+
+    @Test
     void shouldNotMistakePosixStyleNameInPathForNameHit() {
         // detectMatchType must explain only the keyword query. A directory
         // segment literally containing "name:" must not label a content hit

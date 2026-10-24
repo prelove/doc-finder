@@ -1,0 +1,104 @@
+org.abitware.docfinder.search.DirectoryScopedSearchTest.txt
+-------------------------------------------------------------------------------
+Test set: org.abitware.docfinder.search.DirectoryScopedSearchTest
+-------------------------------------------------------------------------------
+Tests run: 3, Failures: 3, Errors: 0, Skipped: 0, Time elapsed: 8.347 s <<< FAILURE! -- in org.abitware.docfinder.search.DirectoryScopedSearchTest
+org.abitware.docfinder.search.DirectoryScopedSearchTest.codexQaShouldLabelExplicitNameQueryGlobally -- Time elapsed: 7.194 s <<< FAILURE!
+org.opentest4j.AssertionFailedError: explicit name query must retain name source ==> expected: <name> but was: <>
+	at org.junit.jupiter.api.AssertionFailureBuilder.build(AssertionFailureBuilder.java:151)
+	at org.junit.jupiter.api.AssertionFailureBuilder.buildAndThrow(AssertionFailureBuilder.java:132)
+	at org.junit.jupiter.api.AssertEquals.failNotEqual(AssertEquals.java:197)
+	at org.junit.jupiter.api.AssertEquals.assertEquals(AssertEquals.java:182)
+	at org.junit.jupiter.api.Assertions.assertEquals(Assertions.java:1156)
+	at org.abitware.docfinder.search.DirectoryScopedSearchTest.codexQaShouldLabelExplicitNameQueryGlobally(DirectoryScopedSearchTest.java:224)
+	at java.base/java.lang.reflect.Method.invoke(Method.java:568)
+	at java.base/java.util.ArrayList.forEach(ArrayList.java:1511)
+	at java.base/java.util.ArrayList.forEach(ArrayList.java:1511)
+
+org.abitware.docfinder.search.DirectoryScopedSearchTest.codexQaShouldLabelExplicitNameQueryWithinDirectory -- Time elapsed: 0.599 s <<< FAILURE!
+org.opentest4j.AssertionFailedError: scoped explicit name must retain source ==> expected: <name> but was: <>
+	at org.junit.jupiter.api.AssertionFailureBuilder.build(AssertionFailureBuilder.java:151)
+	at org.junit.jupiter.api.AssertionFailureBuilder.buildAndThrow(AssertionFailureBuilder.java:132)
+	at org.junit.jupiter.api.AssertEquals.failNotEqual(AssertEquals.java:197)
+	at org.junit.jupiter.api.AssertEquals.assertEquals(AssertEquals.java:182)
+	at org.junit.jupiter.api.Assertions.assertEquals(Assertions.java:1156)
+	at org.abitware.docfinder.search.DirectoryScopedSearchTest.codexQaShouldLabelExplicitNameQueryWithinDirectory(DirectoryScopedSearchTest.java:230)
+	at java.base/java.lang.reflect.Method.invoke(Method.java:568)
+	at java.base/java.util.ArrayList.forEach(ArrayList.java:1511)
+	at java.base/java.util.ArrayList.forEach(ArrayList.java:1511)
+
+org.abitware.docfinder.search.DirectoryScopedSearchTest.codexQaShouldLabelExplicitNameAndContent -- Time elapsed: 0.476 s <<< FAILURE!
+org.opentest4j.AssertionFailedError: explicit name + content must expose both sources ==> expected: <name+content> but was: <content>
+	at org.junit.jupiter.api.AssertionFailureBuilder.build(AssertionFailureBuilder.java:151)
+	at org.junit.jupiter.api.AssertionFailureBuilder.buildAndThrow(AssertionFailureBuilder.java:132)
+	at org.junit.jupiter.api.AssertEquals.failNotEqual(AssertEquals.java:197)
+	at org.junit.jupiter.api.AssertEquals.assertEquals(AssertEquals.java:182)
+	at org.junit.jupiter.api.Assertions.assertEquals(Assertions.java:1156)
+	at org.abitware.docfinder.search.DirectoryScopedSearchTest.codexQaShouldLabelExplicitNameAndContent(DirectoryScopedSearchTest.java:236)
+	at java.base/java.lang.reflect.Method.invoke(Method.java:568)
+	at java.base/java.util.ArrayList.forEach(ArrayList.java:1511)
+	at java.base/java.util.ArrayList.forEach(ArrayList.java:1511)
+
+
+org.abitware.docfinder.ui.DirectoryScopeDesktopHarnessTest.txt
+-------------------------------------------------------------------------------
+Test set: org.abitware.docfinder.ui.DirectoryScopeDesktopHarnessTest
+-------------------------------------------------------------------------------
+Tests run: 3, Failures: 3, Errors: 0, Skipped: 0, Time elapsed: 2.420 s <<< FAILURE! -- in org.abitware.docfinder.ui.DirectoryScopeDesktopHarnessTest
+org.abitware.docfinder.ui.DirectoryScopeDesktopHarnessTest.codexQaShouldClearPresentedResultsWhenFullRebuildFails -- Time elapsed: 1.321 s <<< FAILURE!
+org.opentest4j.AssertionFailedError: rebuild failure must clear already rendered results ==> expected: <0> but was: <1>
+	at org.junit.jupiter.api.AssertionFailureBuilder.build(AssertionFailureBuilder.java:151)
+	at org.junit.jupiter.api.AssertionFailureBuilder.buildAndThrow(AssertionFailureBuilder.java:132)
+	at org.junit.jupiter.api.AssertEquals.failNotEqual(AssertEquals.java:197)
+	at org.junit.jupiter.api.AssertEquals.assertEquals(AssertEquals.java:150)
+	at org.junit.jupiter.api.Assertions.assertEquals(Assertions.java:563)
+	at org.abitware.docfinder.ui.DirectoryScopeDesktopHarnessTest.codexQaShouldClearPresentedResultsWhenFullRebuildFails(DirectoryScopeDesktopHarnessTest.java:480)
+	at java.base/java.lang.reflect.Method.invoke(Method.java:568)
+	at java.base/java.util.ArrayList.forEach(ArrayList.java:1511)
+	at java.base/java.util.ArrayList.forEach(ArrayList.java:1511)
+
+org.abitware.docfinder.ui.DirectoryScopeDesktopHarnessTest.codexQaShouldNotSilentlyKeepOldServiceWhenOpeningNewLocationFails -- Time elapsed: 0.529 s <<< FAILURE!
+org.opentest4j.AssertionFailedError: unavailable new location must not leave old service active ==> expected: <null> but was: <org.abitware.docfinder.ui.DirectoryScopeDesktopHarnessTest$FakeService@6d6d480c>
+	at org.junit.jupiter.api.AssertionFailureBuilder.build(AssertionFailureBuilder.java:151)
+	at org.junit.jupiter.api.AssertionFailureBuilder.buildAndThrow(AssertionFailureBuilder.java:132)
+	at org.junit.jupiter.api.AssertNull.failNotNull(AssertNull.java:50)
+	at org.junit.jupiter.api.AssertNull.assertNull(AssertNull.java:35)
+	at org.junit.jupiter.api.Assertions.assertNull(Assertions.java:287)
+	at org.abitware.docfinder.ui.DirectoryScopeDesktopHarnessTest.codexQaShouldNotSilentlyKeepOldServiceWhenOpeningNewLocationFails(DirectoryScopeDesktopHarnessTest.java:489)
+	at java.base/java.lang.reflect.Method.invoke(Method.java:568)
+	at java.base/java.util.ArrayList.forEach(ArrayList.java:1511)
+	at java.base/java.util.ArrayList.forEach(ArrayList.java:1511)
+
+org.abitware.docfinder.ui.DirectoryScopeDesktopHarnessTest.codexQaShouldClearPresentedResultsWhenServiceBecomesUnavailable -- Time elapsed: 0.563 s <<< FAILURE!
+org.opentest4j.AssertionFailedError: unavailable search must clear earlier successful results ==> expected: <0> but was: <1>
+	at org.junit.jupiter.api.AssertionFailureBuilder.build(AssertionFailureBuilder.java:151)
+	at org.junit.jupiter.api.AssertionFailureBuilder.buildAndThrow(AssertionFailureBuilder.java:132)
+	at org.junit.jupiter.api.AssertEquals.failNotEqual(AssertEquals.java:197)
+	at org.junit.jupiter.api.AssertEquals.assertEquals(AssertEquals.java:150)
+	at org.junit.jupiter.api.Assertions.assertEquals(Assertions.java:563)
+	at org.abitware.docfinder.ui.DirectoryScopeDesktopHarnessTest.codexQaShouldClearPresentedResultsWhenServiceBecomesUnavailable(DirectoryScopeDesktopHarnessTest.java:469)
+	at java.base/java.lang.reflect.Method.invoke(Method.java:568)
+	at java.base/java.util.ArrayList.forEach(ArrayList.java:1511)
+	at java.base/java.util.ArrayList.forEach(ArrayList.java:1511)
+
+
+org.abitware.docfinder.ui.components.CodexScopeDisplayProbeTest.txt
+-------------------------------------------------------------------------------
+Test set: org.abitware.docfinder.ui.components.CodexScopeDisplayProbeTest
+-------------------------------------------------------------------------------
+Tests run: 2, Failures: 1, Errors: 0, Skipped: 0, Time elapsed: 3.558 s <<< FAILURE! -- in org.abitware.docfinder.ui.components.CodexScopeDisplayProbeTest
+org.abitware.docfinder.ui.components.CodexScopeDisplayProbeTest.codexQaShouldKeepAppliedScopeVisibleWhenDraftChanges -- Time elapsed: 0.374 s <<< FAILURE!
+org.opentest4j.AssertionFailedError: 
+Applied A must remain visibly indicated while editing B; actual labels: Search in:
+Includes all subfolders. Searches indexed content only.
+ ==> expected: <true> but was: <false>
+	at org.junit.jupiter.api.AssertionFailureBuilder.build(AssertionFailureBuilder.java:151)
+	at org.junit.jupiter.api.AssertionFailureBuilder.buildAndThrow(AssertionFailureBuilder.java:132)
+	at org.junit.jupiter.api.AssertTrue.failNotTrue(AssertTrue.java:63)
+	at org.junit.jupiter.api.AssertTrue.assertTrue(AssertTrue.java:36)
+	at org.junit.jupiter.api.Assertions.assertTrue(Assertions.java:214)
+	at org.abitware.docfinder.ui.components.CodexScopeDisplayProbeTest.codexQaShouldKeepAppliedScopeVisibleWhenDraftChanges(CodexScopeDisplayProbeTest.java:24)
+	at java.base/java.lang.reflect.Method.invoke(Method.java:568)
+	at java.base/java.util.ArrayList.forEach(ArrayList.java:1511)
+	at java.base/java.util.ArrayList.forEach(ArrayList.java:1511)
+

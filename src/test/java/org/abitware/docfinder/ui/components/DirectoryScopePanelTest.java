@@ -30,6 +30,12 @@ class DirectoryScopePanelTest {
         return sel == null ? "" : sel.toString();
     }
 
+    /** A valid absolute path on the current host (QA24-08 portability). */
+    private static String hostAbs(String name) {
+        return java.nio.file.Paths.get(System.getProperty("java.io.tmpdir"))
+                .toAbsolutePath().resolve(name).toString();
+    }
+
     @Test
     void shouldShowAllSourcesForEmptyPath() {
         DirectoryScopePanel p = newPanel(new AtomicInteger());
@@ -54,8 +60,8 @@ class DirectoryScopePanelTest {
     void shouldShowCustomForUnknownOrInvalidInput() {
         AtomicInteger calls = new AtomicInteger();
         DirectoryScopePanel p = newPanel(calls);
-        p.setSourceDirectories(Collections.singletonList("E:\\Docs"));
-        p.setDirectoryPath("E:\\SomewhereElse");
+        p.setSourceDirectories(Collections.singletonList(hostAbs("Docs")));
+        p.setDirectoryPath(hostAbs("SomewhereElse"));
         assertEquals("Custom", selected(p));
         p.setDirectoryPath("not a path");
         assertEquals("Custom", selected(p));
@@ -66,7 +72,7 @@ class DirectoryScopePanelTest {
     void shouldCommitOnceOnSourceSelection() {
         AtomicInteger calls = new AtomicInteger();
         DirectoryScopePanel p = newPanel(calls);
-        String src = "E:\\Docs";
+        String src = hostAbs("Docs");
         p.setSourceDirectories(Collections.singletonList(src));
         p.getSourceCombo().setSelectedItem(src);
         assertEquals(1, calls.get());
@@ -78,14 +84,14 @@ class DirectoryScopePanelTest {
     void shouldCommitOnceOnClearAndAllSources() {
         AtomicInteger calls = new AtomicInteger();
         DirectoryScopePanel p = newPanel(calls);
-        p.setDirectoryPath("E:\\Docs");
+        p.setDirectoryPath(hostAbs("Docs"));
         p.clearDirectory();
         assertEquals(1, calls.get());
         assertEquals("", p.getDirectoryPath());
         assertEquals("All sources", selected(p));
 
         // selecting All sources again = Clear semantics, one callback
-        p.setDirectoryPath("E:\\Other");
+        p.setDirectoryPath(hostAbs("Other"));
         p.getSourceCombo().setSelectedItem("All sources");
         assertEquals(2, calls.get());
         assertEquals("", p.getDirectoryPath());
@@ -95,7 +101,7 @@ class DirectoryScopePanelTest {
     void shouldNotCommitOnPlainTyping() {
         AtomicInteger calls = new AtomicInteger();
         DirectoryScopePanel p = newPanel(calls);
-        p.getPathField().setText("E:\\Typed\\But\\Not\\Entered");
+        p.getPathField().setText(hostAbs("Typed/But/Not/Entered"));
         assertEquals(0, calls.get(), "typing without Enter must not commit");
         assertEquals("", p.getDirectoryPath(),
                 "committed value unchanged until Enter");
@@ -105,11 +111,12 @@ class DirectoryScopePanelTest {
     void shouldSyncComboDisplayWhileTypingWithoutCommitting() {
         AtomicInteger calls = new AtomicInteger();
         DirectoryScopePanel p = newPanel(calls);
-        p.setSourceDirectories(Collections.singletonList("E:\\Docs"));
-        p.getPathField().setText("E:\\Somewhere");
+        String docs = hostAbs("Docs");
+        p.setSourceDirectories(Collections.singletonList(docs));
+        p.getPathField().setText(hostAbs("Somewhere"));
         assertEquals("Custom", selected(p));
-        p.getPathField().setText("E:\\Docs");
-        assertEquals("E:\\Docs", selected(p));
+        p.getPathField().setText(docs);
+        assertEquals(docs, selected(p));
         p.getPathField().setText("");
         assertEquals("All sources", selected(p));
         assertEquals(0, calls.get(), "typing must not commit");
@@ -120,26 +127,71 @@ class DirectoryScopePanelTest {
     void shouldCommitOnceOnEnter() {
         AtomicInteger calls = new AtomicInteger();
         DirectoryScopePanel p = newPanel(calls);
-        p.getPathField().setText("E:\\Docs");
+        p.getPathField().setText(hostAbs("Docs"));
         p.getPathField().postActionEvent();
         assertEquals(1, calls.get());
-        assertEquals("E:\\Docs", p.getDirectoryPath());
+        assertEquals(hostAbs("Docs"), p.getDirectoryPath());
     }
 
     @Test
     void shouldKeepRemovedSourcePathAsCustomAfterRefresh() {
         AtomicInteger calls = new AtomicInteger();
         DirectoryScopePanel p = newPanel(calls);
-        String removed = "E:\\Removed";
-        p.setSourceDirectories(Arrays.asList(removed, "E:\\Docs"));
+        String removed = hostAbs("Removed");
+        p.setSourceDirectories(Arrays.asList(removed, hostAbs("Docs")));
         p.setDirectoryPath(removed);
         assertEquals(removed, selected(p));
 
-        p.setSourceDirectories(Collections.singletonList("E:\\Docs"));
+        p.setSourceDirectories(Collections.singletonList(hostAbs("Docs")));
         assertEquals(0, calls.get(), "refresh must not commit or re-search");
         assertEquals(removed, p.getDirectoryPath(), "committed path survives refresh");
         assertEquals(removed, p.getPathField().getText());
         assertEquals("Custom", selected(p));
+    }
+
+    @Test
+    void shouldKeepAppliedScopeVisibleWhileEditingDraft() {
+        // QA24-02: after committing A, typing draft B must not hide A — the
+        // actually applied scope stays visibly indicated as "Applied: <A>".
+        AtomicInteger calls = new AtomicInteger();
+        DirectoryScopePanel p = newPanel(calls);
+        String a = java.nio.file.Paths.get(System.getProperty("java.io.tmpdir"), "qa-applied-a").toString();
+        String b = java.nio.file.Paths.get(System.getProperty("java.io.tmpdir"), "qa-draft-b").toString();
+        p.setSourceDirectories(Arrays.asList(a, b));
+        p.getSourceCombo().setSelectedItem(a);
+        assertEquals(1, calls.get());
+        assertEquals(a, p.getDirectoryPath());
+
+        p.getPathField().setText(b); // draft only, never commits
+        assertEquals(1, calls.get(), "draft edit must not commit");
+        assertEquals(a, p.getDirectoryPath(), "applied scope unchanged while editing");
+        assertTrue(collectLabelText(p).contains(a),
+                "applied scope must remain visibly indicated; labels: " + collectLabelText(p));
+    }
+
+    @Test
+    void shouldShowAllSourcesAsAppliedScopeWhenUnrestricted() {
+        DirectoryScopePanel p = newPanel(new AtomicInteger());
+        assertTrue(collectLabelText(p).toLowerCase(java.util.Locale.ROOT)
+                        .contains("all sources"),
+                "unrestricted state names the applied scope; labels: " + collectLabelText(p));
+    }
+
+    private static String collectLabelText(java.awt.Component c) {
+        StringBuilder out = new StringBuilder();
+        collectLabelText(c, out);
+        return out.toString();
+    }
+
+    private static void collectLabelText(java.awt.Component c, StringBuilder out) {
+        if (c instanceof javax.swing.JLabel && c.isVisible()) {
+            out.append(((javax.swing.JLabel) c).getText()).append('\n');
+        }
+        if (c instanceof java.awt.Container) {
+            for (java.awt.Component child : ((java.awt.Container) c).getComponents()) {
+                collectLabelText(child, out);
+            }
+        }
     }
 
     @Test
@@ -155,7 +207,7 @@ class DirectoryScopePanelTest {
     @Test
     void shouldDisableControls() {
         DirectoryScopePanel p = newPanel(new AtomicInteger());
-        p.setDirectoryPath("E:\\Docs");
+        p.setDirectoryPath(hostAbs("Docs"));
         assertTrue(p.getPathField().isEnabled());
         p.setScopeControlsEnabled(false);
         assertFalse(p.getSourceCombo().isEnabled());
@@ -176,7 +228,7 @@ class DirectoryScopePanelTest {
         assertTrue(p.getPathField().isEnabled(), "Custom enables typing");
         assertEquals(0, calls.get(), "choosing Custom never commits");
 
-        p.getPathField().setText("E:\\Typed");
+        p.getPathField().setText(hostAbs("Typed"));
         p.getPathField().setText("");
         assertTrue(p.getPathField().isEnabled(), "emptying the text while typing must not lock the field");
 

@@ -1,0 +1,85 @@
+### Result
+[
+  {
+    "name": "recursive scope",
+    "status": 200,
+    "count": 2,
+    "rows": 2,
+    "requestedDirectory": "C:\\Users\\Administrator\\AppData\\Local\\Temp\\docfinder-qa-20261024-up0jca24\\web-fixture\\source\\ProjectA",
+    "passed": true
+  },
+  {
+    "name": "special encoded path",
+    "status": 200,
+    "count": 1,
+    "rows": 1,
+    "requestedDirectory": "C:\\Users\\Administrator\\AppData\\Local\\Temp\\docfinder-qa-20261024-up0jca24\\web-fixture\\source\\资料 空格&#+[草稿]'单引号",
+    "passed": true
+  },
+  {
+    "name": "folder root itself",
+    "status": 200,
+    "count": 1,
+    "rows": 1,
+    "requestedDirectory": "C:\\Users\\Administrator\\AppData\\Local\\Temp\\docfinder-qa-20261024-up0jca24\\web-fixture\\source\\ProjectA",
+    "passed": true
+  },
+  {
+    "name": "outside source",
+    "status": 422,
+    "count": null,
+    "rows": 0,
+    "requestedDirectory": "C:\\Users\\Administrator\\AppData\\Local\\Temp\\docfinder-qa-20261024-up0jca24\\web-fixture\\Outside",
+    "passed": true
+  },
+  {
+    "name": "relative directory",
+    "status": 400,
+    "count": null,
+    "rows": 0,
+    "requestedDirectory": "relative-folder",
+    "passed": true
+  },
+  {
+    "name": "invalid query scoped",
+    "status": 400,
+    "count": null,
+    "rows": 0,
+    "requestedDirectory": "C:\\Users\\Administrator\\AppData\\Local\\Temp\\docfinder-qa-20261024-up0jca24\\web-fixture\\source\\ProjectA",
+    "passed": true
+  },
+  {
+    "name": "invalid query global",
+    "status": 400,
+    "count": null,
+    "rows": 0,
+    "requestedDirectory": null,
+    "passed": true
+  },
+  {
+    "name": "global indexed results",
+    "status": 200,
+    "count": 6,
+    "rows": 6,
+    "requestedDirectory": null,
+    "passed": true
+  },
+  {
+    "name": "failed query absent from history",
+    "history": [
+      "alpha",
+      "ProjectA"
+    ],
+    "passed": true
+  }
+]
+### Ran Playwright code
+```js
+await page.evaluate('async () => {\n const results=[];const original=window.fetch.bind(window);window.qaOriginalFetch=original;window.qaRequests=[];window.qaLast=null;\n window.fetch=async(...args)=>{const url=String(args[0]);if(!url.includes(\'/api/search\'))return original(...args);const idx=window.qaRequests.length;window.qaRequests.push(url);const r=await original(...args);const data=await r.clone().json();window.qaLast={idx,status:r.status,data};return r;};\n const q=document.querySelector(\'#queryInput\'),d=document.querySelector(\'#dirInput\'),s=document.querySelector(\'#scopeSelect\'),btn=document.querySelector(\'#searchBtn\');\n const a="C:\\\\Users\\\\Administrator\\\\AppData\\\\Local\\\\Temp\\\\docfinder-qa-20261024-up0jca24\\\\web-fixture\\\\source\\\\ProjectA",special="C:\\\\Users\\\\Administrator\\\\AppData\\\\Local\\\\Temp\\\\docfinder-qa-20261024-up0jca24\\\\web-fixture\\\\source\\\\资料 空格&#+[草稿]\'单引号",outside="C:\\\\Users\\\\Administrator\\\\AppData\\\\Local\\\\Temp\\\\docfinder-qa-20261024-up0jca24\\\\web-fixture\\\\Outside";\n const run=async(name,query,dir,scope,status,count)=>{q.value=query;d.value=dir;s.value=scope;const idx=window.qaRequests.length;btn.click();for(let i=0;i<100&&window.qaLast?.idx!==idx;i++)await new Promise(r=>setTimeout(r,30));await new Promise(r=>setTimeout(r,60));if(window.qaLast?.idx!==idx)throw Error(\'no response \'+name);const {data,status:actual}=window.qaLast;const rows=document.querySelectorAll(\'tbody tr\').length;const requestedDirectory=new URL(window.qaRequests[idx],location.href).searchParams.get(\'directory\');const passed=actual===status&&(count===null||data.count===count)&&rows===(status===200?count:0);const record={name,status:actual,count:data.count??null,rows,requestedDirectory,passed};results.push(record);if(!passed)throw Error(JSON.stringify(record));};\n await run(\'recursive scope\',\'alpha\',a,\'ALL\',200,2);\n await run(\'special encoded path\',\'alpha\',special,\'ALL\',200,1);\n await run(\'folder root itself\',\'ProjectA\',a,\'FOLDER\',200,1);\n await run(\'outside source\',\'alpha\',outside,\'ALL\',422,null);\n await run(\'relative directory\',\'alpha\',\'relative-folder\',\'ALL\',400,null);\n await run(\'invalid query scoped\',\'report AND (\',a,\'ALL\',400,null);\n await run(\'invalid query global\',\'report AND (\',\'\',\'ALL\',400,null);\n await run(\'global indexed results\',\'alpha\',\'\',\'ALL\',200,6);\n const history=JSON.parse(localStorage.getItem(\'docfinder-search-history\')||\'[]\');results.push({name:\'failed query absent from history\',history,passed:!history.includes(\'report AND (\')});\n window.qaBasicResults=results;return results;\n}');
+```
+### Page
+- Page URL: http://127.0.0.1:14970/
+- Page Title: DocFinder Web
+- Console: 4 errors, 0 warnings
+### Events
+- New console entries: .playwright-mcp\console-2026-10-24T01-21-34-442Z.log#L2-L5

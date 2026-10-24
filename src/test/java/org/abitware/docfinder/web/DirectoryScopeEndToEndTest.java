@@ -211,20 +211,77 @@ class DirectoryScopeEndToEndTest {
 
     // ── 9.1: partial commit — committed docs survive a failed later write ───
 
+    /**
+     * Deny write on the index directory so the NEXT commit fails with a real
+     * filesystem error (QA24-06). Returns the original ACL to restore later.
+     */
+    private static java.util.List<java.nio.file.attribute.AclEntry> denyWriteOnDir(Path dir)
+            throws IOException {
+        java.nio.file.attribute.AclFileAttributeView view =
+                Files.getFileAttributeView(dir, java.nio.file.attribute.AclFileAttributeView.class);
+        if (view == null) {
+            return null;
+        }
+        java.nio.file.attribute.UserPrincipal me = java.nio.file.FileSystems.getDefault()
+                .getUserPrincipalLookupService()
+                .lookupPrincipalByName(System.getProperty("user.name"));
+        java.util.List<java.nio.file.attribute.AclEntry> original =
+                new java.util.ArrayList<>(view.getAcl());
+        java.util.List<java.nio.file.attribute.AclEntry> denied =
+                new java.util.ArrayList<>(original);
+        denied.add(0, java.nio.file.attribute.AclEntry.newBuilder()
+                .setType(java.nio.file.attribute.AclEntryType.DENY)
+                .setPrincipal(me)
+                .setPermissions(java.nio.file.attribute.AclEntryPermission.WRITE_DATA,
+                        java.nio.file.attribute.AclEntryPermission.ADD_FILE,
+                        java.nio.file.attribute.AclEntryPermission.ADD_SUBDIRECTORY,
+                        java.nio.file.attribute.AclEntryPermission.WRITE_ATTRIBUTES,
+                        java.nio.file.attribute.AclEntryPermission.DELETE)
+                .build());
+        view.setAcl(denied);
+        return original;
+    }
+
+    private static void restoreAcl(Path dir,
+            java.util.List<java.nio.file.attribute.AclEntry> original) {
+        try {
+            Files.getFileAttributeView(dir, java.nio.file.attribute.AclFileAttributeView.class)
+                    .setAcl(original);
+        } catch (IOException ignore) {
+        }
+    }
+
     @Test
     void shouldServeCommittedDataAfterPartialCommitFailure() throws Exception {
-        // Simulate "first source committed, later write failed": upsert a doc,
-        // commit, then attempt a failing write (index a path that can't be
-        // parsed) — committed data must remain searchable after reopen.
+        // QA24-06: source A commits; the index dir then becomes unwritable, so
+        // source B's commit REALLY fails with an IOException — committed data
+        // must remain searchable after reopen, uncommitted docs must not leak.
         Path extra = sourceA.resolve("delta.txt");
         write(extra, "delta partial commit");
-        try (LuceneIndexer indexer = new LuceneIndexer(index, settings)) {
-            indexer.upsertFile(extra);
-            indexer.commit();
+        write(sourceB.resolve("delta-b.txt"), "delta partial b");
+        LuceneIndexer indexer = new LuceneIndexer(index, settings);
+        try {
+            indexer.indexFolder(sourceA); // commit #1 succeeds
+            java.util.List<java.nio.file.attribute.AclEntry> original = denyWriteOnDir(index);
+            org.junit.jupiter.api.Assumptions.assumeTrue(original != null,
+                    "ACL attribute view unsupported on this filesystem");
             try {
-                indexer.upsertFile(fixtureRoot.resolve("definitely-not-there.bin"));
-            } catch (Exception expected) {
-                // write-side failure after a successful commit
+                // The ACL denial fails the commit's segment write; Lucene
+                // surfaces that as AlreadyClosedException (writer shuts down
+                // on the write tragedy) — a real propagated failure either
+                // way, never silently swallowed.
+                org.apache.lucene.store.AlreadyClosedException boom = assertThrows(
+                        org.apache.lucene.store.AlreadyClosedException.class,
+                        () -> indexer.indexFolder(sourceB),
+                        "the second commit must really fail, not be swallowed");
+                assertNotNull(boom);
+            } finally {
+                restoreAcl(index, original);
+            }
+        } finally {
+            try {
+                indexer.close(); // rolls back the uncommitted second source
+            } catch (Exception ignore) {
             }
         }
         // service reopened as the app would after recovery
@@ -234,6 +291,7 @@ class DirectoryScopeEndToEndTest {
         Resp r = get("q=delta&directory=" + enc(sourceA.toString()));
         assertEquals(200, r.status, r.body);
         assertTrue(r.body.contains("delta.txt"), "committed doc must survive later failed write");
+        assertFalse(r.body.contains("delta-b.txt"), "uncommitted docs must not appear");
     }
 
     // ── 9.1: not-ready -> recover -> rebuild-unavailable -> recover ─────────

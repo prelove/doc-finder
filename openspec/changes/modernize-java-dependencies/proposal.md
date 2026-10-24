@@ -4,17 +4,17 @@
 
 ## 目标
 
-在不改变任何产品行为的前提下，把当前全部可升级的依赖与构建插件升到 Java 8 兼容的最新稳定版本，消除已知 EOL/陈旧组件的安全与维护风险，并为后续升级 Java 基线留出清晰边界。
+在不改变任何产品行为的前提下，把当前可升级的依赖与构建插件升到**其 Java 8 兼容线内的最新稳定版本**，降低陈旧组件的已知问题暴露，并为后续升级 Java 基线留出清晰边界。注意：这只是线内升级，不是"全部最新"——logback 1.3.x 与 Tika 2.x 上游本身已 EOL（但仍是最后支持 Java 8 的线），FlatLaf 上游也已发布比 3.6.2 更新的版本；EOL 风险保留并在下文如实登记，本变更不宣称消除。
 
 ## 升级范围
 
 | 组件 | 当前 | 目标 | 说明 |
 | --- | --- | --- | --- |
-| flatlaf / flatlaf-intellij-themes / flatlaf-extras | 3.2 | 3.6.2 | 3.x 全线兼容 Java 8 |
+| flatlaf / flatlaf-intellij-themes / flatlaf-extras | 3.2 | 3.6.2 | 3.x 全线兼容 Java 8；上游已有 3.7.x，本次未追最新 |
 | slf4j-api | 1.7.36 | 2.0.17 | 修正与 jcl-over-slf4j 2.0.10（Tika 传递依赖）既有的版本错位 |
-| logback-classic | 1.2.11 | 1.3.16 | 1.3.x 是最后支持 Java 8 的线，含 CVE-2025-11226 修复；1.4+ 需 Java 11 |
+| logback-classic | 1.2.11 | 1.3.16 | 1.3.x 是最后支持 Java 8 的线（上游已 EOL），含 CVE-2025-11226 修复；1.4+ 需 Java 11 |
 | log4j-to-slf4j / log4j-core | 2.17.1 | 2.23.1 | 2.23.x 是最后支持 Java 8 的线 |
-| tika-core / tika-parsers-standard-package | 2.9.2 | 2.9.4 | 同线补丁升级，Java 8 兼容，修若干解析问题 |
+| tika-core / tika-parsers-standard-package | 2.9.2 | 2.9.4 | 同线补丁升级，Java 8 兼容；Tika 2.x 上游已 EOL，EOL 风险保留 |
 | junit-jupiter | 5.9.3 | 5.11.4 | JUnit 5 全线兼容 Java 8 |
 | maven-compiler-plugin | 3.11.0 | 3.14.1 | |
 | maven-shade-plugin | 3.5.0 | 3.6.1 | |

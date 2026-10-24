@@ -74,3 +74,12 @@ Codex实际执行：
 用户原文：批准以 0.4 交给 Devin 实施，包含 A0 测试配置修改。
 
 已绑定原0.4 manifest和评审ZIP，见approval.md；G2通过，发布/验收批准未授予。用户已手动打开Devin，Codex提供A0 1.1～1.4分批指令。状态为交接就绪、未声称已派发或开始，实际任务仍0/31。冻结文档的历史待批准文案不再作为当前授权状态，当前状态由批准原文、approval.md、delivery-status.yaml决定。
+
+
+## 2026-10-24 A7 独立实现复核（最新运行结论）
+
+结论：REMEDIATION_REQUIRED_BEFORE_ACCEPTANCE。原Claude 0.4 PASS是方案充分性结论；此前修复PASS也有其当时版本/范围。本轮c7和4eb各clean verify 149总数/148通过/0失败/1跳过，4eb真实Java8同结果；新增8项中7个目标断言失败、1通过，浏览器22项通过。新增4类运行偏差（QA24-01～04）及静态/证据/管理事项登记tasks第12组，不覆盖历史F编号；未发现新的P0/P1，不等于用户已经接受残余P2。
+
+完整范围、运行/静态的区分、未执行项、修复验收条件见 [Codex-QA-2026-10-24.md](evidence/Codex-QA-2026-10-24.md) 和 [Devin后续任务](evidence/Devin-Followup-2026-10-24.md)。Devin Local负责修复并交证，Codex独立复验；A8最终验收/归档不能先于闭环。冻结0.4 manifest/ZIP只作历史批准输入，不因管理台账变动重写批准记录。
+
+本地最新观察8d41b0c与受测4eb产品/测试/pom树相同；GitHub main本轮实查36139f5。本次QA没有提交/推送或改变产品代码，所有新证据在共享本地仓库可读。

@@ -12,6 +12,7 @@ import java.nio.file.Paths;
 import java.util.List;
 
 import static org.junit.jupiter.api.Assertions.*;
+import static org.junit.jupiter.api.Assumptions.assumeTrue;
 
 /**
  * Strict-but-tolerant source loading for directory-scoped search: bad lines are
@@ -31,19 +32,24 @@ class SourceManagerSearchRootsTest {
         return f;
     }
 
+    private static Path hostAbs(String name) {
+        // A valid absolute path on any host (QA24-08 portability).
+        return Paths.get(System.getProperty("java.io.tmpdir")).toAbsolutePath().resolve(name);
+    }
+
     @Test
     void shouldReadLegacyAndNewFormats() throws Exception {
         Path f = writeSources(
                 "# comment",
                 "",
-                "E:\\Docs",
-                "F:\\Net|1",
-                "G:\\Local|0");
+                hostAbs("Docs").toString(),
+                hostAbs("Net").toString() + "|1",
+                hostAbs("Local").toString() + "|0");
         List<Path> roots = SourceManager.readSearchRoots(f);
         assertEquals(3, roots.size());
-        assertEquals(Paths.get("E:\\Docs"), roots.get(0));
-        assertEquals(Paths.get("F:\\Net"), roots.get(1));
-        assertEquals(Paths.get("G:\\Local"), roots.get(2));
+        assertEquals(hostAbs("Docs"), roots.get(0));
+        assertEquals(hostAbs("Net"), roots.get(1));
+        assertEquals(hostAbs("Local"), roots.get(2));
     }
 
     @Test
@@ -57,17 +63,17 @@ class SourceManagerSearchRootsTest {
     void shouldSkipBadLinesAndKeepValid() throws Exception {
         Path f = writeSources(
                 "relative/dir",
-                "E:\\Valid|1",
-                "D:\\Too|many|cols",
-                "C:\\Bad|9");
+                hostAbs("Valid").toString() + "|1",
+                hostAbs("Too").toString() + "|many|cols",
+                hostAbs("Bad").toString() + "|9");
         List<Path> roots = SourceManager.readSearchRoots(f);
         assertEquals(1, roots.size());
-        assertEquals(Paths.get("E:\\Valid"), roots.get(0));
+        assertEquals(hostAbs("Valid"), roots.get(0));
     }
 
     @Test
     void shouldFailWhenAllDataLinesInvalid() throws Exception {
-        Path f = writeSources("relative/dir", "C:\\Bad|9");
+        Path f = writeSources("relative/dir", hostAbs("Bad").toString() + "|9");
         assertThrows(IOException.class, () -> SourceManager.readSearchRoots(f));
     }
 
@@ -77,6 +83,44 @@ class SourceManagerSearchRootsTest {
         // not be swallowed as "no sources".
         Path dir = Files.createDirectories(tmp.resolve("asdir"));
         assertThrows(IOException.class, () -> SourceManager.readSearchRoots(dir));
+    }
+
+    @Test
+    void shouldFailOnAccessDeniedNotReportEmpty() throws Exception {
+        // QA24-05: deny read on the FILE itself — Files.exists() then reports
+        // false (existence undecidable), yet the file is real and unreadable.
+        // Only a definite NoSuchFile may mean "no sources"; this must throw.
+        Path f = writeSources("E:\\Docs");
+        java.nio.file.attribute.AclFileAttributeView view =
+                Files.getFileAttributeView(f, java.nio.file.attribute.AclFileAttributeView.class);
+        assumeTrue(view != null, "ACL attribute view unsupported on this filesystem");
+        java.nio.file.attribute.UserPrincipal me;
+        try {
+            me = java.nio.file.FileSystems.getDefault().getUserPrincipalLookupService()
+                    .lookupPrincipalByName(System.getProperty("user.name"));
+        } catch (IOException e) {
+            assumeTrue(false, "cannot resolve current principal: " + e);
+            return;
+        }
+        java.util.List<java.nio.file.attribute.AclEntry> original =
+                new java.util.ArrayList<>(view.getAcl());
+        java.util.List<java.nio.file.attribute.AclEntry> denied =
+                new java.util.ArrayList<>(original);
+        denied.add(0, java.nio.file.attribute.AclEntry.newBuilder()
+                .setType(java.nio.file.attribute.AclEntryType.DENY)
+                .setPrincipal(me)
+                .setPermissions(java.nio.file.attribute.AclEntryPermission.READ_DATA,
+                        java.nio.file.attribute.AclEntryPermission.READ_ATTRIBUTES)
+                .build());
+        view.setAcl(denied);
+        try {
+            assumeTrue(!Files.exists(f),
+                    "environment could not reproduce undecidable existence — ACL not enforced");
+            assertThrows(IOException.class, () -> SourceManager.readSearchRoots(f),
+                    "access-denied sources file must surface an error, not report empty");
+        } finally {
+            view.setAcl(original); // restore so @TempDir cleanup succeeds
+        }
     }
 
     @Test

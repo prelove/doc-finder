@@ -1,0 +1,147 @@
+{
+  "browser": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/155.0.0.0 Safari/537.36",
+  "basic": [
+    {
+      "name": "recursive scope",
+      "status": 200,
+      "count": 2,
+      "rows": 2,
+      "requestedDirectory": "C:\\Users\\Administrator\\AppData\\Local\\Temp\\docfinder-qa-20261024-up0jca24\\web-fixture\\source\\ProjectA",
+      "passed": true
+    },
+    {
+      "name": "special encoded path",
+      "status": 200,
+      "count": 1,
+      "rows": 1,
+      "requestedDirectory": "C:\\Users\\Administrator\\AppData\\Local\\Temp\\docfinder-qa-20261024-up0jca24\\web-fixture\\source\\资料 空格&#+[草稿]'单引号",
+      "passed": true
+    },
+    {
+      "name": "folder root itself",
+      "status": 200,
+      "count": 1,
+      "rows": 1,
+      "requestedDirectory": "C:\\Users\\Administrator\\AppData\\Local\\Temp\\docfinder-qa-20261024-up0jca24\\web-fixture\\source\\ProjectA",
+      "passed": true
+    },
+    {
+      "name": "outside source",
+      "status": 422,
+      "count": null,
+      "rows": 0,
+      "requestedDirectory": "C:\\Users\\Administrator\\AppData\\Local\\Temp\\docfinder-qa-20261024-up0jca24\\web-fixture\\Outside",
+      "passed": true
+    },
+    {
+      "name": "relative directory",
+      "status": 400,
+      "count": null,
+      "rows": 0,
+      "requestedDirectory": "relative-folder",
+      "passed": true
+    },
+    {
+      "name": "invalid query scoped",
+      "status": 400,
+      "count": null,
+      "rows": 0,
+      "requestedDirectory": "C:\\Users\\Administrator\\AppData\\Local\\Temp\\docfinder-qa-20261024-up0jca24\\web-fixture\\source\\ProjectA",
+      "passed": true
+    },
+    {
+      "name": "invalid query global",
+      "status": 400,
+      "count": null,
+      "rows": 0,
+      "requestedDirectory": null,
+      "passed": true
+    },
+    {
+      "name": "global indexed results",
+      "status": 200,
+      "count": 6,
+      "rows": 6,
+      "requestedDirectory": null,
+      "passed": true
+    },
+    {
+      "name": "failed query absent from history",
+      "history": [
+        "alpha",
+        "ProjectA"
+      ],
+      "passed": true
+    }
+  ],
+  "races": [
+    {
+      "name": "late success ignored after B",
+      "passed": true
+    },
+    {
+      "name": "late business-error ignored after B",
+      "passed": true
+    },
+    {
+      "name": "late network-error ignored after B",
+      "passed": true
+    },
+    {
+      "name": "empty submit/Clear sends zero requests and invalidates A",
+      "passed": true
+    },
+    {
+      "name": "current network failure clears rows and is not saved",
+      "passed": true
+    },
+    {
+      "name": "late queries absent from history",
+      "passed": true,
+      "history": [
+        "alpha",
+        "ProjectA"
+      ]
+    }
+  ],
+  "actions": [
+    {
+      "name": "clipboard denied falls back to manual path without false success",
+      "passed": true,
+      "promptPath": "C:\\Users\\Administrator\\AppData\\Local\\Temp\\docfinder-qa-20261024-up0jca24\\web-fixture\\source\\资料 空格&#+[草稿]'单引号\\alpha'&#.txt"
+    },
+    {
+      "name": "clipboard success copies exact Unicode path",
+      "passed": true,
+      "copied": "C:\\Users\\Administrator\\AppData\\Local\\Temp\\docfinder-qa-20261024-up0jca24\\web-fixture\\source\\资料 空格&#+[草稿]'单引号\\alpha'&#.txt"
+    },
+    {
+      "name": "sorted file parent shortcut submits exactly once and preserves conditions",
+      "passed": true,
+      "target": "C:\\Users\\Administrator\\AppData\\Local\\Temp\\docfinder-qa-20261024-up0jca24\\web-fixture\\source\\ProjectA",
+      "requests": 1
+    },
+    {
+      "name": "folder root shortcut does not loop",
+      "passed": true,
+      "requests": 1
+    },
+    {
+      "name": "Clear preserves keyword and submits one global query",
+      "passed": true
+    }
+  ],
+  "preview": {
+    "name": "current business error clears selected preview and rows",
+    "before": "alpha contract A",
+    "after": "Select a result to preview.",
+    "rows": 0,
+    "passed": true
+  },
+  "latePreview": {
+    "name": "late preview cannot overwrite current search error",
+    "cleared": "Select a result to preview.",
+    "after": "Select a result to preview.",
+    "passed": true
+  }
+}

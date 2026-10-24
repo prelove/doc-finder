@@ -90,6 +90,25 @@ class SearchHandlerTest {
         return ex;
     }
 
+    /** A real absolute path valid on the current host (QA24-08). */
+    private static java.nio.file.Path hostDir(String name) {
+        return java.nio.file.Paths.get(System.getProperty("java.io.tmpdir"))
+                .toAbsolutePath().resolve(name);
+    }
+
+    private static String urlEnc(String v) {
+        try {
+            return java.net.URLEncoder.encode(v, "UTF-8");
+        } catch (java.io.UnsupportedEncodingException e) {
+            throw new RuntimeException(e);
+        }
+    }
+
+    /** JSON-escaped form of a raw string, as the handler emits it. */
+    private static String jsonEsc(String raw) {
+        return raw.replace("\\", "\\\\");
+    }
+
     // ── Empty query / null service ordering ─────────────────────────────────
 
     @Test
@@ -112,9 +131,10 @@ class SearchHandlerTest {
     @Test
     void shouldPassDirectoryParamToRequest() throws Exception {
         StubService svc = new StubService();
-        FakeExchange ex = get(svc, "q=alpha&directory=E%3A%5CRoot%5CSub");
+        String dir = hostDir("Root").resolve("Sub").toString();
+        FakeExchange ex = get(svc, "q=alpha&directory=" + urlEnc(dir));
         assertEquals(200, ex.status);
-        assertEquals("E:\\Root\\Sub", svc.lastRequest.directoryPath);
+        assertEquals(dir, svc.lastRequest.directoryPath);
         assertEquals("alpha", svc.lastRequest.query);
     }
 
@@ -130,13 +150,14 @@ class SearchHandlerTest {
     @Test
     void shouldIncludeParentDirectoryPerResult() throws Exception {
         StubService svc = new StubService();
+        java.nio.file.Path root = hostDir("Root");
         svc.canned = Arrays.asList(
-                new SearchResult("a.txt", "E:\\Root\\a.txt", 1f, 0L, 0L, "name", 5L, false),
-                new SearchResult("Sub", "E:\\Root\\Sub", 1f, 0L, 0L, "folder", 0L, true));
+                new SearchResult("a.txt", root.resolve("a.txt").toString(), 1f, 0L, 0L, "name", 5L, false),
+                new SearchResult("Sub", root.resolve("Sub").toString(), 1f, 0L, 0L, "folder", 0L, true));
         FakeExchange ex = get(svc, "q=a");
         assertEquals(200, ex.status);
         String body = ex.bodyText();
-        assertTrue(body.contains("\"parentDirectory\":\"E:\\\\Root\""), body);
+        assertTrue(body.contains("\"parentDirectory\":\"" + jsonEsc(root.toString()) + "\""), body);
         // two results => two occurrences
         assertEquals(2, body.split("parentDirectory").length - 1);
     }
@@ -144,8 +165,38 @@ class SearchHandlerTest {
     @Test
     void shouldEmitNullParentDirectoryForRootOrUnparseable() throws Exception {
         StubService svc = new StubService();
+        java.nio.file.Path fsRoot = java.nio.file.Paths.get("").toAbsolutePath().getRoot();
+        svc.canned = Arrays.asList(
+                new SearchResult("x", "no-parent-here", 1f, 0L, 0L, "name", 0L, false),
+                // A REAL filesystem root has no parent on any platform.
+                new SearchResult("root", fsRoot.toString(), 1f, 0L, 0L, "folder", 0L, true));
+        FakeExchange ex = get(svc, "q=x");
+        assertEquals(200, ex.status);
+        assertTrue(ex.bodyText().contains("\"parentDirectory\":null"), ex.bodyText());
+    }
+
+    @Test
+    void shouldEmitParentDirectoryForUncPath() throws Exception {
+        // UNC parent semantics are Windows-only; POSIX runs skip this case.
+        org.junit.jupiter.api.Assumptions.assumeTrue(
+                org.abitware.docfinder.util.Utils.isWindows(), "UNC is a Windows path form");
+        StubService svc = new StubService();
         svc.canned = Collections.singletonList(
-                new SearchResult("x", "no-parent-here", 1f, 0L, 0L, "name", 0L, false));
+                new SearchResult("f.txt", "\\\\server\\share\\dir\\f.txt", 1f, 0L, 0L, "name", 0L, false));
+        FakeExchange ex = get(svc, "q=f");
+        assertEquals(200, ex.status);
+        assertTrue(ex.bodyText().contains(
+                "\"parentDirectory\":\"" + jsonEsc("\\\\server\\share\\dir") + "\""),
+                ex.bodyText());
+    }
+
+    @Test
+    void shouldEmitNullParentForPosixRoot() throws Exception {
+        org.junit.jupiter.api.Assumptions.assumeTrue(
+                !org.abitware.docfinder.util.Utils.isWindows(), "POSIX-only case");
+        StubService svc = new StubService();
+        svc.canned = Collections.singletonList(
+                new SearchResult("root", "/", 1f, 0L, 0L, "folder", 0L, true));
         FakeExchange ex = get(svc, "q=x");
         assertEquals(200, ex.status);
         assertTrue(ex.bodyText().contains("\"parentDirectory\":null"), ex.bodyText());
@@ -183,7 +234,7 @@ class SearchHandlerTest {
         StubService svc = new StubService();
         svc.failure = new SearchException(SearchException.Code.INVALID_QUERY, "bad syntax");
         FakeExchange unscoped = get(svc, "q=bad+(syntax");
-        FakeExchange scoped = get(svc, "q=bad+(syntax&directory=E%3A%5CRoot");
+        FakeExchange scoped = get(svc, "q=bad+(syntax&directory=" + urlEnc(hostDir("Root").toString()));
         assertEquals(400, unscoped.status);
         assertEquals(400, scoped.status);
         assertTrue(unscoped.bodyText().contains("\"code\":\"INVALID_QUERY\""));
@@ -225,7 +276,7 @@ class SearchHandlerTest {
     void shouldPreserveNonEnglishTextInJson() throws Exception {
         StubService svc = new StubService();
         svc.canned = Collections.singletonList(new SearchResult(
-                "报告文件.txt", "E:\\中文目录\\报告文件.txt", 1f, 0L, 0L, "name", 0L, false));
+                "报告文件.txt", hostDir("中文目录").resolve("报告文件.txt").toString(), 1f, 0L, 0L, "name", 0L, false));
         FakeExchange ex = get(svc, "q=%E6%8A%A5%E5%91%8A");
         assertEquals(200, ex.status);
         assertTrue(ex.bodyText().contains("报告文件.txt"), ex.bodyText());
@@ -238,8 +289,9 @@ class SearchHandlerTest {
             Locale.setDefault(Locale.Category.FORMAT, Locale.GERMANY);
             StubService service = new StubService();
             service.canned = Collections.singletonList(new SearchResult(
-                    "report.txt", "E:\\Root\\report.txt", 1.2345f, 0L, 0L, "content", 1L, false));
-            for (String rawQuery : Arrays.asList("q=report", "q=report&directory=E%3A%5CRoot")) {
+                    "report.txt", hostDir("Root").resolve("report.txt").toString(), 1.2345f, 0L, 0L, "content", 1L, false));
+            for (String rawQuery : Arrays.asList("q=report",
+                    "q=report&directory=" + urlEnc(hostDir("Root").toString()))) {
                 FakeExchange exchange = get(service, rawQuery);
                 assertEquals(200, exchange.status);
                 assertTrue(exchange.bodyText().contains("\"score\":1.2345,"), exchange.bodyText());

@@ -311,6 +311,50 @@ class DirectoryScopeDesktopHarnessTest {
     }
 
     @Test
+    void shouldRunRealIndexAllLifecycleAndPublishService() throws Exception {
+        // QA24-06: exercise the ACTUAL indexAllSources entry (not the
+        // isIndexing flag alone): real sources.txt + config.properties in the
+        // isolated .docfinder base, real LuceneIndexer, real done() reopen
+        // path — publishing goes through the harness open hook.
+        Path base = org.abitware.docfinder.util.AppPaths.getBaseDir();
+        java.nio.file.Files.createDirectories(base);
+        Path tmp = java.nio.file.Paths.get(System.getProperty("java.io.tmpdir"));
+        Path src = tmp.resolve("qa-indexall-src-" + System.nanoTime());
+        java.nio.file.Files.createDirectories(src.resolve("child"));
+        java.nio.file.Files.write(src.resolve("f1.txt"), "alpha one".getBytes(java.nio.charset.StandardCharsets.UTF_8));
+        java.nio.file.Files.write(src.resolve("child").resolve("f2.txt"), "alpha two".getBytes(java.nio.charset.StandardCharsets.UTF_8));
+        Path idx = tmp.resolve("qa-indexall-idx-" + System.nanoTime());
+        java.nio.file.Files.write(base.resolve("sources.txt"),
+                (src.toAbsolutePath() + "|0").getBytes(java.nio.charset.StandardCharsets.UTF_8));
+        java.nio.file.Files.write(base.resolve("config.properties"),
+                ("index.dir=" + idx.toAbsolutePath()).getBytes(java.nio.charset.StandardCharsets.UTF_8));
+        try {
+            win = new HarnessWindow(null);
+            FakeService opened = new FakeService();
+            win.nextService = opened;
+            onEdt(() -> win.onIndexAllSources());
+
+            long deadline = System.currentTimeMillis() + 20_000;
+            while (System.currentTimeMillis() < deadline && win.getCurrentSearchService() == null) {
+                Thread.sleep(100);
+            }
+            assertSame(opened, win.getCurrentSearchService(),
+                    "real indexAllSources lifecycle must publish a reopened service");
+            AtomicReference<String> status = new AtomicReference<>();
+            onEdt(() -> status.set(win.getStatusLabel().getText()));
+            // setSearchService() ends a successful publish at "Ready".
+            assertEquals("Ready", status.get(),
+                    "post-publish status after real Index All: " + status.get());
+            java.lang.reflect.Field indexing = MainWindow.class.getDeclaredField("isIndexing");
+            indexing.setAccessible(true);
+            assertFalse(indexing.getBoolean(win), "isIndexing cleared at lifecycle end");
+        } finally {
+            java.nio.file.Files.deleteIfExists(base.resolve("sources.txt"));
+            java.nio.file.Files.deleteIfExists(base.resolve("config.properties"));
+        }
+    }
+
+    @Test
     void shouldInvalidateCompletedSearchWhenIndexingStartsBeforeDone() throws Exception {
         FakeService fake = new FakeService();
         fake.finished = new CountDownLatch(1);
@@ -423,6 +467,67 @@ class DirectoryScopeDesktopHarnessTest {
         assertEquals("Rebuild failed. Search is unavailable until the index is rebuilt. See the application log.",
                 win.getStatusLabel().getText());
         assertNull(win.getCurrentSearchService());
+    }
+
+    @Test
+    void shouldClearPresentedResultsWhenServiceBecomesUnavailable() throws Exception {
+        FakeService fake = new FakeService();
+        fake.canned = Collections.singletonList(
+                new SearchResult("old.txt", "p/old.txt", 1f, 0L, 0L, "name", 1L, false));
+        win = new HarnessWindow(fake);
+        setQuery(win, "alpha");
+        invokeDoSearch(win);
+        assertTrue(waitForStatusPrefix("Results:", 10_000));
+        assertEquals(1, win.getResultTable().getRowCount());
+
+        onEdt(() -> win.setSearchService(null));
+        invokeDoSearch(win);
+
+        assertEquals(0, win.getResultTable().getRowCount(),
+                "unavailable search must clear earlier successful results");
+    }
+
+    @Test
+    void shouldClearPresentedResultsWhenFullRebuildFails() throws Exception {
+        FakeService fake = new FakeService();
+        fake.canned = Collections.singletonList(
+                new SearchResult("old.txt", "p/old.txt", 1f, 0L, 0L, "name", 1L, false));
+        win = new HarnessWindow(fake);
+        setQuery(win, "alpha");
+        invokeDoSearch(win);
+        assertTrue(waitForStatusPrefix("Results:", 10_000));
+        assertEquals(1, win.getResultTable().getRowCount());
+
+        onEdt(() -> win.handleFullRebuildFailure());
+
+        assertEquals(0, win.getResultTable().getRowCount(),
+                "rebuild failure must clear already rendered results");
+    }
+
+    @Test
+    void shouldNotSilentlyKeepOldServiceWhenOpeningNewLocationFails() throws Exception {
+        FakeService old = new FakeService();
+        win = new HarnessWindow(old);
+        win.openFailure = new RuntimeException("new location cannot open");
+        win.reopenSearchServiceAsync(java.nio.file.Paths.get("other-index"), new IndexSettings());
+
+        assertTrue(waitForStatus(expectedMsg(SearchException.Code.INDEX_UNAVAILABLE), 10_000));
+        assertNull(win.getCurrentSearchService(),
+                "unavailable new location must not leave old service active");
+        assertTrue(old.closed.get(), "the stale service must be closed");
+    }
+
+    private boolean waitForStatusPrefix(String prefix, long ms) throws Exception {
+        long deadline = System.currentTimeMillis() + ms;
+        while (System.currentTimeMillis() < deadline) {
+            AtomicReference<String> text = new AtomicReference<>();
+            onEdt(() -> text.set(win.getStatusLabel().getText()));
+            if (text.get().startsWith(prefix)) {
+                return true;
+            }
+            Thread.sleep(50);
+        }
+        return false;
     }
 
     @Test

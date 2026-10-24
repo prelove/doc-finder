@@ -70,6 +70,14 @@ class DirectoryScopeCompatibilityTest {
                 new IndexWriterConfig(new StandardAnalyzer()));
     }
 
+    /** Writer that never merges — deleted docs stay as live-flagged stats. */
+    private IndexWriter openWriterNoMerge(Path index) throws Exception {
+        Files.createDirectories(index);
+        return new IndexWriter(FSDirectory.open(index),
+                new IndexWriterConfig(new StandardAnalyzer())
+                        .setMergePolicy(org.apache.lucene.index.NoMergePolicy.INSTANCE));
+    }
+
     private Path sourceDir() throws Exception {
         Path src = fixtureRoot.resolve("src");
         Files.createDirectories(src);
@@ -335,6 +343,120 @@ class DirectoryScopeCompatibilityTest {
         assertTrue(service.scopeSupportCacheSize() <= 2, "stale reader verdicts must be evicted");
         service.close();
         assertEquals(0, service.scopeSupportCacheSize());
+    }
+
+    @Test
+    void shouldNotPublishVerdictComputedBeforeCloseAfterClose() throws Exception {
+        // QA24-07: a check that STARTED before close() must not publish its
+        // verdict afterwards — the latch parks the thread inside the publish
+        // window while close() clears and seals the cache.
+        Path index = fixtureRoot.resolve("idx-close-race");
+        Path src = sourceDir();
+        try (IndexWriter w = openWriter(index)) {
+            w.addDocument(newDoc(src.resolve("a.txt").toString(), "alpha-new.txt"));
+            w.commit();
+        }
+        java.util.concurrent.CountDownLatch insidePublish = new java.util.concurrent.CountDownLatch(1);
+        java.util.concurrent.CountDownLatch release = new java.util.concurrent.CountDownLatch(1);
+        service = new LuceneSearchService(index, new IndexSettings(),
+                () -> java.util.Collections.singletonList(src)) {
+            @Override
+            void onScopeVerdictComputed() {
+                insidePublish.countDown();
+                try {
+                    release.await(15, java.util.concurrent.TimeUnit.SECONDS);
+                } catch (InterruptedException ignored) {
+                }
+            }
+        };
+        Thread checker = new Thread(() -> {
+            try (DirectoryReader r = DirectoryReader.open(FSDirectory.open(index))) {
+                service.checkScopeSupport(new IndexSearcher(r));
+            } catch (Throwable ignore) {
+            }
+        });
+        checker.start();
+        assertTrue(insidePublish.await(15, java.util.concurrent.TimeUnit.SECONDS),
+                "checker thread must reach the publish window");
+        service.close();
+        release.countDown();
+        checker.join(15000);
+        assertEquals(0, service.scopeSupportCacheSize(),
+                "a verdict computed before close must not be published after close");
+    }
+
+    @Test
+    void shouldDecideByLiveDocsNotDocStats() throws Exception {
+        // QA24-08: pin leaf statistics to maxDoc=3/numDocs=2/docCount=2 in
+        // both cases — deleting the OLD doc makes it supported, deleting a
+        // NEW doc leaves a live legacy doc and stays 409. Asserting the
+        // stats proves the fast path cannot shortcut the exact check.
+        Path src = sourceDir();
+
+        // Case A: legacy doc deleted → same stats, verdict supported.
+        Path indexA = fixtureRoot.resolve("idx-stats-a");
+        try (IndexWriter w = openWriterNoMerge(indexA)) {
+            w.addDocument(oldDoc(src.resolve("gone-old.txt").toString(), "alpha-gone.txt"));
+            w.addDocument(newDoc(src.resolve("n1.txt").toString(), "alpha-n1.txt"));
+            w.addDocument(newDoc(src.resolve("n2.txt").toString(), "alpha-n2.txt"));
+            w.commit();
+            w.deleteDocuments(new Term("path", src.resolve("gone-old.txt").toString()));
+            w.commit();
+        }
+        assertLeafStats(indexA);
+        service = new LuceneSearchService(indexA, new IndexSettings(),
+                () -> java.util.Collections.singletonList(src));
+        List<SearchResult> r = scopedSearch(src.toString());
+        assertEquals(2, r.size(), "deleted legacy doc must not block scoped search");
+        service.close();
+
+        // Case B: a NEW doc deleted → identical stats, live legacy doc → 409.
+        Path indexB = fixtureRoot.resolve("idx-stats-b");
+        try (IndexWriter w = openWriterNoMerge(indexB)) {
+            w.addDocument(oldDoc(src.resolve("live-old.txt").toString(), "alpha-old.txt"));
+            w.addDocument(newDoc(src.resolve("gone-new.txt").toString(), "alpha-gone.txt"));
+            w.addDocument(newDoc(src.resolve("n2.txt").toString(), "alpha-n2.txt"));
+            w.commit();
+            w.deleteDocuments(new Term("path", src.resolve("gone-new.txt").toString()));
+            w.commit();
+        }
+        assertLeafStats(indexB);
+        service = new LuceneSearchService(indexB, new IndexSettings(),
+                () -> java.util.Collections.singletonList(src));
+        SearchException ex = assertThrows(SearchException.class, () -> scopedSearch(src.toString()));
+        assertEquals(SearchException.Code.INDEX_REBUILD_REQUIRED, ex.getCode(),
+                "live legacy doc must still require rebuild under identical doc stats");
+    }
+
+    private void assertLeafStats(Path index) throws Exception {
+        try (DirectoryReader r = DirectoryReader.open(FSDirectory.open(index))) {
+            assertEquals(1, r.leaves().size(), "fixture must stay a single leaf (no merge)");
+            org.apache.lucene.index.LeafReader leaf = r.leaves().get(0).reader();
+            assertEquals(3, leaf.maxDoc());
+            assertEquals(2, leaf.numDocs());
+            assertEquals(2, leaf.terms("path_scope").getDocCount(),
+                    "docCount includes deleted docs; the gate must look at live docs");
+        }
+    }
+
+    @Test
+    void shouldRequireRebuildWhenOfflineSourceLeavesLegacyDocs() throws Exception {
+        // QA24-06: a stale live doc under an offline/unreachable source root
+        // still requires a rebuild — "empty result on an offline root" is not
+        // migration proof. Provider only returns the online source.
+        Path index = fixtureRoot.resolve("idx-offline-legacy");
+        Path src = sourceDir();
+        Path offlineRoot = fixtureRoot.resolve("OfflineSource"); // never created
+        try (IndexWriter w = openWriter(index)) {
+            w.addDocument(newDoc(src.resolve("a.txt").toString(), "alpha-new.txt"));
+            w.addDocument(oldDoc(offlineRoot.resolve("ghost.txt").toString(), "ghost.txt"));
+            w.commit();
+        }
+        service = new LuceneSearchService(index, new IndexSettings(),
+                () -> java.util.Collections.singletonList(src));
+        SearchException ex = assertThrows(SearchException.class, () -> scopedSearch(src.toString()));
+        assertEquals(SearchException.Code.INDEX_REBUILD_REQUIRED, ex.getCode(),
+                "legacy doc under an offline root must still block scoped search");
     }
 
     @Test

@@ -1,0 +1,26 @@
+[INFO] Tests run: 6, Failures: 0, Errors: 0, Skipped: 0, Time elapsed: 0.145 s -- in org.abitware.docfinder.index.IndexSettingsTest
+[INFO] Tests run: 4, Failures: 0, Errors: 0, Skipped: 0, Time elapsed: 7.370 s -- in org.abitware.docfinder.index.PathScopeIndexFieldTest
+[INFO] Tests run: 6, Failures: 0, Errors: 0, Skipped: 0, Time elapsed: 0.112 s -- in org.abitware.docfinder.index.SourceManagerSearchRootsTest
+[INFO] Tests run: 11, Failures: 0, Errors: 0, Skipped: 0, Time elapsed: 13.87 s -- in org.abitware.docfinder.search.DirectoryScopeCompatibilityTest
+[INFO] Tests run: 10, Failures: 0, Errors: 0, Skipped: 0, Time elapsed: 4.586 s -- in org.abitware.docfinder.search.DirectoryScopedSearchTest
+[INFO] Tests run: 3, Failures: 0, Errors: 0, Skipped: 0, Time elapsed: 0.971 s -- in org.abitware.docfinder.search.DirectorySourceValidationTest
+[INFO] Tests run: 7, Failures: 0, Errors: 0, Skipped: 0, Time elapsed: 0.012 s -- in org.abitware.docfinder.search.FilterStateTest
+[INFO] Tests run: 4, Failures: 0, Errors: 0, Skipped: 0, Time elapsed: 1.543 s -- in org.abitware.docfinder.search.LuceneSearchServiceTest
+[INFO] Tests run: 3, Failures: 0, Errors: 0, Skipped: 0, Time elapsed: 0.011 s -- in org.abitware.docfinder.search.SearchErrorMessagesTest
+[INFO] Tests run: 8, Failures: 0, Errors: 0, Skipped: 0, Time elapsed: 0.018 s -- in org.abitware.docfinder.search.SearchRequestTest
+[INFO] Tests run: 2, Failures: 0, Errors: 0, Skipped: 0, Time elapsed: 0.011 s -- in org.abitware.docfinder.search.SearchServiceNotifyTest
+[INFO] Tests run: 12, Failures: 0, Errors: 0, Skipped: 0, Time elapsed: 0.404 s -- in org.abitware.docfinder.ui.components.DirectoryScopePanelTest
+[INFO] Tests run: 12, Failures: 0, Errors: 0, Skipped: 0, Time elapsed: 7.664 s -- in org.abitware.docfinder.ui.DirectoryScopeDesktopHarnessTest
+[INFO] Tests run: 5, Failures: 0, Errors: 0, Skipped: 0, Time elapsed: 4.946 s -- in org.abitware.docfinder.ui.DirectoryScopeQuickActionsTest
+[INFO] Tests run: 3, Failures: 0, Errors: 0, Skipped: 0, Time elapsed: 0.004 s -- in org.abitware.docfinder.util.AppPathsTest
+[INFO] Tests run: 5, Failures: 0, Errors: 0, Skipped: 0, Time elapsed: 0.143 s -- in org.abitware.docfinder.util.LegacyMigrationTest
+[WARNING] Tests run: 7, Failures: 0, Errors: 0, Skipped: 1, Time elapsed: 0.026 s -- in org.abitware.docfinder.util.PathScopeTest
+[INFO] Tests run: 3, Failures: 0, Errors: 0, Skipped: 0, Time elapsed: 0.003 s -- in org.abitware.docfinder.util.TestEnvironmentIsolationTest
+[INFO] Tests run: 8, Failures: 0, Errors: 0, Skipped: 0, Time elapsed: 4.392 s -- in org.abitware.docfinder.web.DirectoryScopeEndToEndTest
+[INFO] Tests run: 12, Failures: 0, Errors: 0, Skipped: 0, Time elapsed: 0.055 s -- in org.abitware.docfinder.web.SearchHandlerTest
+[INFO] Tests run: 15, Failures: 0, Errors: 0, Skipped: 0, Time elapsed: 0.200 s -- in org.abitware.docfinder.web.ShareManagerTest
+[INFO] Tests run: 3, Failures: 0, Errors: 0, Skipped: 0, Time elapsed: 0.023 s -- in org.abitware.docfinder.web.WebAssetsOfflineTest
+[INFO] Tests run: 149, Failures: 0, Errors: 0, Skipped: 1
+[INFO] BUILD SUCCESS
+[INFO] Total time:  56.877 s
+[INFO] Finished at: 2026-10-24T10:24:20+09:00

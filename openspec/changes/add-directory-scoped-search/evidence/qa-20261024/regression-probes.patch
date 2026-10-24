@@ -1,0 +1,78 @@
+--- a/src/test/java/org/abitware/docfinder/search/DirectoryScopedSearchTest.java
++++ b/src/test/java/org/abitware/docfinder/search/DirectoryScopedSearchTest.java
+@@ -216,4 +216,24 @@
+                         || "name+content".equals(x.match)),
+                 "CONTENT-scope results report content match source");
+     }
++
++    @Test
++    void codexQaShouldLabelExplicitNameQueryGlobally() {
++        List<SearchResult> hits=service.search(new SearchRequest("name:alpha-report.txt",100,null,SearchScope.NAME,MatchMode.FUZZY));
++        assertEquals(1,hits.size());
++        assertEquals("name",hits.get(0).match,"explicit name query must retain name source");
++    }
++    @Test
++    void codexQaShouldLabelExplicitNameQueryWithinDirectory() {
++        List<SearchResult> hits=scoped("name:alpha-report.txt",source.toString(),SearchScope.NAME);
++        assertEquals(1,hits.size());
++        assertEquals("name",hits.get(0).match,"scoped explicit name must retain source");
++    }
++    @Test
++    void codexQaShouldLabelExplicitNameAndContent() {
++        List<SearchResult> hits=scoped("name:alpha-report.txt content:alpha",source.toString(),SearchScope.ALL);
++        assertEquals(1,hits.size());
++        assertEquals("name+content",hits.get(0).match,"explicit name + content must expose both sources");
++    }
++
+ }
+--- a/src/test/java/org/abitware/docfinder/ui/DirectoryScopeDesktopHarnessTest.java
++++ b/src/test/java/org/abitware/docfinder/ui/DirectoryScopeDesktopHarnessTest.java
+@@ -455,4 +455,48 @@
+         win.reopenSearchServiceAsync(java.nio.file.Paths.get("idx"), new IndexSettings());
+         assertTrue(waitForStatus(expectedMsg(SearchException.Code.INDEX_UNAVAILABLE), 10_000));
+     }
++
++    @Test
++    void codexQaShouldClearPresentedResultsWhenServiceBecomesUnavailable() throws Exception {
++        FakeService fake=new FakeService();
++        fake.canned=Collections.singletonList(new SearchResult("old.txt","p/old.txt",1f,0,0,"name",1,false));
++        win=new HarnessWindow(fake);
++        setQuery(win,"alpha");invokeDoSearch(win);
++        assertTrue(waitForStatusPrefix("Results:",10000));
++        assertEquals(1,win.getResultTable().getRowCount());
++        onEdt(()->win.setSearchService(null));
++        invokeDoSearch(win);
++        assertEquals(0,win.getResultTable().getRowCount(),"unavailable search must clear earlier successful results");
++    }
++    @Test
++    void codexQaShouldClearPresentedResultsWhenFullRebuildFails() throws Exception {
++        FakeService fake=new FakeService();
++        fake.canned=Collections.singletonList(new SearchResult("old.txt","p/old.txt",1f,0,0,"name",1,false));
++        win=new HarnessWindow(fake);
++        setQuery(win,"alpha");invokeDoSearch(win);
++        assertTrue(waitForStatusPrefix("Results:",10000));
++        assertEquals(1,win.getResultTable().getRowCount());
++        onEdt(()->win.handleFullRebuildFailure());
++        assertEquals(0,win.getResultTable().getRowCount(),"rebuild failure must clear already rendered results");
++    }
++    @Test
++    void codexQaShouldNotSilentlyKeepOldServiceWhenOpeningNewLocationFails() throws Exception {
++        FakeService old=new FakeService();
++        win=new HarnessWindow(old);
++        win.openFailure=new RuntimeException("new location cannot open");
++        win.reopenSearchServiceAsync(java.nio.file.Paths.get("other-index"),new IndexSettings());
++        assertTrue(waitForStatus(expectedMsg(SearchException.Code.INDEX_UNAVAILABLE),10000));
++        assertNull(win.getCurrentSearchService(),"unavailable new location must not leave old service active");
++    }
++    private boolean waitForStatusPrefix(String prefix,long ms) throws Exception {
++        long deadline=System.currentTimeMillis()+ms;
++        while(System.currentTimeMillis()<deadline){
++            AtomicReference<String> text=new AtomicReference<>();
++            onEdt(()->text.set(win.getStatusLabel().getText()));
++            if(text.get().startsWith(prefix))return true;
++            Thread.sleep(50);
++        }
++        return false;
++    }
++
+ }

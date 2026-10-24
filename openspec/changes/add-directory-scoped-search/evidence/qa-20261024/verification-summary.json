@@ -1,0 +1,60 @@
+{
+  "feature_build": {
+    "head": "c7f33f41a4f5a1e6986b412f447d23420cd00931",
+    "totals": {
+      "tests": 149,
+      "failures": 0,
+      "errors": 0,
+      "skipped": 1
+    },
+    "jar_sha256": "215a0c83a39f44740f59862f1abcf00868f64ab14245544cacbc83a6f2055653"
+  },
+  "modernized_build": {
+    "head": "4eb417b4283665ec586538ef5a0670f29eeed7fd",
+    "summary": {
+      "tests": 149,
+      "failures": 0,
+      "errors": 0,
+      "skipped": 1
+    },
+    "test_classes": 22,
+    "java_version": "17",
+    "fork_work": "C:\\Users\\Administrator\\AppData\\Local\\Temp\\docfinder-qa-20261024-up0jca24\\checkout\\target\\test-classes",
+    "fork_home": "C:\\Users\\Administrator\\AppData\\Local\\Temp\\docfinder-qa-20261024-up0jca24\\checkout\\target/test-home",
+    "probe": "present",
+    "jar_sha256": "a69e51ff33d4739ed604fda0f900c029dbeac21deceadb23176fc839ebf6aa39",
+    "jar_bytes": 71951219
+  },
+  "java8": {
+    "head": "4eb417b4283665ec586538ef5a0670f29eeed7fd",
+    "java_version": "1.8.0_40",
+    "java_home": "D:\\java\\java8",
+    "fork_work": "C:\\Users\\Administrator\\AppData\\Local\\Temp\\docfinder-qa-20261024-up0jca24\\checkout\\target\\test-classes",
+    "fork_home": "C:\\Users\\Administrator\\AppData\\Local\\Temp\\docfinder-qa-20261024-up0jca24\\checkout\\target/test-home",
+    "argline_probe": "present",
+    "tests": 149,
+    "failures": 0,
+    "errors": 0,
+    "skipped": 1,
+    "log": "C:\\Users\\Administrator\\AppData\\Local\\Temp\\docfinder-qa-20261024-up0jca24\\java8-test.log"
+  },
+  "focused_probes": {
+    "run1_tests": 6,
+    "run1_failures": 6,
+    "run2_tests": 2,
+    "run2_failures": 1,
+    "run2_passed": 1,
+    "product_test_sources_changed": false
+  },
+  "browser": {
+    "cases": 22,
+    "passed": 22,
+    "browser": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/155.0.0.0 Safari/537.36"
+  },
+  "control_files_unchanged": true,
+  "qa_root": "C:\\Users\\Administrator\\AppData\\Local\\Temp\\docfinder-qa-20261024-up0jca24",
+  "current_head": "8d41b0ca00abf970f51309c0a857a22d3cfb601b",
+  "src_main_tree": "3cb1f7fe27e8ea308ac0a4b9f9b35988c1cc3430",
+  "src_test_tree": "3fa41a1be38c34e5f8b28b6113898824986d8482",
+  "pom_blob": "2bbc837d09b881aba94c8147b156ee89a305958e"
+}
