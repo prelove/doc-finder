@@ -75,7 +75,7 @@ gates:
       - 36139f5
       - b166f1c
       - bdec8aa
-    current_head: 8d41b0ca00abf970f51309c0a857a22d3cfb601b
+    current_head: 801d21fd7b68bd8d0719efefa3ab59405deff23a
     delivered_packages:
       - A0
       - A1
@@ -95,18 +95,18 @@ gates:
       - A7
     tested_feature_head: c7f33f41a4f5a1e6986b412f447d23420cd00931
     tested_combined_head: 4eb417b4283665ec586538ef5a0670f29eeed7fd
-    observed_remote_main: 36139f5a81f98d011a7c3b3c0b4f9582c17940ff
+    observed_remote_main: 801d21fd7b68bd8d0719efefa3ab59405deff23a
     remote_observation_date: 2026-10-24
-    remote_observation_method: GitHub GET git/ref/heads/main; newer local commits not on observed remote main
-    progress_note: tasks 26/50 checked after reopening 11 claims and adding 11 QA followups; package delivery is not acceptance
+    remote_observation_method: git push origin main succeeded; local origin/main == HEAD
+    progress_note: tasks 44/50 checked; QA24-01..11 remediated and verified (164/0/3 on jdk17 and real java8); package delivery is not acceptance; A8 pending Codex reverify + user decision
   independent_implementation_review:
-    status: remediation_required_before_acceptance
+    status: remediation_done_2026-10-24_pending_Codex_reverify
     evidence: evidence/Codex-QA-2026-10-24.md
     followup: evidence/Devin-Followup-2026-10-24.md
     open_p0_p1: 0
-    open_p2: 8
-    open_p3: 3
-    findings: QA24-01_to_QA24-11; runtime failures for QA24-01..04, other findings static/evidence/docs as labeled
+    open_p2: 0
+    open_p3: 0
+    findings: QA24-01_to_QA24-11; all 11 remediated by Devin 2026-10-24 (original report had 8 P2 + 3 P3 open); independent re-verify pending
     baseline_tests:
       total: 149
       passed: 148
@@ -193,4 +193,4 @@ baseline:
   new_feature_tests: c7_and_4eb_JDK17_clean_verify_149_total_148_pass_0_fail_1_skip; 4eb_real_Java8_same_counts
   capability_microbenchmark: 2026-10-24_P-01_gate_ok; P-00_service_cache_measured_raw_helper_separate_100_hot_samples_refresh_delete_scenarios_qa20261024/p00-service-cache.txt
   gui_browser_native: 22_browser_checks_pass_and_real_chooser_confirm_cancel_pass; 7_added_assertion_failures; M_partial; native_POSIX_UNC_not_verified
-  dirty_worktree: QA evidence and management edits uncommitted; local HEAD 8d41b0c, observed GitHub main 36139f5; .playwright-mcp artifacts untracked
+  dirty_worktree: committed_and_pushed_801d21f_2026-10-24; only .playwright-mcp remains untracked
