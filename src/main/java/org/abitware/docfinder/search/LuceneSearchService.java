@@ -122,7 +122,14 @@ public class LuceneSearchService implements SearchService {
         } else {
             this.directory = fsDir;
         }
-        this.searcherManager = new SearcherManager(directory, new SearcherFactory());
+        try {
+            this.searcherManager = new SearcherManager(directory, new SearcherFactory());
+        } catch (IOException | RuntimeException e) {
+            // Constructor failure (e.g. IndexNotFoundException before the first
+            // commit) must not leak the directory — the caller can only retry.
+            this.directory.close();
+            throw e;
+        }
     }
 
     /**
