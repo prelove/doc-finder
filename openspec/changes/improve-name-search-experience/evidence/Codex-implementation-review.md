@@ -1,4 +1,6 @@
-# B 独立复验（2026-10-24）
+# B 独立复验
+
+**最新结论（2026-10-25，932c62c）**：两项P2已关闭，正常排序复位及核心功能通过；仅留一项空结果排序状态P3和内置帮助小收尾，再交用户试用。以下2026-10-24段落为首次复验历史，最新结果见文末。
 
 复验提交：`81978a23f817dbfaaa517e942a8ac39a2663a03f`。结论：核心功能通过，交付前修正下面两处回归；不增加方案评审轮次。当前工作树中的修复尚不计为已通过。
 
@@ -24,3 +26,21 @@
 `C:\Users\Administrator\AppData\Local\Temp\docfinder-b-qa-20261024-3zl64vxw\`：`clean-verify.log`、`baseline-reports/`、`java8-test.log`、`java8-reports/`、`independent-benchmark.log`、`controls-after.json`；`contracts/` 内含两个旧新对照/桌面探针源码和结果；`web/` 内含真实 HTTP 22 场景结果 JSON、服务日志及 `truncation.png`。测试服务器和临时浏览器页已关闭。
 
 复验快照 JAR SHA256：`99431f23cf973fa3dd62d4618c360180a6bad8ef9a332a1f3dddce3b9c6ad866`。这是被审查的版本，不是修复后交付候选。
+
+
+## 2026-10-25 修复与排序补充复验
+
+提交 `932c62c532f9cf832d132a20752d3650e0d6be53`，包含0a2214b、d49e3af、932c62c。干净Git快照独立构建与运行；未使用开发者target。
+
+- **全套**：JDK17 `clean verify` 2m38s、真实Java8 1.8.0_40 fork `test` 1m56s；均198总数/196通过/0失败/0错误/2个POSIX跳过。新桌面防抖6项、排序5项都实际执行通过。
+- **BQA-01关闭**：独立旧新对照探针，在NAME/ALL的EXACT中`foo AND bar`只返回预期短语文件；`report (`正常匹配，与旧版一致。
+- **BQA-02关闭**：真实输入框首次Enter提交1次、紧接的再次Enter也提交1次；程序化写入0次、Timer一次。实现按事件语义去重，没有100ms抑制窗口。
+- **真实HTTP26场景通过**：Java8进程、实际indexer/service/WebServer链路；在上轮22场景基础上增加NAME/ALL的EXACT布尔词和括号4例。
+- **排序通过**：桌面5项回归；浏览器真实点击确认升序→降序→完整原始顺序，按钮复位、选中body-only.txt及预览保持、新非空结果清除箭头。默认顺序不是score降序。
+- **P3 / BQA-03未关闭**：桌面手动排序后空查询得到0行，sort keys仍为1且复位按钮启用；Web排序后无结果/错误时renderResults提前返回，按钮仍启用。正常非空排序复位不受影响。交Devin作最后小收尾并补内置帮助说明。
+- 文档tasks恢复有效UTF-8；Codex同步外部使用说明/roadmap/进度，不复写历史RED证据。原1.2过程项按明确豁免关闭；5.1采用真实控件/executor计数和既有worker回归，完整虚拟时钟矩阵未建立。
+- 本轮未重跑10万基准：查询变化已由兼容回归验证，排序仅作用于当前返回切片；先前10万独立性能记录继续作为路线依据，不伪称本轮新测。100万/native/POSIX/真实UNC未验证。
+
+原始证据根：`C:\Users\Administrator\AppData\Local\Temp\docfinder-final-b-qa-20261025-iw6q2f1o\`，含clean-verify.log、java8-test.log、两套XML、summary.json；contracts/下为EXACT与Enter/空查询探针，web/下为26项HTTP JSON、复位后的选中状态JSON及截图、P3截图。真实config/sources/shares/history哈希不变。
+
+JAR：71,938,064字节；SHA256 `6618b0e2379650dbd063272f303730cf513a6346222fc33786a2e571b7ee2d42`。用户尚未接受当前B候选，暂不合并或归档；Devin仅处理tasks 9.3，随后Codex定向复验及用户短试用。

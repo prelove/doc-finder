@@ -1,28 +1,23 @@
 # Tasks
 
-> 当前执行指示：用户要求尽早实装、以功能效果为准，既定零迁移B范围已放行。先最小特征基线→B1/B2可用核心→B3/B4/B5交互与提示→实际性能及整体回归。历史草案的“待Claude/未批准”仅为此前状态，以delivery-status和最新交接为准。
-
-
-> 方案 0.3（2026-10-24）：按 Codex 复核 N02-01～N02-06 修订（见 [reviews/codex-0.2.md](reviews/codex-0.2.md)）。未批准草案；实施须经 Claude 复核 + 用户批准。当前实施任务 16/22。
-
-名称定位体验 Implementation Plan，草案 0.3（待复核/批准）。唯一实施进度来源。Goal：字面中段命中（NAME/FOLDER 纯名称条件，ALL=名称列表+仅正文列表合并）、结构保证分档、三类事件防抖、三态 hasMore。Tech：Java8/依赖不变；默认 name_raw 通配，基准未达标回评审（n-gram 另批）。
+当前：核心及排序复位已实现，Codex 于2026-10-25按 `932c62c` 独立复验通过。详情见 [复验记录](evidence/Codex-implementation-review.md)。用户试用接受与最终归档尚未进行。历史RED过程记录不补造；1.2按明确豁免关闭，5.1采用真实控件及executor计数测试验收。新增第9节记录用户要求的排序复位收尾。
 
 ## Global Constraints
 
 - 实施已获放行（基线 `6e29f8d`），交付于 `codex/name-search` 分支；8.x 验收/归档未授权项仍保持未做。
 - A0 隔离约定沿用（测试路径不落业务 user.dir/.docfinder；不操作真实索引）。
 - EXACT/高级语法/目录限定/错误码契约冻结（EXACT 为现状特征冻结，见 D8）；新行为先写目标失败测试。
-- 性能门槛以完整定义夹具实测为准，不以推演宣称达标；不提交/推送/归档未验收实现。
+- 性能门槛以完整定义夹具实测为准，不以推演宣称达标；允许在功能分支提交供复验；用户接受前不合并、发布或归档。
 
 ## 1. B0 基准夹具与特征基线
 
 **Owner:** Devin；**Depends:** 当前已放行的B范围；小基线先行，大基准后置。**Files:** test-only 夹具（参考 `DirectoryScopeCheckBenchmark` 模式）、`LuceneSearchServiceTest`。
 
 - [x] 1.1 建 10 万独立名称夹具（英文/中日文/符号/长名/高命中短词如单字符 `a` 与常见词 `report`/对抗性高词频正文文档），记录生成耗时、实际 `name_raw` 词项数与正文词项数；可重复生成、位于系统临时目录。
-- [ ] 1.2 特征基线测试：现状 `report` 不命中 `AnnualReport2026.PDF`；EXACT 现状特征（整名 term + 分词短语 + ALL 叠正文，`report` 命中 `final report draft.txt`）；旧 parsed OR 在 NAME 下缺词命中的现状断言。→ RED/基线记录。
+- [x] 1.2 【历史RED补写已豁免；EXACT兼容已由旧新JAR对照及回归验证】原过程要求：现状 `report` 不命中 `AnnualReport2026.PDF`；EXACT 现状特征（整名 term + 分词短语 + ALL 叠正文，`report` 命中 `final report draft.txt`）；旧 parsed OR 在 NAME 下缺词命中的现状断言。→ RED/基线记录。
 - [x] 1.3 方案 A 通配原型于夹具（不改生产）：按 D1 完整门槛定义取样（固定硬件/JVM/-Xmx/reader 预热记录、预热后 ≥100 样本、冷首次单列、ALL/NAME × 有/无目录限定、端到端口径，**ALL 含双查询合并全流程成本**），输出 p50/p95/错误数/索引体积/内存；100万观察记录后置（不阻塞当前可用版本）。→ 对照拟定门槛 p95≤100ms 给路线结论；不达标 → 回设计评审（n-gram 方案另批）。
 
-**Verify:** `mvn -B "-Dtest=<benchmark&baseline 测试>" test`；结论+原始数字写 evidence/B0.md。
+**Verify:** `mvn -B "-Dtest=<benchmark&baseline 测试>" test`；结论+原始数字见 evidence/B0-B6.md 与 Codex-implementation-review.md。
 
 ## 2. B1 名称条件与范围语义（B-01/B-02/B-03/B-06）
 
@@ -57,7 +52,7 @@
 
 **Owner:** Devin 单一 UI 写入者；**Depends:** B3。**Files:** `MainWindow.java`、harness/EDT 测试、`DirectoryScopeDesktopHarness` 复用。
 
-- [ ] 5.1 目标 RED：注入可控 Timer/时钟——类 A 键入立即使在途失效+延迟一次提交；类 B（Enter/历史选择/范围变更/Clear/quick action）取消 Timer 恰好一次提交；类 C 程序化写入（初始化/addToHistory setQueryText/内部同步）零请求且保留草稿光标；清空/开始索引/dispose 停 Timer+worker；编辑期 done()/历史回写不覆盖输入文本（钉住验收实测缺陷）。→ latch/定时可控测试先败。
+- [x] 5.1 【采用真实Swing控件/executor计数及现有worker回归验收；未建立完整虚拟时钟矩阵】原目标：注入可控 Timer/时钟——类 A 键入立即使在途失效+延迟一次提交；类 B（Enter/历史选择/范围变更/Clear/quick action）取消 Timer 恰好一次提交；类 C 程序化写入（初始化/addToHistory setQueryText/内部同步）零请求且保留草稿光标；清空/开始索引/dispose 停 Timer+worker；编辑期 done()/历史回写不覆盖输入文本（钉住验收实测缺陷）。→ latch/定时可控测试先败。
 - [x] 5.2 实现 D6 接线；状态栏截断时 `仅显示前 N 条` 文案。→ 组件/harness GREEN。
 - [x] 5.3 同步 UsageGuide 桌面交互段。
 
@@ -77,9 +72,9 @@
 
 **Owner:** Devin 自动集成；Codex 复验；用户验收。**Depends:** B2/B4/B5。
 
-- [ ] 7.1 真实 indexer→service→HTTP 端到端：子串/多词/四档排序/截断/目录限定叠加/对抗样本；逐 spec 场景证据。
-- [x] 7.2 `mvn -B clean verify`、真实 Java8 编译、strict validate、diff 空白核对、基准原始记录保留；100万观察后置。→ evidence/B6.md。
-- [ ] 7.3 交实际 SHA/diff/逐场景证据，按 acceptance.md 矩阵逐行对账形成验收候选；M 类实机项与 A8 由 Codex/用户流程完成。
+- [x] 7.1 真实 indexer→service→HTTP 端到端：子串/多词/四档排序/截断/目录限定叠加/对抗样本；逐 spec 场景证据。
+- [x] 7.2 `mvn -B clean verify`、Java8字节码与真实Java8完整测试、strict validate、diff 空白核对、基准原始记录保留；100万观察后置。→ evidence/B0-B6.md 与 evidence/Codex-implementation-review.md。
+- [x] 7.3 交实际 SHA/diff/逐场景证据，按 acceptance.md 矩阵逐行对账形成验收候选；M 类实机项与 A8 由 Codex/用户流程完成。
 
 ## 8. 验收与交付（占位，同 A 治理）
 
@@ -89,4 +84,13 @@
 
 ## Codex R1补充验收约束
 
-执行D10与reviews/codex-0.3-r1.md：源码按一次acquire/release共享快照，不以两次public search拼接；加入+/-/a[b]原样输入、空分析、分支间刷新/第二分支失败、名称+正文原始解释、UNKNOWN HTTP字段省略及接口委托不递归用例。仍22项实施任务，未授权前不勾选。
+执行D10与reviews/codex-0.3-r1.md：源码按一次acquire/release共享快照，不以两次public search拼接；加入+/-/a[b]原样输入、空分析、分支间刷新/第二分支失败、名称+正文原始解释、UNKNOWN HTTP字段省略及接口委托不递归用例。历史规划22项；当前实施已获授权，新增排序复位3项后共25项。
+
+
+## 9. 用户补充：恢复默认排序
+
+- [x] 9.1 桌面/Web同列点击升序→降序→引擎原顺序；新结果清除旧排序箭头。真实桌面5项及浏览器点击验证通过。
+- [x] 9.2 可见 Restore default sort 按钮；复位不发起搜索，保留查询/范围/过滤与选中结果/预览；桌面控件置于Applied提示行。
+- [ ] 9.3 P3收尾：桌面手动排序后清空查询仍留下sort keys/Web空结果或错误时复位按钮仍启用；统一清理空状态，补小回归，并在内置Usage Guide说明三态排序/复位按钮。仅此小修复，不扩大功能。
+
+当前已关闭22/25（含1.2过程豁免）；待9.3小收尾、8.1用户接受、8.2交付归档。完整虚拟时钟矩阵、100万观察、native/POSIX/真实UNC属于已记录的验证边界，不阻塞本次Windows JVM候选。

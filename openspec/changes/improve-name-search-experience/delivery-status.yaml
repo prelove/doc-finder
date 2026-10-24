@@ -1,48 +1,56 @@
 schema_version: 1
 change: improve-name-search-experience
 package_version: "0.3"
-updated_at: 2026-10-24
+updated_at: 2026-10-25
 timezone: Asia/Tokyo
-phase: IMPLEMENTED_CODEX_REVIEW_FIXES_IN_PROGRESS
+phase: CORE_VERIFIED_FINAL_POLISH_AND_USER_TRIAL_PENDING
 implementation_authorized: true
 planning_root_verified: true
-source_head_at_review: 0e8de6dcefe155fb7d8e938df332ea3d14942ca4
+source_head_at_review: 932c62c532f9cf832d132a20752d3650e0d6be53
 roles:
   product_project_quality: Codex
   plan_author_implementer: Devin
   external_reviewer: Claude
   acceptance_authority: user
 review:
-  status: codex_plan_sufficiency_pass_with_R1; further plan rounds no longer block user-directed implementation
+  status: codex_plan_sufficiency_pass_with_R1; further plan rounds no longer block
+    user-directed implementation
   evidence: reviews/codex-0.3-r1.md
   original_plan_commit: 2bd49991e83534f9207c09eba871cd51bb68a3df
   open_p1: 0
   open_p2: 0
-  performance_evidence: evidence/Codex-implementation-review.md; independent_100k_768MB_p95_below_100ms
+  performance_evidence: evidence/Codex-implementation-review.md;
+    independent_100k_768MB_p95_below_100ms
+  open_p3: 1
 progress:
-  implementation_tasks_complete: 16
-  implementation_tasks_total: 22
+  implementation_tasks_complete: 22
+  implementation_tasks_total: 25
   current_a_host_acceptance_complete: true
+  closed_by_process_waiver:
+    - "1.2"
+  alternative_verification:
+    - 5.1_real_controls_executor_counts_existing_worker_regressions
 gates:
   final_plan_approval: user_directed_proceed_existing_B_scope_without_further_formal_rounds
   implementation_approval: granted_for_existing_zero_migration_B_scope
   ngram_schema_migration_approval: not_granted
-  user_acceptance: B_implemented_pending_small_fixes_and_user_trial
+  user_acceptance: pending_current_B_trial_after_9_3_polish
 next_action:
-  owner: Devin
-  action: fix_BQA_01_EXACT_routing_and_BQA_02_Enter_duplicate_add_interaction_tests_sync_help_then_Codex_retest
+  owner: Devin_then_Codex_then_user
+  action: finish_9_3_empty_result_sort_state_and_builtin_help_then_targeted_retest_and_user_trial
   input: ../../../docs/handoffs/2026-10-24-name-search-plan.md
   product_code_allowed: true
-  delivery: corrected_JAR_and_commit_with_regression_results_no_new_plan_round
+  delivery: new_commit_and_JAR_with_hash_no_new_plan_round
 implementer_assessment:
   status: n02_findings_addressed_in_0_3
   evidence: reviews/codex-0.2.md
   open_p1: 0
   open_p2: 0
-  findings: N02-01_to_N02-06_addressed; B-01/02/03_accepted_by_codex; B-04/05/08/09_reclosed_in_0_3
+  findings: N02-01_to_N02-06_addressed; B-01/02/03_accepted_by_codex;
+    B-04/05/08/09_reclosed_in_0_3
   scope: proposal_design_spec_tasks_and_current_query_code
   product_recommendations_are_user_approval: false
-  plan_commit: pending_0_3_commit
+  plan_commit: 2bd49991e83534f9207c09eba871cd51bb68a3df
 product_review_baseline:
   authority: Codex_product_review
   status: baseline_for_0_3_design_not_user_implementation_approval
@@ -60,24 +68,33 @@ latest_user_direction:
   date: 2026-10-24
   source: direct_user_message
   quote: 尽早进入实装往后面推进完成目标。不要陷入过多的文档和繁文缛节中，让形式上的东西束缚了我们最终的目标的内容的实现。我们需要的是完成此功能而不是太多的文档和看不懂的技术细节。
-  interpretation: execute the existing zero-migration B scope now; reduce process overhead; do not infer index migration or unrelated implementation authority
+  interpretation: execute the existing zero-migration B scope now; reduce process
+    overhead; do not infer index migration or unrelated implementation authority
 execution_priority:
   - small_baseline_then_core_name_search
   - interaction_and_hasMore
   - real_performance_and_full_regression
-performance_policy: 100k measurement retained;100ms optimization target; million-scale observation deferred; no automatic schema migration
+performance_policy: 100k measurement retained;100ms optimization target;
+  million-scale observation deferred; no automatic schema migration
 
 independent_implementation_review:
   owner: Codex
-  reviewed_head: 81978a23f817dbfaaa517e942a8ac39a2663a03f
-  status: core_pass_two_small_regressions_pending_fix
+  reviewed_head: 932c62c532f9cf832d132a20752d3650e0d6be53
+  status: core_pass_P2_closed_one_P3_polish_pending
   evidence: evidence/Codex-implementation-review.md
-  full_suite_jdk17: 185_total_183_pass_0_failure_0_error_2_POSIX_skipped
-  full_suite_java8_1_8_0_40: 185_total_183_pass_0_failure_0_error_2_POSIX_skipped
-  real_http_java8: 22_scenarios_pass
-  browser: substring_ranking_directory_subtree_and_50_result_hint_pass
-  open_fixes: [BQA-01_EXACT_routing, BQA-02_duplicate_Enter_submit]
-  docs_followup: repair_tasks_UTF8_and_sync_README_README_CN_and_builtin_help
-  historical_RED_record: waived_as_delivery_blocker_do_not_fabricate
-  tasks_note: 16_of_22_current_checkboxes; HTTP_7_1_evidence_now_complete; Devin_owns_tasks_file_restoration
+  full_suite_jdk17: 198_total_196_pass_0_failure_0_error_2_POSIX_skipped
+  full_suite_java8_1_8_0_40: 198_total_196_pass_0_failure_0_error_2_POSIX_skipped
+  real_http_java8: 26_scenarios_pass
+  desktop: 6_debounce_and_5_sort_tests_pass; independent_Enter_and_EXACT_probes_pass
+  browser: three_state_sort_reset_engine_order_selection_preview_and_new_results_pass
+  closed_fixes:
+    - BQA-01_EXACT_routing
+    - BQA-02_duplicate_Enter_submit
+  open_fixes:
+    - BQA-03_P3_empty_result_sort_state
+  docs_followup: external_guides_and_roadmap_synced; builtin_sort_help_to_Devin_9_3
+  historical_RED_record: waived_do_not_fabricate
+  tasks_note: 22_of_25_closed; 9.3_polish_8.1_user_acceptance_8.2_delivery_remain
   migration_required: false
+  jar_sha256: 6618b0e2379650dbd063272f303730cf513a6346222fc33786a2e571b7ee2d42
+  jar_bytes: 71938064

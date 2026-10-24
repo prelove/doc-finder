@@ -36,7 +36,7 @@ DocFinder 是一款桌面实用程序，提供类似 Everything 风格的响应�
 ### 搜索功能
 - **目录整树检索**：在已配置来源中选目录或输入绝对路径，默认含子目录，FOLDER可命中选定目录自身；只查索引，不自动扫描或添加来源。
 - **范围操作**：来源下拉、Custom、Browse、Clear；路径编辑为草稿，提交前以Applied显示范围查询；结果可继续限定到目录/父目录。
-- **当前名称行为**：普通输入按原始文件名做字面子串匹配，`report` 可命中 `AnnualReport2026.PDF`，支持单字、中文和符号，无需通配符；多词要求全部出现在名称中。ALL 中名称命中排在正文命中之前（整名 > 前缀 > 中段）。输入防抖 250ms；总数未知时提示“仅显示前 N 条”。EXACT包含整名term和分词短语，不是仅完整文件名相等。
+- **当前名称行为**：普通输入按原始文件名做字面子串匹配，`report` 可命中 `AnnualReport2026.PDF`，支持单字、中文和符号，无需通配符；多词要求全部出现在名称中。ALL 中名称命中排在正文命中之前（整名 > 前缀 > 中段）。输入防抖 250ms；命中数超过返回上限时提示“仅显示前 N 条”。EXACT包含整名term和分词短语，不是仅完整文件名相等。
 - **全文搜索**：跨**文件名**和**内容**的自由文本（多字段查询）
 - **字段搜索**：`name:`（仅文件名）、`content:`（仅内容）
 - **通配符文件名查询**：`name:*.xlsx`、`name:report-??.pdf`、`name:"检查清单_07.xlsx"`
@@ -157,7 +157,7 @@ DocFinder 是一款桌面实用程序，提供类似 Everything 风格的响应�
 带有占位符提示（`Search… (e.g. report*, content:"zero knowledge", name:"设计")`）和查询历史（100 条最近记录，持久化）。
 
 ### 结果表
-可排序列格；右侧**预览**面板。
+点击同一列按升序→降序→搜索引擎原顺序循环，也可点 **Restore default sort（恢复默认排序）** 一键复位；复位保留选中结果及预览，不重新搜索。新结果默认采用引擎顺序；右侧为**预览**面板。
 
 ### 菜单
 - `File → Manage Sources…`（管理本地/网络类型的源）
@@ -300,7 +300,7 @@ java -jar target/docfinder-1.0.0.jar
 
 ## 开发路线图
 - A：目录检索实现/自动修复已核验，用户已确认最新版手工验收完全成功，主规格已同步并已归档。
-- B：improve-name-search-experience提案评审中，未批准实施。
+- B：improve-name-search-experience 已实现名称子串、多词AND、防抖、截断提示和排序复位；独立自动验证已完成，待最后界面收尾及用户试用接受。
 - C1/C2：索引一致性、监控恢复、异步正文解析属于后续change。
 - D：Java8约束下的指定依赖升级已实施，新Java栈/native另行评估。
 - 以 [产品路线图](docs/roadmap.md) 和 [当前状态](openspec/changes/archive/2026-10-24-add-directory-scoped-search/delivery-status.yaml) 为准。

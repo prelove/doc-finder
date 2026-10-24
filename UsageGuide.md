@@ -51,6 +51,7 @@ _Local file name & content search. Fast, read‑only, and multilingual._
 ## 4) Results & Preview（结果与预览）
 
 - 表格列：**Name**, **Path**, **Size**, **Created**, **Last Accessed**, **Match**（`name` / `content` / `name + content`）。
+- 桌面与Web点击同一列表头依次为**升序→降序→默认顺序**，也可点 **Restore default sort** 直接恢复。默认顺序是本次搜索引擎返回的顺序，不等于分数降序；恢复不重新搜索，保留当前关键词、范围、过滤与选中结果及预览。新结果自动清除手动排序。
 - `Size` 列右对齐，并按真实字节数进行数值排序（不是按字符串排序）；显示会自动换算为 KB/MB/GB。
 - 预览窗（右侧）：默认宽度约为窗口的 1/4（可拖拽调整）。
 - 预览开关：状态栏右侧的 👁 按钮可快速显示/隐藏。

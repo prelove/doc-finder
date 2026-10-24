@@ -103,7 +103,7 @@ DocFinder is a desktop utility that lets you search **file names and file conten
 
 ## Search Semantics
 - Scopes: ALL searches file names and content; NAME searches file names; CONTENT searches content; FOLDER searches folder names. ALL and NAME exclude folders.
-- Ordinary FUZZY filename input is matched literally against the raw name: middle fragments (`report` → `AnnualReport2026.PDF`), single characters, CJK and symbols all match without wildcards. Multiple words must all appear in the name. Name hits rank above content hits in ALL (exact name > prefix > substring tiers). Typing is debounced 250ms; truncation is reported as "Showing first N results" when the total is unknown.
+- Ordinary FUZZY filename input is matched literally against the raw name: middle fragments (`report` → `AnnualReport2026.PDF`), single characters, CJK and symbols all match without wildcards. Multiple words must all appear in the name. Name hits rank above content hits in ALL (exact name > prefix > substring tiers). Typing is debounced 250ms; truncation is reported as "Showing first N results" when more matches exist.
 - EXACT combines a raw full-name term and analyzed phrase matching for the selected fields; it is not exclusively full-filename equality. Explicit field/wildcard syntax retains its own path.
 - Directory scopes include descendants and require a configured source. Search does not scan or add a source. A path draft takes effect on Enter/selection; Applied shows the submitted scope.
 - **Multi‑field parsing** with boosts: `name^2.0`, `content^1.2`, `content_zh^1.2`, `content_ja^1.2`.
@@ -145,7 +145,7 @@ DocFinder is a desktop utility that lets you search **file names and file conten
 
 ## UI & UX
 - **Search field** with placeholder hint (`Search…  (e.g. report*, content:"zero knowledge", name:"設計")`) and query history (100 recent, persisted).
-- **Results table** with sortable columns; **preview** pane on the right.
+- **Results table**: click a column to cycle ascending → descending → engine order, or use **Restore default sort**. Restoring preserves the selected result and preview without searching again. New result sets start in engine order; **preview** pane on the right.
 - **Menu**
   - `File → Manage Sources…` (manage sources with Local/Network type)
   - `File → Index All Sources` and `File → Rebuild Index (Full)`
