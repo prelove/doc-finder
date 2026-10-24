@@ -1,50 +1,52 @@
 # Proposal
 
-> 2026-10-24 Codex评审：CHANGES_REQUESTED。此为未批准的0.1草案，B-01～09见 [评审意见](review.md)；修订0.2并经Claude复核/用户批准前不得实施，当前0/22。
-
+> 方案 0.2（2026-10-24）：按 Codex 评审 B-01～B-09 逐条修订（见 [review.md](review.md)）。**仍为未批准草案**：须交 Claude 复核与用户批准后方可实施；当前实施任务 0/22，不得从 artifacts 齐备推导实施授权。
 
 ## Why
 
-用户按名称中段（如 `report` 命中 `AnnualReport2026.PDF`）检索时经常找不到文件：`name` 字段经 StandardAnalyzer 分词后不含子串词项，`name_raw` 的前缀查询又只覆盖开头，通配符包含匹配目前仅对 FOLDER scope 生效，NAME/ALL 行为不一致。目录限定检索（A 阶段）实现与自动修复已交付，正式主机验收仍待补，本 change 解决"按名定位"这一最高频检索体验。
+用户按名称中段（如 `report` 命中 `AnnualReport2026.PDF`）检索时经常找不到文件：`name` 字段经 StandardAnalyzer 分词后不含子串词项，`name_raw` 的前缀查询只覆盖开头，通配包含匹配目前仅对 FOLDER scope 生效，NAME/ALL 行为不一致。目录限定检索（A 阶段）已交付、主机验收与手工验收均已记录通过并归档；本 change 解决"按名定位"这一最高频检索体验。
 
 ## What Changes
 
-- 普通字面查询默认支持名称中段/子串匹配，NAME 与 ALL 的名称命中规则一致；显式高级语法（`name:`、通配符、字段语法）语义不变。
-- 明确多词、大小写、单字符与符号（`.`/`-`/`_` 等）的匹配规则；中日文与英文文件名一致处理。
-- 命中质量排序：完整名称 > 前缀 > 子串，同档内保持现有评分；目录与文件的类型语义保持清楚（默认 ALL 不混入目录，除非评审另有裁决）。
-- 桌面输入防抖约 250ms 与过期请求取消（复用现有 token/sequence 机制）；达到结果上限时给出"仅显示前 N 条"提示，桌面与 Web 一致。
-- 技术路线先实测后定论：先在 10 万元数据夹具上测 `name_raw` 通配包含的延迟与内存；达标则不新增字段，不达标再评估 n-gram 字段（含索引重建成本与回退说明），不引入外部服务。
+- 普通字面查询（无高级语法标记）获得名称子串命中能力：**NAME/FOLDER 范围以"名称条件"为唯一命中条件；ALL 范围为"名称条件 OR 既有正文分支"至少其一成立；CONTENT 不加名称条件**（B-01）。名称条件内多个字面词全部命中同一名称才算名称命中，旧的 parsed OR 分支不得把只命中部分词的名称放回结果（B-02）。
+- 命中排序可证明分档：完整名称 > 前缀 > 子串 > 仅正文；同档内保持既有评分序；排序档位不得只对旧 Top-N 重排而漏掉高档候选（B-04）。
+- EXACT 模式冻结真实现状并写清契约：现状 = `name_raw` 整名 term 与 `name` 分词短语并列，ALL 还叠加正文短语——不是"严格整名相等"；本 change 不改变该行为，新增特征测试钉住现状（B-03）。若要改严格整名，属另一个产品决定。
+- 桌面输入防抖 ~250ms：键入**立即使既有在途请求失效**（代次++），Timer 只延迟提交；Enter/历史选择/范围或过滤变更/Clear/quick action/程序化 setText 等立即提交路径取消挂起 Timer；清空、开始索引、窗口 dispose 停止 Timer 与 worker（B-08）。
+- 结果截断诚实提示：返回前 N 条 + 可靠 `hasMore`（实现取 limit+1 判定），桌面/Web 一致显示"仅显示前 N 条"；**不提供精确总命中 M**（B-05）。
+- 输入分类规则显式化：单字符、Unicode 码点（含补充平面）、空白、`.`/`-`/`_`/`+`/`'` 等符号、高级语法标记各自的归类与行为写进 spec，不静默漏查（B-06）。单 ASCII 字符默认保留字面子串能力，并作为高命中性能样本进基准；若用户选择最小长度 2 限制，则以明确提示与取舍另批。
+- 技术路线先实测后定论：默认 `name_raw` 通配（零索引变更）；完整定义性能门槛（固定硬件/JVM/heap/reader 状态/预热/样本量/端到端口径，10 万独立名称 + 长名/CJK/符号/高命中短词夹具，实测词项数；100ms 为本机拟定门槛非 SLA）。不达标 → 回设计评审；n-gram 仅作备选研究，启用须另交字段/覆盖检测/迁移/回退方案并经评审与用户批准，不自动开启（B-06/B-07）。
 
 ## Capabilities
 
 ### New Capabilities
 
-- `name-search-experience`：名称子串/中段匹配规则、多词与符号语义、显式高级模式、命中排序、输入防抖与取消、结果上限提示、桌面/Web 一致性。
+- `name-search-experience`：名称子串/中段匹配规则、输入分类与多词语义、显式高级模式豁免、可证明命中分档、输入防抖与在途失效、截断提示（hasMore）、桌面/Web 一致性。
 
 ### Modified Capabilities
 
-无。主规格库为空；A 阶段 `directory-scoped-search` 规格仍在自身 change 内未归档，本 change 不改动其需求，仅复用其已交付接口（SearchRequest/LuceneSearchService/SearchHandler）。
+无。A 阶段 `directory-scoped-search` 规格已归档至 `openspec/specs/directory-scoped-search`，本 change 不改动其需求，仅复用已交付接口（SearchRequest/LuceneSearchService/SearchHandler）。
 
 ## Impact
 
-- 后台：`LuceneSearchService`（`name_raw` 通配/排序/上限提示元数据）、可能的 `QueryBuilder` 清理（注意：该类当前为遗留未接线代码，是否同步删除由设计决定）；若启用 n-gram 则涉及 `LuceneIndexer`/`DocumentBuilder` 与索引迁移策略。
-- 桌面：`MainWindow` 查询提交路径的防抖/取消与结果上限提示文案；`DirectoryScopePanel` 不改动。
-- Web：`SearchHandler`/`index.html` 复用同一查询规则与上限提示字段，不新增 API 端点。
-- 兼容：EXACT 模式、显式 `name:`/通配符/高级语法、目录限定过滤、错误码契约保持不变；仅扩展 FUZZY 下的名称命中范围。
-- 依赖：沿用 Java 8 与 pom 现有依赖版本；若选 n-gram 仅使用 Lucene 8.11.2 自带 `NGramTokenizer`/`EdgeNGramTokenFilter`，不新增依赖。
-- 验证：临时 Lucene 夹具（含 10 万/100 万元数据性能观察）、单元/组件/HTTP/端到端测试、桌面 harness。
+- 后台：`LuceneSearchService`（名称条件构造、`DisjunctionMax` 分档、limit+1 截断元数据）；`SearchService` 增加默认 `searchDetailed` 契约；`FakeSearchService` 跟随。`QueryBuilder`/`QueryExecutor` 遗留类仅在证明无生产引用后单独小步删除，不作功能前置。
+- 桌面：`MainWindow` 输入防抖/在途失效接线与截断提示文案；`DirectoryScopePanel` 不改动。需修复验收中实测到的"done() 历史回写覆盖正在编辑文本"交互（纳入防抖设计约束，非独立缺陷单）。
+- Web：`SearchHandler`/`index.html` 复用同一查询规则并增加可选 `hasMore`/`truncated` 输出，不新增端点、不新增必填字段。
+- 兼容：EXACT、显式 `name:`/通配符/高级语法、目录限定、错误码映射、history 不记失败查询等既有契约不变；仅扩展 FUZZY 下名称命中范围。
+- 依赖：沿用 Java 8 与 pom 现有版本；不新增依赖（n-gram 备选也仅用 Lucene 自带组件）。
+- 验证：临时目录夹具（10 万/100 万观察）、单元/组件/HTTP/端到端测试、桌面 harness；验收边界见 acceptance.md 矩阵。
 
-## Open decisions（评审裁决项）
+## Open decisions（待用户最终批准，Codex 建议已并入）
 
-1. **EXACT 定义**：建议保持"完整名称精确匹配"现状，子串只进 FUZZY；若需改为"不区分大小写整名"请评审明确。
-2. **ALL 是否混入目录**：建议维持现状（ALL=文件+正文，目录归 FOLDER），保持类型语义清楚；若要求 ALL 也返回名称命中的目录，需评审确认并补交互。
-3. **分页/总命中数**：建议不纳入本 change，仅做上限提示；排序微调（名称/前缀优先）纳入。
-4. **子串实现路线**：`name_raw` 通配 vs 新增 n-gram 字段——以夹具实测门槛决定（阈值在设计中写明，未实测前不锁定实现）。
+1. **EXACT**：按 Codex 建议冻结真实现状（整名 term + 分词短语 + ALL 叠正文），不冒充严格整名。→ 待用户确认。
+2. **ALL 是否混入目录**：按 Codex 建议维持不混（ALL/NAME 为文件，FOLDER 为目录）。→ 待用户确认。
+3. **分页/精确总数**：不做；仅 limit+1 可靠截断提示。→ 待用户确认。
+4. **单 ASCII 字符子串**：默认保留（用户预期 Everything 式中段体验），以高命中短词夹具实测代价；若改最小长度 2 则由用户拍板并在 UI 明示限制。→ 待用户确认。
+5. **实现路线**：name_raw 通配先行；n-gram 为门槛触发的备选研究，启用需另行批准。
 
 ## Non-goals
 
-不改变 EXACT 与高级语法语义、不做分页/总命中计数、不做正文子串高亮改写、不做拼音/别名/模糊纠错、不引入外部检索服务、不扩展 watcher/poller 实时性承诺、不新增索引迁移以外的重建路径。C 阶段索引生命周期与 D 阶段依赖现代化另行立项。
+不改变 EXACT 与高级语法语义；不做分页与精确总命中；不做正文子串高亮改写；不做拼音/别名/模糊纠错；不引入外部检索服务；不扩展 watcher/poller 实时性承诺；不新增索引迁移以外的重建路径；旧 QueryBuilder/QueryExecutor 清理仅作独立小步。C 阶段索引生命周期与 D 阶段依赖现代化另行立项。
 
 ## Review boundary
 
-文档包 0.1 / 2026-10-24。本轮授权为编写可评审方案，实施未批准；OpenSpec artifacts done 仅表示文件齐备，不能代替 delivery-status.yaml 引用的用户批准记录。A 阶段剩余验收（Codex 复验、M-01～06、A8）与本提案评审互不阻塞。
+文档包 0.2 / 2026-10-24。本轮授权仅为修订方案；实施未批准。A 阶段验收与归档已完成（含 Devin 补充主机验收记录）；B 的 Claude 复核与用户批准完成后才允许勾选实施任务。
