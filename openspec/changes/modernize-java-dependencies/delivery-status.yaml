@@ -1,0 +1,20 @@
+schema_version: 1
+change: modernize-java-dependencies
+package_version: "1.0"
+updated_at: 2026-10-24
+timezone: Asia/Tokyo
+phase: IMPLEMENTED_PENDING_USER_ACCEPTANCE
+implementation_authorized: true
+roles:
+  acceptance_authority: user
+gates:
+  implementation:
+    status: completed
+    scope: java8_compatible_line_only
+    combined_with: add-directory-scoped-search
+  delivery_authorization:
+    status: not_granted
+next_action:
+  owner: user
+  action: accept_result_then_deliver_together_with_add-directory-scoped-search_A8
+  status: WAITING_FOR_USER_ACCEPTANCE
