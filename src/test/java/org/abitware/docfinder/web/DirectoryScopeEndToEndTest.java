@@ -292,6 +292,41 @@ class DirectoryScopeEndToEndTest {
         assertEquals(200, r.status, r.body);
         assertTrue(r.body.contains("delta.txt"), "committed doc must survive later failed write");
         assertFalse(r.body.contains("delta-b.txt"), "uncommitted docs must not appear");
+
+        // R24-03: an A-scope query can never observe B at all — the scope
+        // FILTER hides committed B docs too. Prove B's commit really failed
+        // with a GLOBAL query: committed-B would appear, uncommitted-B must
+        // not (control: the counterexample test below shows a committed B
+        // doc IS globally visible).
+        Resp global = get("q=delta");
+        assertEquals(200, global.status, global.body);
+        assertTrue(global.body.contains("delta.txt"), "committed doc must be visible globally");
+        assertFalse(global.body.contains("delta-b.txt"),
+                "uncommitted source B docs must be absent globally");
+    }
+
+    @Test
+    void shouldDistinguishScopeFilterFromUncommittedIsolation() throws Exception {
+        // R24-03 control: a COMMITTED B doc is hidden by scope-A filtering
+        // yet IS visible to a global query — proving the partial-commit test
+        // above actually demonstrates "uncommitted", not just "out of scope".
+        Path b = sourceB.resolve("delta-b.txt");
+        write(b, "delta committed B control");
+        try (LuceneIndexer ix = new LuceneIndexer(index, settings)) {
+            ix.upsertFile(b);
+            ix.commit();
+        }
+        serviceRef.get().close();
+        serviceRef.set(new LuceneSearchService(index, settings, () -> Collections.singletonList(sourceA)));
+
+        Resp scopedA = get("q=delta&directory=" + enc(sourceA.toString()));
+        assertEquals(200, scopedA.status, scopedA.body);
+        assertFalse(scopedA.body.contains("delta-b.txt"),
+                "scope A hides B even when B is committed");
+        Resp global = get("q=delta");
+        assertEquals(200, global.status, global.body);
+        assertTrue(global.body.contains("delta-b.txt"),
+                "control must confirm B was actually committed and globally visible");
     }
 
     // ── 9.1: not-ready -> recover -> rebuild-unavailable -> recover ─────────

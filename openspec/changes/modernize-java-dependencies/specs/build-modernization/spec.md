@@ -2,7 +2,7 @@
 
 ## Purpose
 
-在不改变产品行为与 Java 8 基线的前提下，把全部可升级依赖与构建插件升到其 Java 8 兼容线内的最新稳定版本。所选线本身可能已是上游 EOL 线（logback 1.3.x、Tika 2.x），EOL 风险如实登记，不宣称消除。
+在不改变产品行为与 Java 8 基线的前提下，把全部可升级依赖与构建插件升到其 Java 8 兼容线内 proposal 版本表逐项指定的稳定版本（个别组件显式不追最新，如 FlatLaf 3.6.2）。所选线本身可能已是上游 EOL 线（logback 1.3.x、Tika 2.x），EOL 风险如实登记，不宣称消除。
 
 ## ADDED Requirements
 
@@ -13,7 +13,7 @@
 #### Scenario: 边界执行
 
 - **WHEN** 依赖或插件的候选版本要求 Java 11+（Lucene 9+/Tika 3+/logback 1.4+/log4j 2.24+）
-- **THEN** 不采用该版本，选择同组件最后一条 Java 8 兼容线内的最新发布版
+- **THEN** 不采用该版本，选择同组件最后一条 Java 8 兼容线内的指定稳定版本（以版本表为准，允许显式例外不追最新）
 
 ### Requirement: MOD-02 行为不变
 

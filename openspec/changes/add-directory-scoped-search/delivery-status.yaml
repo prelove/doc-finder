@@ -3,7 +3,7 @@ change: add-directory-scoped-search
 package_version: "0.4"
 updated_at: 2026-10-24
 timezone: Asia/Tokyo
-phase: A7_REMEDIATION_AND_HOST_ACCEPTANCE_PENDING
+phase: A7_REVERIFIED_WITH_REMAINING_FINDINGS_HOST_ACCEPTANCE_PENDING
 implementation_authorized: true
 source_head_at_planning: 9a1c26ad1f3261c16548f55693b3380d5db67790
 review_baseline: review-baseline.sha256
@@ -58,7 +58,7 @@ gates:
     quote: 批准以 0.4 交给 Devin 实施，包含 A0 测试配置修改。
     test_pom_configuration_authorized: true
   implementation:
-    status: delivered_with_reopened_tasks_pending_remediation
+    status: delivered_independently_reverified_remaining_contract_and_evidence_fixes
     task_source: tasks.md
     completed_packages:
       - A0
@@ -75,7 +75,9 @@ gates:
       - 36139f5
       - b166f1c
       - bdec8aa
-    current_head: 801d21fd7b68bd8d0719efefa3ab59405deff23a
+      - 801d21fd7b68bd8d0719efefa3ab59405deff23a
+      - 4f56d0d500de72abdade2da21e1ca024d1e1bc11
+    current_head: 4f56d0d500de72abdade2da21e1ca024d1e1bc11
     delivered_packages:
       - A0
       - A1
@@ -94,62 +96,91 @@ gates:
       - A6
       - A7
     tested_feature_head: c7f33f41a4f5a1e6986b412f447d23420cd00931
-    tested_combined_head: 4eb417b4283665ec586538ef5a0670f29eeed7fd
-    observed_remote_main: 801d21fd7b68bd8d0719efefa3ab59405deff23a
+    tested_combined_head: 4f56d0d500de72abdade2da21e1ca024d1e1bc11
+    observed_remote_main: 4f56d0d500de72abdade2da21e1ca024d1e1bc11
     remote_observation_date: 2026-10-24
-    remote_observation_method: git push origin main succeeded; local origin/main == HEAD
-    progress_note: tasks 44/50 checked; QA24-01..11 remediated and verified (164/0/3 on jdk17 and real java8); package delivery is not acceptance; A8 pending Codex reverify + user decision
+    remote_observation_method: Independent GitHub GET git/ref/heads/main; equals tested HEAD
+    progress_note: 35/56 tasks checked after independent reverify; original 8 probes pass; new 3 checks expose 2 failures; section 13 remains open
+    historical_tested_combined_head: 4eb417b4283665ec586538ef5a0670f29eeed7fd
   independent_implementation_review:
-    status: remediation_done_2026-10-24_pending_Codex_reverify
-    evidence: evidence/Codex-QA-2026-10-24.md
-    followup: evidence/Devin-Followup-2026-10-24.md
+    status: reverified_remaining_findings_remediation_required
+    evidence: evidence/Codex-Reverification-2026-10-24.md
+    followup: evidence/Devin-Next-2026-10-24.md
     open_p0_p1: 0
     open_p2: 0
     open_p3: 0
-    findings: QA24-01_to_QA24-11; all 11 remediated by Devin 2026-10-24 (original report had 8 P2 + 3 P3 open); independent re-verify pending
+    findings: R24-01_to_R24-06 all remediated by Devin 2026-10-24 (report had 4 P2 + 2 P3 open); pending Codex reverify of fix SHA
+    qa24_closed:
+      - QA24-01
+      - QA24-02
+      - QA24-03
+      - QA24-05
+      - QA24-07
+      - QA24-09
+    qa24_remaining:
+      - QA24-04
+      - QA24-06
+      - QA24-08
+      - QA24-10
+      - QA24-11
     baseline_tests:
-      total: 149
-      passed: 148
+      total: 164
+      passed: 162
       failures: 0
       errors: 0
-      skipped: 1
+      skipped: 2
+      argline_probe: present
+    real_java8_tests:
+      version: 1.8.0_40
+      total: 164
+      passed: 162
+      failures: 0
+      errors: 0
+      skipped: 2
     added_probes:
-      total: 8
-      passed: 1
-      failed_assertions: 7
+      total: 11
+      passed: 9
+      failed_assertions: 2
       environment_errors: 0
+      original_eight_passed: 8
     browser_checks:
-      total: 22
-      passed: 22
-      scope: actual page and server plus explicitly controlled fetch/clipboard faults
-    historical_review: evidence/Codex-Remediation-2026-10-23.md
+      total: 19
+      passed: 19
+      scope: real MainWindow-published Lucene/WebServer plus controlled fetch/clipboard branches
+    tested_jar_sha256: b4796270e4a20eee54d48dbea801b14803e41e7c5de2738b53a66a2a193127a4
+    historical_review: evidence/Codex-QA-2026-10-24.md
+    implementer_report: evidence/Devin-QA24-Remediation-2026-10-24.md
+    r24_remediation_report: evidence/Devin-R24-Remediation-2026-10-24.md
+    r24_remediation_status: done_2026-10-24_pending_Codex_reverify
   acceptance:
-    status: A7_QA24_remediated_2026-10-24_pending_Codex_reverify_final_user_acceptance_not_granted
+    status: A7_remaining_runtime_and_test_evidence_findings_A8_not_granted
     execution_owner: Codex
     authority: user
     evidence: evidence/M-Acceptance-Runbook.md
     user_report: 2026-10-23 用户报告手动测试完毕、功能暂时无问题、此前UI问题已解决（基于 cbe8967/36139f5 的打包构建）；逐项 M 正式记录与环境/SHA 仍未补齐
-    latest_evidence: evidence/Devin-QA24-Remediation-2026-10-24.md
-    remediation_evidence: evidence/Devin-QA24-Remediation-2026-10-24.md
+    latest_evidence: evidence/Codex-Reverification-2026-10-24.md
+    remediation_evidence: evidence/Devin-QA24-Remediation-2026-10-24.md; evidence/Devin-R24-Remediation-2026-10-24.md
     manual:
-      M-01: partial_fail_applied_scope
-      M-02: fail_stale_rows
-      M-03: partial
-      M-04: partial
-      M-05: pass_controlled_browser_scenarios
-      M-06: partial_failure_proof_replaced_acl_deny_2026-10-24_still_pending_host_run
-    performance: P-01_gate_ok; P-00_service_cache_measured_2026-10-24_100_hot_samples_refresh_delete_scenarios
-    java8: real_1.8.0_40_fork_149_total_148_pass_1_platform_skip; formal_App_startup_not_tested
-    current_suite: clean_verify_164_total_161_pass_0_fail_3_platform_skips_2026-10-24
+      M-01: partial_chooser_and_applied_label_probes_pass_visual_capture_twice_timed_out
+      M-02: partial_original_error_cleanup_probes_pass
+      M-03: R24-01_fixed_pending_reverify_inflight_invalidated_on_failed_reopen
+      M-04: partial_19_browser_checks_full_409_503_and_platform_matrix_not_run
+      M-05: pass_current_controlled_browser_scenarios
+      M-06: R24-02_03_fixed_pending_reverify_real_indexall_entry_and_partial_commit_proven
+    performance: P-01_gate_ok_global_scoped_p95_49.94_31.13ms; P-00_R24-05_fixed_verdict_computations_measured_1_then_100_hot_still_1_then_refresh_2
+    java8: actual_1.8.0_40_fork_164_total_162_pass_2_platform_skip; formal_App_startup_not_tested
+    current_suite: independent_4f56d0d_clean_verify_164_total_162_pass_0_fail_2_skip_with_probe
+    native_ui_capture: FrameArrived timeout then window capture timeout after refreshed binding; no click-level acceptance inferred
   delivery_authorization:
     status: not_granted
     target_branch: null
     pull_request: null
     evidence: null
   delivery:
-    status: not_started
+    status: source_commits_pushed_final_acceptance_and_archive_pending
     delivered_sha: null
-    evidence: null
+    evidence: evidence/Codex-Reverification-2026-10-24.md
+    source_remote_head: 4f56d0d500de72abdade2da21e1ca024d1e1bc11
   previous_plan_review:
     reviewed_package: "0.3"
     status: pass_plan_sufficiency
@@ -159,30 +190,25 @@ gates:
     open_p0_p1: 0
     closed_findings: F-001_to_F-013
   devin_handoff:
-    status: local_followup_ready_not_claimed_sent_to_Devin_UI
-    current_batch: A7_remediation_before_A8_acceptance
+    status: next_local_batch_prepared_not_claimed_sent_to_UI
+    current_batch: A7_R24_remaining_findings
     task_ids:
-      - "12.1"
-      - "12.2"
-      - "12.3"
-      - "12.4"
-      - "12.5"
-      - "12.6"
-      - "12.7"
-      - "12.8"
-      - "12.9"
-      - "12.10"
-      - "12.11"
-    prompt: evidence/Devin-Followup-2026-10-24.md
+      - "13.1"
+      - "13.2"
+      - "13.3"
+      - "13.4"
+      - "13.5"
+      - "13.6"
+    prompt: evidence/Devin-Next-2026-10-24.md
     connection: User opened Devin Local; instructions reference the shared local workspace.
     execution_mode: local
     workspace: E:/idea_projects/doc-finder
 next_action:
   owner: Codex
-  action: reverify_QA24_fixes_update_M_records_then_user_A8_decision
-  input: evidence/Devin-QA24-Remediation-2026-10-24.md; tasks.md section 12; evidence/Codex-QA-2026-10-24.md
-  expected_output: independent re-check of fixed findings; M records updated; user A8 acceptance decision
-  status: REMEDIATION_DONE_PENDING_CODEX_REVERIFY
+  action: reverify_R24_fixes_on_new_SHA_then_update_M_records_then_user_A8_decision
+  input: tasks section 13 all remediated; evidence/Devin-R24-Remediation-2026-10-24.md
+  expected_output: independent reverify of R24-01..06 on the committed fix SHA; remaining M-01..06 host records; then user A8
+  status: A7_R24_REMEDIATION_DONE_PENDING_CODEX_REVERIFY
 progress_rules:
   task_checkboxes: tasks.md为唯一实施完成度来源
   verified_results: acceptance.md及evidence为依据
@@ -190,7 +216,7 @@ progress_rules:
   no_automatic_external_dispatch: true
 baseline:
   existing_tests: historical_43_passed_not_current_feature_evidence
-  new_feature_tests: c7_and_4eb_JDK17_clean_verify_149_total_148_pass_0_fail_1_skip; 4eb_real_Java8_same_counts
-  capability_microbenchmark: 2026-10-24_P-01_gate_ok; P-00_service_cache_measured_raw_helper_separate_100_hot_samples_refresh_delete_scenarios_qa20261024/p00-service-cache.txt
-  gui_browser_native: 22_browser_checks_pass_and_real_chooser_confirm_cancel_pass; 7_added_assertion_failures; M_partial; native_POSIX_UNC_not_verified
-  dirty_worktree: committed_and_pushed_801d21f_2026-10-24; only .playwright-mcp remains untracked
+  new_feature_tests: independent 4f56d0d JDK17 clean verify and real Java8 each 164 total/162 pass/0 fail/2 platform skip; argLine probe ran
+  capability_microbenchmark: P-01 p95 global49.94/scoped31.13ms gateOK; P-00 times measured but enumerations=1 is unmeasured constant_R24-05
+  gui_browser_native: 19 browser pass; original8 probes pass; two new failures; native window capture failed twice; M incomplete; native_POSIX_UNC_not_verified
+  dirty_worktree: Codex reverify management/evidence edits uncommitted; .playwright-mcp and jerr4.txt preserved untracked; product/test/pom unchanged

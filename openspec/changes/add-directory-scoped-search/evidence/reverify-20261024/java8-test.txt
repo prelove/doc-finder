@@ -1,0 +1,4 @@
+{'tests': 164, 'failures': 0, 'errors': 0, 'skipped': 2}
+{"java.version": "1.8.0_40", "java.home": "D:\\java\\java8", "user.dir": "C:\\Users\\Administrator\\AppData\\Local\\Temp\\docfinder-reverify-20261024-ap2igz6p\\checkout\\target\\test-classes", "user.home": "C:\\Users\\Administrator\\AppData\\Local\\Temp\\docfinder-reverify-20261024-ap2igz6p\\checkout\\target/test-home", "docfinder.argline.probe": "present"}
+SKIP: org.abitware.docfinder.util.PathScopeTest#shouldKeepPosixCaseAndSeparators
+SKIP: org.abitware.docfinder.web.SearchHandlerTest#shouldEmitNullParentForPosixRoot

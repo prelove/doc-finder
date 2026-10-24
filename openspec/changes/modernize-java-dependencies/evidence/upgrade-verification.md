@@ -46,3 +46,8 @@
 受测4eb417b（8d41b0c产品/测试/pom相同）：JDK17 clean verify及真实Java8 1.8.0_40 fork test均149总数、148通过、0失败/错误、1 POSIX跳过；本轮带argLine探针所以比未带探针运行少一个skip。JAR SHA-256=a69e51ff33d4739ed604fda0f900c029dbeac21deceadb23176fc839ebf6aa39。完整报告及脚本见 [目录检索独立QA](../../add-directory-scoped-search/evidence/Codex-QA-2026-10-24.md)。没有native/正式App的Java8全流程验证或漏洞扫描。
 
 QA24-10文档意见：不能声称本次“全部最新”或“消除EOL风险”；[Logback官方](https://logback.qos.ch/download.html)列1.3.x为EOL，[Tika官方](https://tika.apache.org/)列2.x为EOL，[FlatLaf发布](https://github.com/JFormDesigner/FlatLaf/releases/latest)本轮已有3.7.2。保留Java8是既定边界，残余维护风险需写明，交Devin统一修订proposal/design/spec/tasks，而非擅自升级Java大版本。运行测试通过不等于安全维护支持恢复。
+
+
+## 4f56d0d独立复验（2026-10-24，本日第二轮）
+
+独立完整JDK17 clean verify及Java8 1.8.0_40 fork各164总数/162通过/0失败/2平台跳过（有argLine隔离探针），JAR SHA-256=b4796270e4a20eee54d48dbea801b14803e41e7c5de2738b53a66a2a193127a4。目录检索另有新增2目标失败及证据缺口，不能因为依赖回归套件通过宣称组合版本已验收。EOL说明已补，版本“最新”的无条件承诺仍需R24-06统一；详见 [独立复验](../../add-directory-scoped-search/evidence/Codex-Reverification-2026-10-24.md)。native/正式App Java8全流程/漏洞扫描未执行。

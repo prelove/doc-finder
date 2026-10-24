@@ -1,23 +1,23 @@
 # Acceptance and Evidence
 
-批准版本0.4；当前验收快照2026-10-24：c7与4eb常规clean verify各149项（148通过、0失败/错误、1平台跳过），4eb真实Java8同结果；新增8个定向探针中7失败/1通过，22个浏览器检查通过。A7修复批次已完成——QA24-01..11 全部实施并以本轮 `clean verify`（164项：161通过、0失败/错误、3平台跳过）与定向45项回归验证；等待Codex复验。A8未通过。详见 [Codex独立验证](evidence/Codex-QA-2026-10-24.md) 与 [修复复验记录](evidence/Devin-QA24-Remediation-2026-10-24.md)；此前用户冒烟与旧报告保留为历史，不替代本轮失败闭环。
+批准版本0.4；最新独立复验2026-10-24（4f56d0d）：clean verify及真实Java8各164总数/162通过/0失败/2平台跳过，原8探针全通过；11项补充总计9通过/2失败，实际浏览器19项通过。A7第13组需补修，A8未通过。见 [最新独立复验](evidence/Codex-Reverification-2026-10-24.md)；Devin修复报告为实现者证据，不替代本轮发现闭环。此前149/22及164/3数字均是各自历史运行。
 
 ## Traceability
 
 | DS | 自动验证（拟新增/扩展） | 任务包 | 交互 | 当前结果 |
 | --- | --- | --- | --- | --- |
-| DS-01 整树/根自身/兄弟 | DirectoryScopedSearchTest、DirectoryScopeEndToEndTest | A3/A7 | M-01/M-04 | 常规套件通过；真实Web整树/根自身/兄弟检查通过；桌面全清单未完成 |
-| DS-02 路径 | PathScopeTest、HTTP编码测试 | A1/A6 | M-01/M-04 | 常规套件及Web特殊路径编码通过；真实选择器确认/取消通过；POSIX/UNC宿主未跑 |
-| DS-03 条件/Top-N/类型 | LuceneSearchServiceTest、DirectoryScopedSearchTest | A0/A3 | M-01 | 常规过滤/Top-N通过；显式name命中解释已修（QA24-03 GREEN，2026-10-24复验） |
-| DS-04 来源/离线/状态 | SourceManagerSearchRootsTest、DirectorySourceValidationTest（含好坏行混合）、无提交HTTP fixture | A1/A3/A6 | M-02/M-04 | 常规来源套件/真实422通过；读取故障→SOURCE_CONFIG_UNAVAILABLE 已修并加ACL故障测试（QA24-05 GREEN） |
-| DS-05 旧/混合/刷新 | DirectoryScopeCompatibilityTest | A4 | M-06 | 兼容套件通过；两种删除反例（NoMergePolicy钉统计）、close交错 latch、P-00服务缓存入口测量均已补（QA24-07/08/11） |
-| DS-06 实际全量/upsert | LuceneIndexerPathScopeTest、DocumentBuilderTest、EndToEnd | A2/A7 | M-06 | 常规实际indexer/upsert通过；ACL拒写真实部分失败+真实IndexAll生命周期已补（QA24-06），M-06主机迁移待补 |
-| DS-07 桌面 | DirectoryScopePanelTest（含路径等价/坏行警告）、DesktopHarness | A5a | M-01/M-02/M-03 | 选择器通过；已应用范围独立显示已修（QA24-02 GREEN），M-01/03尚未全完成 |
-| DS-08 Web | SearchHandlerTest、WebAssetsOfflineTest（仅资源） | A6 | M-04/M-05 | 本轮22个浏览器检查通过（含受控故障）；持久索引内容提示已加（QA24-09）；M-04真实409/503等尚未全完成 |
-| DS-09 错误 | SearchErrorMessagesTest、DesktopHarness八Code/未知消息映射、HTTP映射 | A3/A4/A5a/A6 | M-02/M-04 | 常规映射通过；桌面不可用/失败残留清除已修（QA24-01 GREEN） |
-| DS-10 空词/兼容 | provider计数=0、旧请求回归 | A0/A3/A6 | M-03/M-05 | 常规空词/token及本轮Web迟到/清空通过；真实Index All入口时序已补（QA24-06 harness） |
-| DS-11 快捷定位/复制 | EDT动作/服务器parentDirectory/前端受控响应测试 | A5a/A5b/A6 | M-01/M-04 | Web排序/快捷/复制分支通过；clipboard受控验证，桌面全流程/真实根仍待补 |
-| DS-12 首次建库/重建恢复 | DesktopHarness、HTTP unavailable/恢复与集成测试 | A5a/A6/A7 | M-02/M-06 | 常规恢复测试通过；旧服务重开失败unpublish已修（QA24-04）+真实部分失败ACL证明已补（QA24-06） |
+| DS-01 整树/根自身/兄弟 | DirectoryScopedSearchTest、DirectoryScopeEndToEndTest | A3/A7 | M-01/M-04 | 4f56d0d套件及实际Web整树/根自身/兄弟通过；M-01全表未完成 |
+| DS-02 路径 | PathScopeTest、HTTP编码测试 | A1/A6 | M-01/M-04 | 套件通过；原生选择器确认/取消探针通过；真实POSIX/UNC未跑；R24-02测试配置路径错误待修 |
+| DS-03 条件/Top-N/类型 | LuceneSearchServiceTest、DirectoryScopedSearchTest | A0/A3 | M-01 | 显式name全局/限定/组合3原探针独立通过；常规过滤/Top-N通过 |
+| DS-04 来源/离线/状态 | SourceManagerSearchRootsTest、DirectorySourceValidationTest（含好坏行混合）、无提交HTTP fixture | A1/A3/A6 | M-02/M-04 | 仅NoSuchFile为空/ACL拒读套件通过；剩余POSIX路径夹具R24-04待修 |
+| DS-05 旧/混合/刷新 | DirectoryScopeCompatibilityTest | A4 | M-06 | 两删除反例、close交错套件通过；P-00服务/100热样本已跑，计算次数证明R24-05未通过 |
+| DS-06 实际全量/upsert | LuceneIndexerPathScopeTest、DocumentBuilderTest、EndToEnd | A2/A7 | M-06 | 实际indexer/upsert套件通过；Index All测试实际路径和生命周期证明R24-02/03待补 |
+| DS-07 桌面 | DirectoryScopePanelTest（含路径等价/坏行警告）、DesktopHarness | A5a | M-01/M-02/M-03 | Applied标签及选择器探针通过；窗口截取两次超时，视觉/完整来源管理实机未完成 |
+| DS-08 Web | SearchHandlerTest、WebAssetsOfflineTest（仅资源） | A6 | M-04/M-05 | 本轮19浏览器场景通过，含持久索引说明；真实409/503等M-04全表未全跑 |
+| DS-09 错误 | SearchErrorMessagesTest、DesktopHarness八Code/未知消息映射、HTTP映射 | A3/A4/A5a/A6 | M-02/M-04 | 原null/重建失败清理探针通过；重开失败后的迟到旧结果R24-01仍失败 |
+| DS-10 空词/兼容 | provider计数=0、旧请求回归 | A0/A3/A6 | M-03/M-05 | 现有空词/token套件及本轮Web迟到通过；实际Index All入口时序R24-03待补 |
+| DS-11 快捷定位/复制 | EDT动作/服务器parentDirectory/前端受控响应测试 | A5a/A5b/A6 | M-01/M-04 | 本轮Web排序/快捷/复制受控分支通过；桌面全流程/真实根仍未全跑 |
+| DS-12 首次建库/重建恢复 | DesktopHarness、HTTP unavailable/恢复与集成测试 | A5a/A6/A7 | M-02/M-06 | 基础旧服务关闭已修；重开失败后旧worker回填R24-01及实际部分失败证据R24-02/03未闭环 |
 
 实现者不得以“测试类存在/代码看起来支持”标通过。每行引用真实报告或观察记录；平台skip、仅stub、未跑GUI均单列。
 
@@ -114,3 +114,16 @@ A0既有特征测试可写无RED；固定隔离属于测试基础的必要交付
 P-01本轮global/scoped热p95=18.46/22.21ms，未触发退化调查门槛；单机合成夹具，不是SLA。P-00服务缓存入口已按QA24-11补证（100热样本/刷新/删旧删新/枚举计数，见Devin-QA24-Remediation-2026-10-24）。Java8真实fork通过；native、POSIX宿主、真实UNC、大网络来源未执行。四个真实配置/来源/分享/历史控制文件前后SHA相同，未声称全业务索引逐字节验证。
 
 2026-10-24 修复批次：QA24-01..11 全部修复并验证（`clean verify` BUILD SUCCESS：Tests run: 164, Failures: 0, Errors: 0, Skipped: 3——PathScopeTest POSIX 用例、TestEnvironmentIsolationTest、SearchHandlerTest POSIX 根断言均按平台跳过）。定向45项回归全绿。待 Codex 复验后 A8 才可推进；A8保持待用户决定。
+
+
+## 4f56d0d独立复验快照（本日第二轮，覆盖旧当前状态）
+
+原8探针均PASS；新增重开失败/在途旧查询回填与properties路径round-trip两个目标FAIL，第三个“B真实commit仍被A范围隐藏”对照PASS。完整数据见 [reverify-20261024](evidence/reverify-20261024/verification-summary.json)。这11项独立于164项常规套件。
+
+M-01/02部分自动通过，原生窗口截取两次超时，完整点击/视觉尚缺；M-03新时序FAIL；M-04本轮范围/400/422/快捷/复制/持久提示通过，409/503等全表未跑；M-05规定受控竞态本轮通过；M-06实际UI首建/部分失败/重建全流程仍未完成。P-01global/scoped热p95=49.94/31.13ms，门槛OK；P-00真实耗时可记录，cacheSize不证明枚举次数。native/POSIX宿主/真实UNC/真实大网络未跑。A8继续待A7修复复验及用户决定。
+
+## R24 修复批快照（Devin 实现，2026-10-24，待 Codex 复验）
+
+第13组六项全部补修，详见 [Devin-R24-Remediation-2026-10-24](evidence/Devin-R24-Remediation-2026-10-24.md)：重开失败时失效在途旧查询（迟到成功/错误均不回填）；Index All 测试改 `ConfigManager.setIndexDir` 正确序列化 + 读回/允许根守卫 + reader 级文档断言；真实 Index All 在途失效与"watchdog ACL 拒写"部分失败链路；未提交 B 用全局查询证明（并加"已提交 B 全局可见"对照）；宿主路径夹具与逐结果 parent 断言；`scopeVerdictComputationCount` 真实计算计数替代 cacheSize 常量；modernize 文档统一为指定版本+显式例外。4 个 `C:\UsersAdministratorAppDataLocalTempqa-indexall-idx-*` 历史越界测试目录已逐一核验为测试产物并精确清理。
+
+实现者自验：harness 20/20、定向套件 45/45（1 项 POSIX 平台跳过）；P-00 服务入口 verdict computations=1（100 热调用）/刷新后=2（实测）。M-01～06 主机记录与 Codex 复验未完成；A8 未启动。

@@ -147,6 +147,27 @@ class SearchHandlerTest {
 
     // ── parentDirectory field in results ────────────────────────────────────
 
+    /**
+     * Extracts the raw JSON parentDirectory token (quoted string or null)
+     * emitted for the result whose path is `path`. Returns "<missing>" if no
+     * such result object exists — R24-04 requires per-result assertions, not
+     * "any null anywhere in the response".
+     */
+    private static String parentToken(String body, String path) {
+        java.util.regex.Matcher m = java.util.regex.Pattern.compile(
+                "\"path\":\"" + java.util.regex.Pattern.quote(jsonEsc(path))
+                        + "\"[^}]*?\"parentDirectory\":(\"(?:[^\"\\\\]|\\\\.)*\"|null)")
+                .matcher(body);
+        return m.find() ? m.group(1) : "<missing>";
+    }
+
+    private static void assertParent(String body, String path, String expectedParent) {
+        String expected = expectedParent == null ? "null"
+                : "\"" + jsonEsc(expectedParent) + "\"";
+        assertEquals(expected, parentToken(body, path),
+                "parentDirectory for result " + path + " in " + body);
+    }
+
     @Test
     void shouldIncludeParentDirectoryPerResult() throws Exception {
         StubService svc = new StubService();
@@ -157,9 +178,9 @@ class SearchHandlerTest {
         FakeExchange ex = get(svc, "q=a");
         assertEquals(200, ex.status);
         String body = ex.bodyText();
-        assertTrue(body.contains("\"parentDirectory\":\"" + jsonEsc(root.toString()) + "\""), body);
-        // two results => two occurrences
-        assertEquals(2, body.split("parentDirectory").length - 1);
+        // Per-result: EACH result object carries its own computed parent.
+        assertParent(body, root.resolve("a.txt").toString(), root.toString());
+        assertParent(body, root.resolve("Sub").toString(), root.toString());
     }
 
     @Test
@@ -172,7 +193,9 @@ class SearchHandlerTest {
                 new SearchResult("root", fsRoot.toString(), 1f, 0L, 0L, "folder", 0L, true));
         FakeExchange ex = get(svc, "q=x");
         assertEquals(200, ex.status);
-        assertTrue(ex.bodyText().contains("\"parentDirectory\":null"), ex.bodyText());
+        // Per-result: BOTH results must emit parentDirectory:null (R24-04).
+        assertParent(ex.bodyText(), "no-parent-here", null);
+        assertParent(ex.bodyText(), fsRoot.toString(), null);
     }
 
     @Test
@@ -185,9 +208,7 @@ class SearchHandlerTest {
                 new SearchResult("f.txt", "\\\\server\\share\\dir\\f.txt", 1f, 0L, 0L, "name", 0L, false));
         FakeExchange ex = get(svc, "q=f");
         assertEquals(200, ex.status);
-        assertTrue(ex.bodyText().contains(
-                "\"parentDirectory\":\"" + jsonEsc("\\\\server\\share\\dir") + "\""),
-                ex.bodyText());
+        assertParent(ex.bodyText(), "\\\\server\\share\\dir\\f.txt", "\\\\server\\share\\dir");
     }
 
     @Test
@@ -199,7 +220,7 @@ class SearchHandlerTest {
                 new SearchResult("root", "/", 1f, 0L, 0L, "folder", 0L, true));
         FakeExchange ex = get(svc, "q=x");
         assertEquals(200, ex.status);
-        assertTrue(ex.bodyText().contains("\"parentDirectory\":null"), ex.bodyText());
+        assertParent(ex.bodyText(), "/", null);
     }
 
     // ── Typed error mapping ─────────────────────────────────────────────────

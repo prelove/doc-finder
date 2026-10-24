@@ -1880,7 +1880,15 @@ public class MainWindow extends JFrame implements MenuBarPanel.MenuListener {
 					if (opened == null && seq == openServiceSequence) {
 						// A failed open means the index is unavailable — the old
 						// service must not silently keep answering queries while
-						// the UI reports unavailable (DS-12).
+						// the UI reports unavailable (DS-12). Invalidate
+						// in-flight queries first so a late success or late
+						// error from the old index cannot repopulate the table
+						// or overwrite the unavailable status (R24-01).
+						searchSequence++;
+						if (activeSearchWorker != null) {
+							activeSearchWorker.cancel(true);
+							activeSearchWorker = null;
+						}
 						setSearchService(null);
 						clearPresentedResults("Search index is unavailable.");
 						statusLabel.setText(org.abitware.docfinder.search.SearchErrorMessages

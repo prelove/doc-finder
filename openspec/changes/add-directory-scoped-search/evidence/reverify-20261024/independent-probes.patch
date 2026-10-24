@@ -1,0 +1,138 @@
+--- a/src/test/java/org/abitware/docfinder/search/DirectoryScopedSearchTest.java
++++ b/src/test/java/org/abitware/docfinder/search/DirectoryScopedSearchTest.java
+@@ -241,4 +241,24 @@
+                         || "name+content".equals(x.match)),
+                 "CONTENT-scope results report content match source");
+     }
++
++    @Test
++    void codexQaShouldLabelExplicitNameQueryGlobally() {
++        List<SearchResult> hits=service.search(new SearchRequest("name:alpha-report.txt",100,null,SearchScope.NAME,MatchMode.FUZZY));
++        assertEquals(1,hits.size());
++        assertEquals("name",hits.get(0).match,"explicit name query must retain name source");
++    }
++    @Test
++    void codexQaShouldLabelExplicitNameQueryWithinDirectory() {
++        List<SearchResult> hits=scoped("name:alpha-report.txt",source.toString(),SearchScope.NAME);
++        assertEquals(1,hits.size());
++        assertEquals("name",hits.get(0).match,"scoped explicit name must retain source");
++    }
++    @Test
++    void codexQaShouldLabelExplicitNameAndContent() {
++        List<SearchResult> hits=scoped("name:alpha-report.txt content:alpha",source.toString(),SearchScope.ALL);
++        assertEquals(1,hits.size());
++        assertEquals("name+content",hits.get(0).match,"explicit name + content must expose both sources");
++    }
++
+ }
+--- a/src/test/java/org/abitware/docfinder/ui/DirectoryScopeDesktopHarnessTest.java
++++ b/src/test/java/org/abitware/docfinder/ui/DirectoryScopeDesktopHarnessTest.java
+@@ -560,4 +560,86 @@
+         win.reopenSearchServiceAsync(java.nio.file.Paths.get("idx"), new IndexSettings());
+         assertTrue(waitForStatus(expectedMsg(SearchException.Code.INDEX_UNAVAILABLE), 10_000));
+     }
++
++    @Test
++    void codexQaShouldClearPresentedResultsWhenServiceBecomesUnavailable() throws Exception {
++        FakeService fake=new FakeService();
++        fake.canned=Collections.singletonList(new SearchResult("old.txt","p/old.txt",1f,0,0,"name",1,false));
++        win=new HarnessWindow(fake);
++        setQuery(win,"alpha");invokeDoSearch(win);
++        assertTrue(waitForStatusPrefix("Results:",10000));
++        assertEquals(1,win.getResultTable().getRowCount());
++        onEdt(()->win.setSearchService(null));
++        invokeDoSearch(win);
++        assertEquals(0,win.getResultTable().getRowCount(),"unavailable search must clear earlier successful results");
++    }
++    @Test
++    void codexQaShouldClearPresentedResultsWhenFullRebuildFails() throws Exception {
++        FakeService fake=new FakeService();
++        fake.canned=Collections.singletonList(new SearchResult("old.txt","p/old.txt",1f,0,0,"name",1,false));
++        win=new HarnessWindow(fake);
++        setQuery(win,"alpha");invokeDoSearch(win);
++        assertTrue(waitForStatusPrefix("Results:",10000));
++        assertEquals(1,win.getResultTable().getRowCount());
++        onEdt(()->win.handleFullRebuildFailure());
++        assertEquals(0,win.getResultTable().getRowCount(),"rebuild failure must clear already rendered results");
++    }
++    @Test
++    void codexQaShouldNotSilentlyKeepOldServiceWhenOpeningNewLocationFails() throws Exception {
++        FakeService old=new FakeService();
++        win=new HarnessWindow(old);
++        win.openFailure=new RuntimeException("new location cannot open");
++        win.reopenSearchServiceAsync(java.nio.file.Paths.get("other-index"),new IndexSettings());
++        assertTrue(waitForStatus(expectedMsg(SearchException.Code.INDEX_UNAVAILABLE),10000));
++        assertNull(win.getCurrentSearchService(),"unavailable new location must not leave old service active");
++    }
++
++
++
++    @Test
++    void codexReverifyShouldIgnoreOldSearchAfterReopenFailure() throws Exception {
++        FakeService old = new FakeService();
++        CountDownLatch release = new CountDownLatch(1);
++        old.blockOn = release;
++        old.entered = new CountDownLatch(1);
++        old.finished = new CountDownLatch(1);
++        old.canned = Collections.singletonList(new SearchResult("late-old.txt", "p/late-old.txt", 1f, 0, 0, "name", 1, false));
++        win = new HarnessWindow(old);
++        try {
++            setQuery(win, "alpha");
++            invokeDoSearch(win);
++            assertTrue(old.entered.await(10, TimeUnit.SECONDS));
++            win.openFailure = new RuntimeException("injected new index unavailable");
++            win.reopenSearchServiceAsync(java.nio.file.Paths.get("another-index"), new IndexSettings());
++            String unavailable = expectedMsg(SearchException.Code.INDEX_UNAVAILABLE);
++            assertTrue(waitForStatus(unavailable, 10_000));
++            assertNull(win.getCurrentSearchService());
++            release.countDown();
++            assertTrue(old.finished.await(10, TimeUnit.SECONDS));
++            waitForStatusPrefix("Results:", 1200);
++            onEdt(() -> { });
++            assertEquals(0, win.getResultTable().getRowCount(), "old query must not repopulate unavailable new index results");
++            assertEquals(unavailable, win.getStatusLabel().getText());
++        } finally {
++            release.countDown();
++        }
++    }
++
++    @Test
++    void codexReverifyShouldReadConfiguredTempIndexPathExactly() throws Exception {
++        Path base = org.abitware.docfinder.util.AppPaths.getBaseDir();
++        java.nio.file.Files.createDirectories(base);
++        Path config = base.resolve("config.properties");
++        byte[] previous = java.nio.file.Files.exists(config) ? java.nio.file.Files.readAllBytes(config) : null;
++        Path idx = java.nio.file.Paths.get(System.getProperty("java.io.tmpdir")).resolve("codex-roundtrip-index-" + System.nanoTime());
++        try {
++            // Exact config serialization used by the newly committed lifecycle test.
++            java.nio.file.Files.write(config, ("index.dir=" + idx.toAbsolutePath()).getBytes(java.nio.charset.StandardCharsets.UTF_8));
++            assertEquals(idx.toAbsolutePath().normalize(), new org.abitware.docfinder.index.ConfigManager().getIndexDir(),
++                    "test fixture must index exactly under its declared temporary idx");
++        } finally {
++            if (previous == null) java.nio.file.Files.deleteIfExists(config);
++            else java.nio.file.Files.write(config, previous);
++        }
++    }
+ }
+--- a/src/test/java/org/abitware/docfinder/web/DirectoryScopeEndToEndTest.java
++++ b/src/test/java/org/abitware/docfinder/web/DirectoryScopeEndToEndTest.java
+@@ -329,4 +329,19 @@
+         assertTrue(r.body.contains("SOURCE_CONFIG_UNAVAILABLE"), r.body);
+         assertFalse(r.body.contains("unreadable"), "internal detail must not leak");
+     }
++
++    @Test
++    void codexReverifyShouldDistinguishScopeFilterFromUncommittedIsolation() throws Exception {
++        Path b = sourceB.resolve("delta-b.txt");
++        write(b, "delta committed B control");
++        try (LuceneIndexer ix = new LuceneIndexer(index, settings)) {
++            ix.upsertFile(b); ix.commit();
++        }
++        Resp scopedA = get("q=delta&directory=" + enc(sourceA.toString()));
++        assertEquals(200, scopedA.status);
++        assertFalse(scopedA.body.contains("delta-b.txt"), "scope A hides B even when B is committed");
++        Resp global = get("q=delta");
++        assertEquals(200, global.status);
++        assertTrue(global.body.contains("delta-b.txt"), "control confirms B was actually committed");
++    }
+ }

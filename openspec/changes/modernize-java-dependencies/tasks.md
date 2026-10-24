@@ -1,6 +1,6 @@
 # Tasks: modernize-java-dependencies
 
-唯一实施进度来源。目标：Java 8 基线不变，全部可升级依赖/插件升到其 Java 8 兼容线内最新稳定版（非上游绝对最新；EOL 线风险保留并登记）。
+唯一实施进度来源。目标：Java 8 基线不变，全部可升级依赖/插件升到其 Java 8 兼容线内 proposal 版本表逐项指定的稳定版（个别组件显式不追上游最新，如 FlatLaf 3.6.2；EOL 线风险保留并登记）。
 
 ## Global Constraints
 
@@ -21,7 +21,12 @@
 
 ## 3. 2026-10-24 独立验证后的管理补正
 
-- [ ] 3.1 QA24-10：统一proposal/design/spec/tasks中的“全部最新/消除EOL风险”承诺与所选具体版本事实；Logback1.3/Tika2仍EOL，FlatLaf3.6.2并非当前最新。不自动改变Java8基线/升级大版本，补明确残余风险与来源。
+- [x] 3.1 QA24-10/R24-06：proposal/design/spec/tasks已统一为"指定版本兼容升级+显式例外"，无条件的"线内最新"承诺已移除；Logback1.3/Tika2仍EOL、FlatLaf3.6.2非上游最新均保留明示。未改变Java8基线，未升级依赖。
 - [ ] 3.2 与目录检索tasks第12组闭环后，核对最终受测SHA、远端实查SHA及A8状态，不把旧用户冒烟或方案PASS当升级后正式验收。
 
 独立运行：4eb417b在JDK17 clean verify与真实Java8 test各149总数/148通过/0失败/1平台跳过；c7只跑基线构建，新增偏差探针在4eb执行；本轮不作依赖升级引入偏差的因果判断。证据：[Codex-QA-2026-10-24](../add-directory-scoped-search/evidence/Codex-QA-2026-10-24.md)。当前验收仍需目录检索修复/复验与用户决定。
+
+
+## 4f56d0d独立复验补正
+
+JDK17 clean verify和真实Java8均164总数/162通过/0失败/2平台跳过（带隔离探针）。EOL已明示；3.1仍未关闭：“最高兼容线内最新”与已写明FlatLaf未追更新的例外仍有内部矛盾，统一为指定版本兼容升级及明确例外（R24-06/目录检索tasks13.6）。不因改文档再升级依赖。3.2及A8仍需目录检索残留闭环。最新证据：[Codex-Reverification-2026-10-24](../add-directory-scoped-search/evidence/Codex-Reverification-2026-10-24.md)。

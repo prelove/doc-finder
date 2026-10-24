@@ -83,3 +83,10 @@ Codex实际执行：
 完整范围、运行/静态的区分、未执行项、修复验收条件见 [Codex-QA-2026-10-24.md](evidence/Codex-QA-2026-10-24.md) 和 [Devin后续任务](evidence/Devin-Followup-2026-10-24.md)。Devin Local负责修复并交证，Codex独立复验；A8最终验收/归档不能先于闭环。冻结0.4 manifest/ZIP只作历史批准输入，不因管理台账变动重写批准记录。
 
 本地最新观察8d41b0c与受测4eb产品/测试/pom树相同；GitHub main本轮实查36139f5。本次QA没有提交/推送或改变产品代码，所有新证据在共享本地仓库可读。
+
+
+## 4f56d0d QA24修复独立复验（2026-10-24，本日第二轮）
+
+REMEDIATION_REQUIRED_BEFORE_ACCEPTANCE。已核验本地及GitHub main为4f56d0d，常规JDK17/真实Java8各164总数/162通过/0失败/2平台跳过；原8探针全通过。新增3检查2个目标失败、1对照通过，浏览器19项通过。QA24-01/02/03/05/07/09可按本轮范围关闭；04/06/08/10/11部分未闭环。R24-01～06为4个P2和2个P3，无新增P0/P1；静态/运行/工具限制严格区分。完整证据见 [最新独立复验](evidence/Codex-Reverification-2026-10-24.md)，后续见tasks第13组与 [Devin下一批](evidence/Devin-Next-2026-10-24.md)。
+
+重点：旧worker在reopen失败后仍可回填；测试properties路径失真已实际观察；不以fake发布证明真实Index All部分失败全链路，不以cacheSize证明枚举次数。用户最终验收/A8仍未授予。此前方案PASS和历史修复结论继续保留其原有版本及范围。

@@ -1,0 +1,31 @@
+{
+  "head": "4f56d0d500de72abdade2da21e1ca024d1e1bc11",
+  "totals": {
+    "tests": 164,
+    "failures": 0,
+    "errors": 0,
+    "skipped": 2
+  },
+  "skips": [
+    {
+      "class": "org.abitware.docfinder.util.PathScopeTest",
+      "name": "shouldKeepPosixCaseAndSeparators",
+      "reason": null
+    },
+    {
+      "class": "org.abitware.docfinder.web.SearchHandlerTest",
+      "name": "shouldEmitNullParentForPosixRoot",
+      "reason": null
+    }
+  ],
+  "jar_sha256": "b4796270e4a20eee54d48dbea801b14803e41e7c5de2738b53a66a2a193127a4",
+  "misdirected_test_indices_in_qa_copy": [
+    "C:\\Users\\Administrator\\AppData\\Local\\Temp\\docfinder-reverify-20261024-ap2igz6p\\checkout\\target\\test-classes\\UsersAdministratorAppDataLocalTempqa-indexall-idx-61967877243800"
+  ],
+  "previous_root_indices": [
+    "C:\\UsersAdministratorAppDataLocalTempqa-indexall-idx-59092432944100",
+    "C:\\UsersAdministratorAppDataLocalTempqa-indexall-idx-59313077434700",
+    "C:\\UsersAdministratorAppDataLocalTempqa-indexall-idx-59466230580700",
+    "C:\\UsersAdministratorAppDataLocalTempqa-indexall-idx-60535305363100"
+  ]
+}

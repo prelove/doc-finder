@@ -125,9 +125,14 @@ class SourceManagerSearchRootsTest {
 
     @Test
     void shouldReturnUnmodifiableSnapshot() throws Exception {
-        Path f = writeSources("E:\\Docs");
+        // Host-absolute path: works on Windows and POSIX alike — a hard-coded
+        // "E:\\Docs" would fail on POSIX as a relative path before the
+        // unmodifiable assertion is even reached (R24-04).
+        String hostAbs = Paths.get("").toAbsolutePath().getRoot()
+                .resolve("docs-fixture").toString();
+        Path f = writeSources(hostAbs);
         List<Path> roots = SourceManager.readSearchRoots(f);
         assertThrows(UnsupportedOperationException.class,
-                () -> roots.add(Paths.get("X:\\Other")));
+                () -> roots.add(Paths.get("").toAbsolutePath().getRoot().resolve("other")));
     }
 }

@@ -1,0 +1,23 @@
+===== P-00 scope-check microbenchmark =====
+index build: 4888 ms
+leaves=2 maxDoc=100000 numDocs=100000
+same-reader repeat: p50=0.00 ms p95=0.04 ms
+exact fallback query (no missing): 230.60 ms
+deleted-doc index: maxDoc=1000 numDocs=999 (fast path may not trigger, exact fallback used)
+deleted-doc check: 0.12 ms
+service first call: 1.13 ms
+service cache-hit over 100 calls: p50=0.00 ms p95=0.00 ms (enumerations=1)
+service first call after refresh: 0.09 ms
+service cache-hit after refresh (100 calls): p50=0.00 ms p95=0.00 ms
+service check, old doc deleted: 4.35 ms
+service check, new doc deleted (legacy live): 19.58 ms -> 409
+=========================================
+===== P-01 scoped vs unscoped =====
+fixture: 100000 file docs (10000 with content), 1001 dir docs, direct IndexWriter
+jvm=17 os=Windows 10
+index build: 7623 ms
+index size: 5.2 MB
+unscoped 'alpha' hot: p50=26.36 ms p95=49.94 ms (n=100)
+scoped   'alpha' hot: p50=12.94 ms p95=31.13 ms (n=200)
+P-01 gate: OK (scoped p95 > 2x unscoped AND +>200ms would flag P1 investigation)
+===================================

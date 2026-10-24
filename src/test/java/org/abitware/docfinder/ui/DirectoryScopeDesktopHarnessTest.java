@@ -26,6 +26,7 @@ import java.util.concurrent.atomic.AtomicReference;
 
 import static org.junit.jupiter.api.Assertions.*;
 import static org.junit.jupiter.api.Assumptions.assumeFalse;
+import static org.junit.jupiter.api.Assumptions.assumeTrue;
 
 /**
  * A5a harness: drives the real MainWindow (constructed, never shown) with
@@ -311,24 +312,142 @@ class DirectoryScopeDesktopHarnessTest {
     }
 
     @Test
+    void shouldIgnoreLateSearchResultAfterReopenFailure() throws Exception {
+        // R24-01: an in-flight query must be invalidated when the reopen
+        // FAILS — a late success from the old index must not repopulate
+        // rows/selection/preview or overwrite the unavailable status.
+        FakeService old = new FakeService();
+        old.canned = Collections.singletonList(
+                new SearchResult("late-old.txt", "p/late-old.txt", 1f, 0L, 0L, "name", 1L, false));
+        old.entered = new CountDownLatch(1);
+        old.finished = new CountDownLatch(1);
+        CountDownLatch release = new CountDownLatch(1);
+        old.blockOn = release;
+        win = new HarnessWindow(old);
+        // Observe the web-side publication too: a failed open must push null.
+        AtomicReference<SearchService> webSvc = new AtomicReference<>();
+        win.setWebServer(new org.abitware.docfinder.web.WebServer(0, "127.0.0.1") {
+            @Override
+            public void setSearchService(SearchService svc) {
+                webSvc.set(svc);
+                super.setSearchService(svc);
+            }
+        });
+        try {
+            setQuery(win, "alpha");
+            invokeDoSearch(win);
+            assertTrue(old.entered.await(10, TimeUnit.SECONDS),
+                    "old query must be in-flight before the reopen fails");
+            win.openFailure = new RuntimeException("injected new index unavailable");
+            win.reopenSearchServiceAsync(java.nio.file.Paths.get("another-index"), new IndexSettings());
+            String unavailable = expectedMsg(SearchException.Code.INDEX_UNAVAILABLE);
+            assertTrue(waitForStatus(unavailable, 10_000));
+            assertNull(win.getCurrentSearchService());
+
+            release.countDown();
+            assertTrue(old.finished.await(10, TimeUnit.SECONDS));
+            // let the stale done() run on the EDT, then flush pending EDT work
+            onEdt(() -> { });
+            Thread.sleep(300);
+            onEdt(() -> { });
+
+            assertEquals(0, win.getResultTable().getRowCount(),
+                    "late success from old index must not repopulate results");
+            assertEquals(unavailable, win.getStatusLabel().getText(),
+                    "unavailable status must not be overwritten by the late worker");
+            assertNull(win.getCurrentSearchService());
+            assertNull(webSvc.get(), "web server must receive the null publication");
+        } finally {
+            release.countDown();
+        }
+    }
+
+    @Test
+    void shouldIgnoreLateSearchErrorAfterReopenFailure() throws Exception {
+        // R24-01 (error variant): a late failure from the old index must also
+        // be invalidated — its fixed error text must not replace the
+        // unavailable status.
+        FakeService old = new FakeService();
+        old.entered = new CountDownLatch(1);
+        old.finished = new CountDownLatch(1);
+        CountDownLatch release = new CountDownLatch(1);
+        old.blockOn = release;
+        win = new HarnessWindow(old);
+        try {
+            setQuery(win, "alpha");
+            invokeDoSearch(win);
+            assertTrue(old.entered.await(10, TimeUnit.SECONDS));
+            win.openFailure = new RuntimeException("injected new index unavailable");
+            win.reopenSearchServiceAsync(java.nio.file.Paths.get("another-index"), new IndexSettings());
+            String unavailable = expectedMsg(SearchException.Code.INDEX_UNAVAILABLE);
+            assertTrue(waitForStatus(unavailable, 10_000));
+            assertNull(win.getCurrentSearchService());
+
+            old.throwOnSearch = new org.abitware.docfinder.search.SearchException(
+                    SearchException.Code.SEARCH_FAILED, "old index blew up late");
+            release.countDown();
+            // the thrown error never reaches finished.countDown() — give the
+            // worker time, then flush the EDT so done() has run
+            Thread.sleep(500);
+            onEdt(() -> { });
+            Thread.sleep(300);
+            onEdt(() -> { });
+
+            assertEquals(0, win.getResultTable().getRowCount(),
+                    "late error must not repopulate results");
+            assertEquals(unavailable, win.getStatusLabel().getText(),
+                    "unavailable status must survive the late error text");
+            assertNull(win.getCurrentSearchService());
+        } finally {
+            release.countDown();
+        }
+    }
+
+    @Test
     void shouldRunRealIndexAllLifecycleAndPublishService() throws Exception {
-        // QA24-06: exercise the ACTUAL indexAllSources entry (not the
+        // QA24-06/R24-02: exercise the ACTUAL indexAllSources entry (not the
         // isIndexing flag alone): real sources.txt + config.properties in the
         // isolated .docfinder base, real LuceneIndexer, real done() reopen
         // path — publishing goes through the harness open hook.
+        //
+        // The index dir MUST be written via ConfigManager.setIndexDir
+        // (Properties.store escapes Windows backslashes correctly); a raw
+        // "index.dir=" + path line gets mangled by Properties.load and
+        // silently redirects the real index outside the test root.
         Path base = org.abitware.docfinder.util.AppPaths.getBaseDir();
         java.nio.file.Files.createDirectories(base);
-        Path tmp = java.nio.file.Paths.get(System.getProperty("java.io.tmpdir"));
+        Path tmp = java.nio.file.Paths.get(System.getProperty("java.io.tmpdir"))
+                .toAbsolutePath().normalize();
         Path src = tmp.resolve("qa-indexall-src-" + System.nanoTime());
         java.nio.file.Files.createDirectories(src.resolve("child"));
         java.nio.file.Files.write(src.resolve("f1.txt"), "alpha one".getBytes(java.nio.charset.StandardCharsets.UTF_8));
         java.nio.file.Files.write(src.resolve("child").resolve("f2.txt"), "alpha two".getBytes(java.nio.charset.StandardCharsets.UTF_8));
         Path idx = tmp.resolve("qa-indexall-idx-" + System.nanoTime());
-        java.nio.file.Files.write(base.resolve("sources.txt"),
-                (src.toAbsolutePath() + "|0").getBytes(java.nio.charset.StandardCharsets.UTF_8));
-        java.nio.file.Files.write(base.resolve("config.properties"),
-                ("index.dir=" + idx.toAbsolutePath()).getBytes(java.nio.charset.StandardCharsets.UTF_8));
+
+        // Preserve any pre-existing config/sources content byte-for-byte.
+        Path sourcesFile = base.resolve("sources.txt");
+        Path configFile = base.resolve("config.properties");
+        byte[] prevSources = java.nio.file.Files.exists(sourcesFile)
+                ? java.nio.file.Files.readAllBytes(sourcesFile) : null;
+        byte[] prevConfig = java.nio.file.Files.exists(configFile)
+                ? java.nio.file.Files.readAllBytes(configFile) : null;
         try {
+            java.nio.file.Files.write(sourcesFile,
+                    (src.toAbsolutePath() + "|0").getBytes(java.nio.charset.StandardCharsets.UTF_8));
+            org.abitware.docfinder.index.ConfigManager cm =
+                    new org.abitware.docfinder.index.ConfigManager();
+            cm.setIndexDir(idx);
+
+            // R24-02 guard: BEFORE any indexing, the configuration must read
+            // back the exact intended index dir, and that dir must live
+            // inside the allowed QA temp root — fail before a single index
+            // byte can be written elsewhere.
+            Path readback = cm.getIndexDir();
+            assertEquals(idx.toAbsolutePath().normalize(), readback,
+                    "index.dir must round-trip exactly through Properties.store/load");
+            assertTrue(readback.startsWith(tmp),
+                    "index dir must stay inside the temp root: " + readback);
+
             win = new HarnessWindow(null);
             FakeService opened = new FakeService();
             win.nextService = opened;
@@ -348,9 +467,328 @@ class DirectoryScopeDesktopHarnessTest {
             java.lang.reflect.Field indexing = MainWindow.class.getDeclaredField("isIndexing");
             indexing.setAccessible(true);
             assertFalse(indexing.getBoolean(win), "isIndexing cleared at lifecycle end");
+
+            // R24-02/03: the REAL index at the EXACT configured location must
+            // contain the two indexed files — not a fake publish, not a
+            // redirected directory.
+            assertTrue(java.nio.file.Files.exists(idx),
+                    "index must exist at the configured path");
+            try (org.apache.lucene.index.IndexReader r =
+                    org.apache.lucene.index.DirectoryReader.open(
+                            org.apache.lucene.store.FSDirectory.open(idx))) {
+                java.util.Set<String> paths = collectPaths(r);
+                // the index also contains docs for the source dir and its
+                // child dir — assert membership, not a raw doc count
+                assertTrue(paths.contains(src.resolve("f1.txt").toString()), paths.toString());
+                assertTrue(paths.contains(src.resolve("child").resolve("f2.txt").toString()), paths.toString());
+                assertTrue(paths.stream().allMatch(p -> p != null && p.startsWith(src.toString())),
+                        "index must contain only docs under the test source: " + paths);
+            }
         } finally {
-            java.nio.file.Files.deleteIfExists(base.resolve("sources.txt"));
-            java.nio.file.Files.deleteIfExists(base.resolve("config.properties"));
+            if (prevSources == null) {
+                java.nio.file.Files.deleteIfExists(sourcesFile);
+            } else {
+                java.nio.file.Files.write(sourcesFile, prevSources);
+            }
+            if (prevConfig == null) {
+                java.nio.file.Files.deleteIfExists(configFile);
+            } else {
+                java.nio.file.Files.write(configFile, prevConfig);
+            }
+            deleteRecursively(src);
+            deleteRecursively(idx);
+        }
+    }
+
+    @Test
+    void shouldInvalidateInFlightSearchDuringRealIndexAll() throws Exception {
+        // R24-03: the REAL indexAllSources entry must invalidate an in-flight
+        // query started before the rebuild — its late success must not
+        // repopulate the table once indexing publishes a fresh service.
+        Path base = org.abitware.docfinder.util.AppPaths.getBaseDir();
+        java.nio.file.Files.createDirectories(base);
+        Path tmp = java.nio.file.Paths.get(System.getProperty("java.io.tmpdir"))
+                .toAbsolutePath().normalize();
+        Path src = tmp.resolve("qa-indexall-src-" + System.nanoTime());
+        java.nio.file.Files.createDirectories(src.resolve("child"));
+        java.nio.file.Files.write(src.resolve("f1.txt"), "alpha one".getBytes(java.nio.charset.StandardCharsets.UTF_8));
+        java.nio.file.Files.write(src.resolve("child").resolve("f2.txt"), "alpha two".getBytes(java.nio.charset.StandardCharsets.UTF_8));
+        Path idx = tmp.resolve("qa-indexall-idx-" + System.nanoTime());
+
+        Path sourcesFile = base.resolve("sources.txt");
+        Path configFile = base.resolve("config.properties");
+        byte[] prevSources = java.nio.file.Files.exists(sourcesFile)
+                ? java.nio.file.Files.readAllBytes(sourcesFile) : null;
+        byte[] prevConfig = java.nio.file.Files.exists(configFile)
+                ? java.nio.file.Files.readAllBytes(configFile) : null;
+
+        CountDownLatch release = new CountDownLatch(1);
+        try {
+            java.nio.file.Files.write(sourcesFile,
+                    (src.toAbsolutePath() + "|0").getBytes(java.nio.charset.StandardCharsets.UTF_8));
+            org.abitware.docfinder.index.ConfigManager cm =
+                    new org.abitware.docfinder.index.ConfigManager();
+            cm.setIndexDir(idx);
+            Path readback = cm.getIndexDir();
+            assertEquals(idx.toAbsolutePath().normalize(), readback);
+            assertTrue(readback.startsWith(tmp), "index dir outside QA root: " + readback);
+
+            FakeService old = new FakeService();
+            old.canned = Collections.singletonList(
+                    new SearchResult("old.txt", "p/old.txt", 1f, 0L, 0L, "name", 1L, false));
+            old.entered = new CountDownLatch(1);
+            old.finished = new CountDownLatch(1);
+            old.blockOn = release;
+            win = new HarnessWindow(old);
+            setQuery(win, "alpha");
+            invokeDoSearch(win);
+            assertTrue(old.entered.await(10, TimeUnit.SECONDS),
+                    "old query must be in-flight before Index All starts");
+
+            FakeService opened = new FakeService();
+            win.nextService = opened;
+            onEdt(() -> win.onIndexAllSources());
+
+            long deadline = System.currentTimeMillis() + 20_000;
+            while (System.currentTimeMillis() < deadline && win.getCurrentSearchService() != opened) {
+                Thread.sleep(100);
+            }
+            assertSame(opened, win.getCurrentSearchService(),
+                    "real Index All must publish a service");
+            release.countDown();
+            assertTrue(old.finished.await(10, TimeUnit.SECONDS));
+            onEdt(() -> { });
+            Thread.sleep(300);
+            onEdt(() -> { });
+
+            assertEquals(0, win.getResultTable().getRowCount(),
+                    "query in-flight across Index All must not repopulate results");
+            AtomicReference<String> status = new AtomicReference<>();
+            onEdt(() -> status.set(win.getStatusLabel().getText()));
+            assertEquals("Ready", status.get(), "post-Index-All status: " + status.get());
+            try (org.apache.lucene.index.IndexReader r =
+                    org.apache.lucene.index.DirectoryReader.open(
+                            org.apache.lucene.store.FSDirectory.open(idx))) {
+                java.util.Set<String> paths = collectPaths(r);
+                assertTrue(paths.contains(src.resolve("f1.txt").toString()), paths.toString());
+                assertTrue(paths.contains(src.resolve("child").resolve("f2.txt").toString()), paths.toString());
+                assertTrue(paths.stream().allMatch(p -> p != null && p.startsWith(src.toString())),
+                        "index must contain only docs under the test source: " + paths);
+            }
+        } finally {
+            release.countDown();
+            if (prevSources == null) {
+                java.nio.file.Files.deleteIfExists(sourcesFile);
+            } else {
+                java.nio.file.Files.write(sourcesFile, prevSources);
+            }
+            if (prevConfig == null) {
+                java.nio.file.Files.deleteIfExists(configFile);
+            } else {
+                java.nio.file.Files.write(configFile, prevConfig);
+            }
+            deleteRecursively(src);
+            deleteRecursively(idx);
+        }
+    }
+
+    @Test
+    void shouldKeepPartialStatusAfterRealIndexAllSecondSourceCommitFails() throws Exception {
+        // R24-03: REAL indexAllSources entry; source A commits, then the
+        // index dir is made unwritable before source B's commit — the second
+        // commit REALLY fails. The partial-failure text must survive publish
+        // and the committed index must contain A but no B documents.
+        Path base = org.abitware.docfinder.util.AppPaths.getBaseDir();
+        java.nio.file.Files.createDirectories(base);
+        Path tmp = java.nio.file.Paths.get(System.getProperty("java.io.tmpdir"))
+                .toAbsolutePath().normalize();
+        Path srcA = tmp.resolve("qa-partial-src-a-" + System.nanoTime());
+        Path srcB = tmp.resolve("qa-partial-src-b-" + System.nanoTime());
+        java.nio.file.Files.createDirectories(srcA);
+        java.nio.file.Files.createDirectories(srcB);
+        java.nio.file.Files.write(srcA.resolve("a1.txt"),
+                "alpha committed a".getBytes(java.nio.charset.StandardCharsets.UTF_8));
+        // Enough files that walking B comfortably outlives the ACL watchdog.
+        for (int i = 0; i < 200; i++) {
+            java.nio.file.Files.write(srcB.resolve("b" + i + ".txt"),
+                    ("alpha uncommitted b " + i).getBytes(java.nio.charset.StandardCharsets.UTF_8));
+        }
+        Path idx = tmp.resolve("qa-partial-idx-" + System.nanoTime());
+
+        Path sourcesFile = base.resolve("sources.txt");
+        Path configFile = base.resolve("config.properties");
+        byte[] prevSources = java.nio.file.Files.exists(sourcesFile)
+                ? java.nio.file.Files.readAllBytes(sourcesFile) : null;
+        byte[] prevConfig = java.nio.file.Files.exists(configFile)
+                ? java.nio.file.Files.readAllBytes(configFile) : null;
+
+        String partial = "Indexing failed or partially completed."
+                + " Search uses available committed data. See the application log.";
+        AtomicReference<java.util.List<java.nio.file.attribute.AclEntry>> originalAcl =
+                new AtomicReference<>();
+        java.util.concurrent.atomic.AtomicBoolean denyApplied =
+                new java.util.concurrent.atomic.AtomicBoolean();
+        Thread watchdog = new Thread(() -> {
+            try {
+                // Source A's commit is complete once a committed segments file
+                // exists; deny writes so source B's commit really fails.
+                long until = System.currentTimeMillis() + 15_000;
+                while (System.currentTimeMillis() < until && java.nio.file.Files.exists(idx)) {
+                    try (java.util.stream.Stream<Path> s = java.nio.file.Files.list(idx)) {
+                        if (s.anyMatch(f -> f.getFileName().toString().startsWith("segments_"))) {
+                            java.util.List<java.nio.file.attribute.AclEntry> orig = denyWrite(idx);
+                            originalAcl.set(orig);
+                            denyApplied.set(orig != null); // null = ACL view unsupported
+                            return;
+                        }
+                    }
+                    Thread.sleep(2);
+                }
+            } catch (Exception ignore) {
+            }
+        }, "qa-acl-watchdog");
+        try {
+            java.nio.file.Files.write(sourcesFile,
+                    ((srcA.toAbsolutePath() + "|0\n" + srcB.toAbsolutePath() + "|0")
+                            .getBytes(java.nio.charset.StandardCharsets.UTF_8)));
+            org.abitware.docfinder.index.ConfigManager cm =
+                    new org.abitware.docfinder.index.ConfigManager();
+            cm.setIndexDir(idx);
+            Path readback = cm.getIndexDir();
+            assertEquals(idx.toAbsolutePath().normalize(), readback);
+            assertTrue(readback.startsWith(tmp), "index dir outside QA root: " + readback);
+            java.nio.file.Files.createDirectories(idx);
+            assumeTrue(java.nio.file.Files.getFileAttributeView(idx,
+                            java.nio.file.attribute.AclFileAttributeView.class) != null,
+                    "ACL view required for real commit-failure injection");
+
+            win = new HarnessWindow(null);
+            win.nextService = new FakeService();
+            watchdog.start();
+            onEdt(() -> win.onIndexAllSources());
+
+            assertTrue(waitForStatus(partial, 30_000),
+                    "partial-failure status must survive publish — no bare Ready");
+
+            // The failure status is set before the async reopen finishes —
+            // poll for the actual publish.
+            long deadline = System.currentTimeMillis() + 15_000;
+            while (System.currentTimeMillis() < deadline && win.getCurrentSearchService() == null) {
+                Thread.sleep(50);
+            }
+            java.lang.reflect.Field indexing = MainWindow.class.getDeclaredField("isIndexing");
+            indexing.setAccessible(true);
+            assertFalse(indexing.getBoolean(win), "isIndexing cleared after partial failure");
+            assertSame(win.nextService, win.getCurrentSearchService(),
+                    "committed data service must still be republished");
+            assertTrue(denyApplied.get(), "ACL deny must have landed — else the failure was fake");
+
+            // Real index: A committed, B never committed — verify at reader
+            // level, not via a scope-filtered query that hides B anyway.
+            try (org.apache.lucene.index.IndexReader r =
+                    org.apache.lucene.index.DirectoryReader.open(
+                            org.apache.lucene.store.FSDirectory.open(idx))) {
+                java.util.Set<String> paths = collectPaths(r);
+                assertTrue(paths.contains(srcA.resolve("a1.txt").toAbsolutePath().toString())
+                        || paths.stream().anyMatch(p -> p != null && p.startsWith(srcA.toString())),
+                        "committed source A doc must be present: " + paths);
+                assertFalse(paths.stream().anyMatch(p -> p != null && p.startsWith(srcB.toString())),
+                        "uncommitted source B docs must be absent: " + paths);
+            }
+        } finally {
+            if (originalAcl.get() != null) {
+                restoreAcl(idx, originalAcl.get());
+            }
+            if (prevSources == null) {
+                java.nio.file.Files.deleteIfExists(sourcesFile);
+            } else {
+                java.nio.file.Files.write(sourcesFile, prevSources);
+            }
+            if (prevConfig == null) {
+                java.nio.file.Files.deleteIfExists(configFile);
+            } else {
+                java.nio.file.Files.write(configFile, prevConfig);
+            }
+            deleteRecursively(srcA);
+            deleteRecursively(srcB);
+            deleteRecursively(idx);
+        }
+    }
+
+    private static java.util.List<java.nio.file.attribute.AclEntry> denyWrite(Path dir)
+            throws java.io.IOException {
+        java.nio.file.attribute.AclFileAttributeView view = java.nio.file.Files.getFileAttributeView(
+                dir, java.nio.file.attribute.AclFileAttributeView.class);
+        if (view == null) {
+            return null;
+        }
+        java.nio.file.attribute.UserPrincipal me = java.nio.file.FileSystems.getDefault()
+                .getUserPrincipalLookupService()
+                .lookupPrincipalByName(System.getProperty("user.name"));
+        java.util.List<java.nio.file.attribute.AclEntry> original =
+                new java.util.ArrayList<>(view.getAcl());
+        java.util.List<java.nio.file.attribute.AclEntry> denied =
+                new java.util.ArrayList<>(original);
+        denied.add(0, java.nio.file.attribute.AclEntry.newBuilder()
+                .setType(java.nio.file.attribute.AclEntryType.DENY)
+                .setPrincipal(me)
+                .setPermissions(java.nio.file.attribute.AclEntryPermission.WRITE_DATA,
+                        java.nio.file.attribute.AclEntryPermission.ADD_FILE,
+                        java.nio.file.attribute.AclEntryPermission.ADD_SUBDIRECTORY,
+                        java.nio.file.attribute.AclEntryPermission.WRITE_ATTRIBUTES,
+                        java.nio.file.attribute.AclEntryPermission.DELETE)
+                .build());
+        view.setAcl(denied);
+        return original;
+    }
+
+    private static void restoreAcl(Path dir,
+            java.util.List<java.nio.file.attribute.AclEntry> original) {
+        try {
+            java.nio.file.Files.getFileAttributeView(dir, java.nio.file.attribute.AclFileAttributeView.class)
+                    .setAcl(original);
+        } catch (java.io.IOException ignore) {
+        }
+    }
+
+    private static java.util.Set<String> collectPaths(org.apache.lucene.index.IndexReader r)
+            throws java.io.IOException {
+        java.util.Set<String> paths = new java.util.HashSet<>();
+        for (int i = 0; i < r.maxDoc(); i++) {
+            org.apache.lucene.document.Document d = r.document(i);
+            if (d != null) {
+                paths.add(d.get("path"));
+            }
+        }
+        return paths;
+    }
+
+    private static void deleteRecursively(Path root) {
+        if (root == null || !java.nio.file.Files.exists(root)) {
+            return;
+        }
+        try {
+            java.nio.file.Files.walkFileTree(root,
+                    new java.nio.file.SimpleFileVisitor<Path>() {
+                        @Override
+                        public java.nio.file.FileVisitResult visitFile(Path f,
+                                java.nio.file.attribute.BasicFileAttributes a)
+                                throws java.io.IOException {
+                            java.nio.file.Files.deleteIfExists(f);
+                            return java.nio.file.FileVisitResult.CONTINUE;
+                        }
+
+                        @Override
+                        public java.nio.file.FileVisitResult postVisitDirectory(Path d,
+                                java.io.IOException e) throws java.io.IOException {
+                            if (e != null) {
+                                throw e;
+                            }
+                            java.nio.file.Files.deleteIfExists(d);
+                            return java.nio.file.FileVisitResult.CONTINUE;
+                        }
+                    });
+        } catch (java.io.IOException ignore) {
         }
     }
 

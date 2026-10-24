@@ -113,3 +113,19 @@ OS=Windows10，JDK17；浏览器Chrome155；受测4eb417b（本地8d41b0c的产�
 逐项数据与受控脚本：[browser-results.json](qa-20261024/browser-results.json)、[失败探针](qa-20261024/regression-failures.txt)、[选择器/显示测试](qa-20261024/CodexScopeDisplayProbeTest.java)。完整边界见 [独立QA报告](Codex-QA-2026-10-24.md)。原149项套件在真实Java8 fork也通过（148通过、1 POSIX跳过）；不是native/App正式启动全验证。P-01门槛OK，P-00完整缓存证明未满足；POSIX宿主/真实UNC/native/真实大网络未跑。
 
 本轮前后真实仓库config.properties/sources.txt/shares.properties/history.txt四控制文件SHA相同；临时cwd/home属性已核对。没有全量业务索引逐字节证明。临时服务已停止、QA页面已关闭，原始证据保留。以上失败交Devin，Codex修复后复验；不据此推进用户A8。
+
+
+## 4f56d0d实际执行记录（2026-10-24，本日第二轮）
+
+执行人Codex；Windows10/JDK17/Chrome155，另真实Java8 fork。受测SHA=4f56d0d500de72abdade2da21e1ca024d1e1bc11，JAR SHA-256=b4796270e4a20eee54d48dbea801b14803e41e7c5de2738b53a66a2a193127a4。隔离根C:\Users\Administrator\AppData\Local\Temp\docfinder-reverify-20261024-ap2igz6p，真实桌面harness及其Web端口14971，均已停止。
+
+| 项 | 最新结果 | 边界与待办 |
+| --- | --- | --- |
+| M-01 | PARTIAL | 原生JFileChooser确认/取消及Applied标签自动探针通过；window捕获先FrameArrived timeout，刷新绑定后仍capture timeout，没有继续点击级来源管理/坏行/右键或视觉验收 |
+| M-02 | PARTIAL | 原不可用/重建失败清理自动探针及错误映射套件通过，完整真实八错误/选择/预览交互未全跑 |
+| M-03 | FAIL | 旧查询阻塞→重开新索引失败→释放旧查询，旧结果重新出现1行（R24-01）；实际Index All入口时序仍需R24-03 |
+| M-04 | PARTIAL | 本轮19项Web总检查含整树/根自身/源外422/语法400/持久说明/排序快捷/复制通过；clipboard受控，未全跑真实409/503/特殊编码/区域/根全表 |
+| M-05 | PASS（规定受控场景） | 旧成功/业务失败/网络失败迟到均忽略；空词/Clear零请求，当前错误清显示且错误/迟到不入历史 |
+| M-06 | PARTIAL | 常规ACL写失败与A提交可查通过；路径隔离与生命周期证明R24-02/03未满足；真实UI首建/部分失败/重建成功失败及打开/分享全流程仍缺 |
+
+逐项材料见 [reverify-20261024](reverify-20261024/verification-summary.json) 和 [独立复验报告](Codex-Reverification-2026-10-24.md)。常规164项/0失败不覆盖新增2失败；原8通过不代替M完整清单。真实四控制文件前后SHA相同；发现的错误测试索引路径已单列，不能继续声称所有测试都写在其声明临时idx。native/POSIX宿主/真实UNC/真实大网络未跑，不代签用户A8。

@@ -1,6 +1,6 @@
 # Tasks
 
-目录限定检索 Implementation Plan，批准版本0.4。唯一实施进度来源。2026-10-24 Codex 独立验证：A0–A7已有实现交付，常规套件149项中148通过/0失败/1跳过；补充8项中7个断言失败、1通过，发现4类产品偏差。A7待修复复验，A8未通过。当前事实以 evidence/Codex-QA-2026-10-24.md 与第12组为准；历史完成记录不删除。
+目录限定检索 Implementation Plan，批准版本0.4。唯一实施进度来源。最新独立复验（2026-10-24，4f56d0d）：完整构建/真实Java8各164总数、162通过、0失败、2平台跳过；原8探针全部通过，新增3检查中2失败，浏览器19项通过。QA24-04/06/08/10/11部分未闭环，A7需第13组补修，A8未通过。第13组六项已由Devin补修（2026-10-24，工作树待提交SHA后回写）：R24-01查询失效、R24-02/03测试路径与真实入口/部分失败、R24-04宿主路径、R24-05真实计数、R24-06文档措辞，待Codex再次独立复验。最新证据：evidence/Codex-Reverification-2026-10-24.md + evidence/Devin-R24-Remediation-2026-10-24.md；此前报告数字保留历史。
 
 > **For agentic workers:** 获得当前版本最终实施批准后，Devin按Superpowers executing-plans/TDD或handoff等价流程执行。每包目标RED→最小实现→GREEN→证据→审查；环境失败不算RED。
 
@@ -44,8 +44,8 @@
 **Interfaces:** design D1三static方法、D2 provider和loadSearchRoots/readSearchRoots、六参数请求。
 **Assertions:** 索引/查询规范输出一致；Windows大小写/.与../UNC/盘根；POSIX保持case；扩展命名空间显式拒绝；有效+坏行继续且记录行号；全部坏/不可读错误；缺/空文件空来源；snapshot有跳过行号，provider仍只返回roots。
 
-- [x] 2.1 先写以上参数化/来源格式/不可变快照/构造兼容测试，运行取得目标RED，不依赖真实sources.txt或真实UNC。
-- [ ] 2.2 【2026-10-24重新打开：QA24-05】实现统一规范和坏行容错读取，保留path旧主键；无网络探测，I/O不吞；定向GREEN并记录平台skip。
+- [x] 2.1 【本次复验重新打开：R24-04宿主路径夹具→已补】先写以上参数化/来源格式/不可变快照/构造兼容测试，运行取得目标RED，不依赖真实sources.txt或真实UNC。→ `shouldReturnUnmodifiableSnapshot` 改用宿主绝对根 `Paths.get("").toAbsolutePath().getRoot()`，Windows/POSIX 均可达不可变断言。
+- [x] 2.2 【4f56d0d独立复验通过】【2026-10-24重新打开：QA24-05】实现统一规范和坏行容错读取，保留path旧主键；无网络探测，I/O不吞；定向GREEN并记录平台skip。
 - [x] 2.3 更新路径限制/坏行修复帮助及A1 evidence及日志行号断言，snapshot供桌面警告，不把跳过坏行等同于健康。
 
 **Verify:** `mvn -B "-Dtest=PathScopeTest,SourceManagerSearchRootsTest,SearchRequestTest" test`。
@@ -69,7 +69,7 @@
 **Interfaces:** provider构造；D3八code；D4目录自身folder OR后代FILTER。
 
 - [x] 4.1 写根自身/深层/兄弟、limit=2前过滤、源外拒绝/来源变更、空词和无限定provider零调用、真正故障；同一report AND (在有效限定/全局均INVALID_QUERY；C++/转义输入按现有parser特征测试记录，不全部强制报错；POSIX含name:目录不误标命中来源；运行RED。
-- [ ] 4.2 【2026-10-24重新打开：QA24-03】实现来源快照、查询前目录/类型过滤、仅关键词Explanation判别、有/无目录ParseException一致，用户语法错误不记500；定向GREEN并跑A0回归，确认finally release。
+- [x] 4.2 【4f56d0d独立复验通过】【2026-10-24重新打开：QA24-03】实现来源快照、查询前目录/类型过滤、仅关键词Explanation判别、有/无目录ParseException一致，用户语法错误不记500；定向GREEN并跑A0回归，确认finally release。
 - [x] 4.3 补模式/扩展名/时间、有效空commit/离线根/误输文件路径组合；同步兼容变化与错误帮助，记录A3 evidence。不得改变合法词的子串/精确规则。
 
 **Verify:** `mvn -B "-Dtest=DirectoryScopedSearchTest,DirectorySourceValidationTest,LuceneSearchServiceTest" test`。
@@ -80,10 +80,10 @@
 **Files:** LuceneSearchService.java；DirectoryScopeCompatibilityTest、test-only DirectoryScopeCheckBenchmark.java。
 **Interfaces:** ensureDirectoryScopeSupported(IndexSearcher)、reader CacheHelper key/closed listener；服务实例缓存仅SUPPORTED/REBUILD_REQUIRED。
 
-- [x] 5.1 【2026-10-24重新打开：QA24-11→已补证】在隔离10万doc fixture做P-00微基准，对比原开放range、leaf快路径、reader缓存的首次/重复/刷新成本；记录真实枚举次数和耗时，不把top1当O(1)，证据不支持时回文档复核，不虚报收益。→ 本轮数字见 evidence/Devin-QA24-Remediation-2026-10-24.md。
+- [x] 5.1 【本次复验重新打开：R24-05计算次数未实测→已补：scopeVerdictComputationCount真实计数】【2026-10-24重新打开：QA24-11→已补证】在隔离10万doc fixture做P-00微基准，对比原开放range、leaf快路径、reader缓存的首次/重复/刷新成本；记录真实枚举次数和耗时，不把top1当O(1)，证据不支持时回文档复核，不虚报收益。→ 本轮数字见 evidence/Devin-QA24-Remediation-2026-10-24.md。
 - [x] 5.2 【2026-10-24重新打开：QA24-07/08→已补】写纯旧/混合/全新/删除/全删除leaf、maxDoc=3 numDocs=2 docCount=2两种相反结果（NoMergePolicy钉住）、helper=null/统计未知、I/O重试、同key复用、新key重验、并发refresh/close/缓存清理；取得目标RED。
 - [x] 5.3 【2026-10-24重新打开：QA24-07→已补】实现D4充分条件快路径、不确定时精确live-doc回退及reader缓存生命周期；测试GREEN，禁止core key、错误缓存和关闭后迟到发布（closed gate + scopePublishLock）。
-- [x] 5.4 【2026-10-24重新打开：QA24-06→已补】测Index All补字段无陈旧时可用、有已删除文件/移除来源、来源离线/权限不足/部分失败旧live doc时仍409（离线live doc 409测试已加），提示检查可达性，手动Full Rebuild才兜底；更新迁移/回退说明和A4 evidence。不自动触发破坏操作。
+- [x] 5.4 【本次复验重新打开：R24-03实际部分失败链路及B隔离断言→已补：真实Index All入口+ACL中途拒写+全局查询证明B未提交】【2026-10-24重新打开：QA24-06→已补】测Index All补字段无陈旧时可用、有已删除文件/移除来源、来源离线/权限不足/部分失败旧live doc时仍409（离线live doc 409测试已加），提示检查可达性，手动Full Rebuild才兜底；更新迁移/回退说明和A4 evidence。不自动触发破坏操作。→ `shouldKeepPartialStatusAfterRealIndexAllSecondSourceCommitFails`（A commit 后 watchdog 加 ACL 拒写，B commit 真实失败；部分失败文案保留，reader 级断言 B 无文档）；`shouldServeCommittedDataAfterPartialCommitFailure` 增加全局 `q=delta` 断言；新增 `shouldDistinguishScopeFilterFromUncommittedIsolation` 对照（已提交 B 被 scope A 隐藏但全局可见）。
 
 **Verify:** `mvn -B "-Dtest=DirectoryScopeCompatibilityTest,DirectoryScopedSearchTest,DirectorySourceValidationTest" test`。P-00耗时不作为普通单测断言，M-06实机迁移归Codex。
 
@@ -93,8 +93,8 @@
 **Files:** 新DirectoryScopePanel.java/测试、DirectoryScopeDesktopHarness.java、search/SearchErrorMessages.java及SearchErrorMessagesTest；改MainWindow.java和App.java。
 **Interfaces:** D5面板接口（含setSourceWarning）；D8 reopenSearchServiceAsync(Path,IndexSettings)；受控harness工厂钩子只为构造/时序验证，不新建全局框架。
 
-- [x] 6.1 【2026-10-24重新打开：QA24-01/02/04/06→已补】写All/来源/Custom状态、仅编辑不提交、Clear一次、刷新不改文本/不提交/失效来源保留；增加Windows等价路径显示来源、非法编辑只Custom、坏行刷新警告及修复清除；headless八Code固定文案，fake逐个抛八Code/未知异常断言实际状态无原始消息/堆栈；latch测提交后service变null、错误不入历史/重建失效token；测首次Index All、部分commit后整体失败仍恢复且保留失败状态、旧候选迟到/关闭释放；记录RED（需GUI的部分交Codex执行，不虚报）。
-- [x] 6.2 【2026-10-24重新打开：QA24-01/02/04→已补】实现面板和活跃MainWindow请求快照、来源三类刷新、后台服务打开和统一发布，逐一替换App启动、MainWindow添加单文件夹完成、完整重建完成三处new（0.3行77/1431/1636），生产new仅允许后台工厂；MainWindow服务字段volatile发布、worker局部捕获，null抛INDEX_UNAVAILABLE，done按Code固定映射而非getMessage；部分失败也恢复commit且Ready不覆盖失败；重建失效旧查询/Web不可用；组件GREEN，打开不在EDT。
+- [x] 6.1 【本次复验重新打开：R24-02/03测试路径与实际入口时序→已补：ConfigManager.setIndexDir序列化+读回/允许根守卫+真实reader验证+watchdog ACL部分失败】【2026-10-24重新打开：QA24-01/02/04/06→已补】写All/来源/Custom状态、仅编辑不提交、Clear一次、刷新不改文本/不提交/失效来源保留；增加Windows等价路径显示来源、非法编辑只Custom、坏行刷新警告及修复清除；headless八Code固定文案，fake逐个抛八Code/未知异常断言实际状态无原始消息/堆栈；latch测提交后service变null、错误不入历史/重建失效token；测首次Index All、部分commit后整体失败仍恢复且保留失败状态、旧候选迟到/关闭释放；记录RED（需GUI的部分交Codex执行，不虚报）。
+- [x] 6.2 【本次复验重新打开：R24-01重开失败后旧查询回填→已补：失败分支searchSequence++/cancel worker；迟到成功与迟到错误两条latch回归GREEN】【2026-10-24重新打开：QA24-01/02/04→已补】实现面板和活跃MainWindow请求快照、来源三类刷新、后台服务打开和统一发布，逐一替换App启动、MainWindow添加单文件夹完成、完整重建完成三处new（0.3行77/1431/1636），生产new仅允许后台工厂；MainWindow服务字段volatile发布、worker局部捕获，null抛INDEX_UNAVAILABLE，done按Code固定映射而非getMessage；部分失败也恢复commit且Ready不覆盖失败；重建失效旧查询/Web不可用；组件GREEN，打开不在EDT。
 - [x] 6.3 提供可复现harness/夹具/启动命令给Codex，自动测试与差异GREEN，同步UsageGuide及A5a evidence，附生产new全仓搜索只剩工厂的结果，并明确错误不入历史/保留字符转义；登记M-01/02/03/06待实机，不因Devin无GUI长期占住开发包，也不能标手工通过。
 
 **Verify:** `mvn -B "-Dtest=DirectoryScopePanelTest,SearchErrorMessagesTest" test`；真正首次建库/服务恢复由M-06及A7组合检验。
@@ -117,7 +117,7 @@
 **Files:** SearchHandler.java、resources/web/index.html；SearchHandlerTest、WebAssetsOfflineTest。
 **Interfaces:** directory、兼容parentDirectory、八code/status；service=null固定INDEX_UNAVAILABLE，空词优先。
 
-- [x] 8.1 【2026-10-24重新打开：QA24-08→已补】写编码、八类错误、全局/限定INVALID_QUERY一致、null服务503与空词、无commit不建库、非英语score/控制字符JSON、服务器父目录盘根/UNC/POSIX根；运行RED。→ `SearchHandlerTest` 11+ 用例（含盘根/UNC/POSIX根断言），实现后全绿。
+- [x] 8.1 【本次复验重新打开：R24-04逐结果根父目录证明→已补：parentToken/assertParent逐结果断言】【2026-10-24重新打开：QA24-08→已补】写编码、八类错误、全局/限定INVALID_QUERY一致、null服务503与空词、无commit不建库、非英语score/控制字符JSON、服务器父目录盘根/UNC/POSIX根；运行RED。→ `SearchHandlerTest` 11+ 用例（含盘根/UNC/POSIX根断言），实现后全绿。
 - [x] 8.2 实现handler/JSON和页面目录/Clear/范围/快捷/复制/token/安全DOM，自动GREEN，不新增来源列表或浏览API；422覆盖探测风险有文档。→ `SearchHandler`（directory 参数、parentDirectory 字段、八 code→status、`{error,code}` 固定文案、控制字符 `\u00XX` 转义）；`index.html`（dirInput/ClearDirBtn/范围说明/dirscope-btn/copypath-btn/剪贴板失败回退）；`WebAssetsOfflineTest` 断言无 `/api/sources`、`/api/browse`。422 泄露风险已在 design 记录、evidence 复述。
 - [x] 8.3 交浏览器fixture/可复现请求/受控fetch步骤，给Codex做M-04/05（含复制拒绝、排序、迟到与空词）；同步API/帮助及A6 evidence，静态资源检查不代替交互。→ UsageGuide Web/API 段已更新；`evidence/A6.md` 含 M-04/05 可复现步骤；**M-04/M-05 实机待 Codex**。
 
@@ -162,13 +162,27 @@
 - [x] 12.1 QA24-01（P2）：桌面service=null/完整重建失败时清除已显示结果、选择、预览，保留固定失败提示；合入两条目标失败回归并GREEN，对应6.1/6.2、DS-09/12。
 - [x] 12.2 QA24-02（P2）：草稿编辑与已提交范围独立可见；不自动提交/查盘，测试A已提交、B草稿及Clear，对应6.1/6.2、DS-07。
 - [x] 12.3 QA24-03（P2）：显式name字段及name/content组合准确标记命中来源，全局/限定三条回归GREEN，保持目录FILTER不参与解释，对应4.2。
-- [x] 12.4 QA24-04（P2）：新索引重开失败时服务实际状态与不可用提示一致，不静默沿用旧索引；覆盖资源释放/sequence，对应6.1/6.2、DS-12。
+- [x] 12.4 【本次复验重新打开：R24-01目标失败→已GREEN】QA24-04（P2）：新索引重开失败时服务实际状态与不可用提示一致，不静默沿用旧索引；覆盖资源释放/sequence，对应6.1/6.2、DS-12。
 - [x] 12.5 QA24-05（P2，静态）：仅确定来源文件不存在才空来源，访问/读取失败报SOURCE_CONFIG_UNAVAILABLE；补确定性故障及HTTP映射证据，对应2.2、DS-04。
-- [x] 12.6 QA24-06（P2）：更正"upsert不存在文件产生写失败"的无效证明（改为索引目录 ACL 拒写→commit 真实失败传播）；真实Index All入口失效、A提交/B失败及旧live doc迁移残留补证，M-06仍待主机流程，对应5.4/6.1/9.1。
+- [x] 12.6 【本次复验重新打开：R24-02/03→已GREEN】QA24-06（P2）：更正"upsert不存在文件产生写失败"的无效证明（改为索引目录 ACL 拒写→commit 真实失败传播）；真实Index All入口失效、A提交/B失败及旧live doc迁移残留补证，M-06仍待主机流程，对应5.4/6.1/9.1。
 - [x] 12.7 QA24-07（P3，静态）：close与能力检查交错的latch测试，关闭后禁止迟到发布（closed gate + scopePublishLock），完成，对应5.3。
-- [x] 12.8 QA24-08（P2）：跨平台fixture与平台条件、真实父目录/盘根/UNC/POSIX根、两种maxDoc=3/numDocs=2/docCount=2删除反例（NoMergePolicy钉住叶统计）；单列未跑POSIX宿主，对应5.2/8.1。
+- [x] 12.8 【本次复验重新打开：R24-04→已GREEN】QA24-08（P2）：跨平台fixture与平台条件、真实父目录/盘根/UNC/POSIX根、两种maxDoc=3/numDocs=2/docCount=2删除反例（NoMergePolicy钉住叶统计）；单列未跑POSIX宿主，对应5.2/8.1。
 - [x] 12.9 QA24-09（P3）：Web成功后仍有仅查询索引内容说明——`index.html` 范围提示改为持久可见（含"仅索引内容/整棵子树/必须在已配置来源内"），对应8.2。
-- [x] 12.10 QA24-10（P2文档）：modernize proposal/design/spec/tasks统一具体版本与残留EOL风险（logback 1.3.x/Tika 2.x EOL 明示，FlatLaf 3.6.2非上游最新）；不自动改变Java基线。
-- [x] 12.11 QA24-11（P3）：P-00已分开测真实服务缓存入口与raw helper——100热样本×2（首reader/刷新后）、枚举次数经scopeSupportCacheSize钉死（每reader=1次计算）、删旧/删新两删除场景计时与409判定；报告所有原始数字，不以推演宣称收益。
+- [x] 12.10 【本次复验重新打开：R24-06无条件最新语义→已统一为指定版本+例外】QA24-10（P2文档）：modernize proposal/design/spec/tasks统一具体版本与残留EOL风险（logback 1.3.x/Tika 2.x EOL 明示，FlatLaf 3.6.2非上游最新）；不自动改变Java基线。
+- [x] 12.11 【本次复验重新打开：R24-05常量枚举次数→已改为实测scopeVerdictComputationCount】QA24-11（P3）：P-00已分开测真实服务缓存入口与raw helper——100热样本×2（首reader/刷新后）、verdict计算次数由LuceneSearchService.scopeVerdictComputationCount实测断言（首次1、热调用仍1、刷新后2）、删旧/删新两删除场景计时与409判定；报告所有原始数字，不以推演宣称收益。
 
 关闭规则：各修复保留目标RED/GREEN证据；最终SHA重跑必要回归、clean verify/Java8及P项，Codex更新M记录并复核。12.x勾选不自动完成9.1/9.3或A8；用户最终接受和交付授权按10.1/10.2。当前22个浏览器检查与选择器确认/取消已通过，完整M清单仍以acceptance为准。
+
+
+## 13. 最终提交4f56d0d独立复验后的任务
+
+依据 [本次复验报告](evidence/Codex-Reverification-2026-10-24.md) 与 [Devin Local下一批指令](evidence/Devin-Next-2026-10-24.md)。Owner：Devin实施，Codex独立复验。原8探针全绿不覆盖更完整的新场景；不增加新能力，不推进A8归档。
+
+- [x] 13.1 R24-02（P2，先做）：Index All测试正确序列化配置，建库前readback==idx且在允许QA根，验证真实目标索引文档；逐一核对报告所列历史越界测试目录，精确清理已证明为测试产物的目录或记录保留原因，禁止模糊删除。→ `setIndexDir`+Properties.store序列化、建库前断言readback==idx且位于tmp根、DirectoryReader按path成员断言（非裸doc数）；4个`C:\UsersAdministratorAppDataLocalTempqa-indexall-idx-*`逐一核验为单段Lucene索引且.cfs内含qa-indexall-src路径串，均为测试产物，已精确删除。
+- [x] 13.2 R24-01（P2）：reopen失败失效旧查询代次/取消worker；latch覆盖旧成功及旧异常迟到，结果/选择/预览/状态保持不可用，Web服务仍null，目标RED→GREEN。→ `reopenSearchServiceAsync`失败分支先`searchSequence++`+cancel activeSearchWorker再setSearchService(null)；`shouldIgnoreLateSearchResultAfterReopenFailure`/`shouldIgnoreLateSearchErrorAfterReopenFailure`两条确定性回归GREEN（含web null发布断言）。
+- [x] 13.3 R24-03（P2）：实际Index All入口的在途失效及A真实提交/B真实失败、部分失败提示/Web恢复；未提交B用全局/合法B查询证明，保留范围边界断言，不以fake发布代替全流程。→ `shouldInvalidateInFlightSearchDuringRealIndexAll`（真实onIndexAllSources+被阻塞旧查询失效+reader级doc断言）；`shouldKeepPartialStatusAfterRealIndexAllSecondSourceCommitFails`（watchdog在A提交后对idx加ACL拒写→B commit真实AccessDenied失败，部分失败文案保留、reader级B无文档）；E2E`shouldServeCommittedDataAfterPartialCommitFailure`增加全局`q=delta`断言B全局缺席；新增`shouldDistinguishScopeFilterFromUncommittedIsolation`对照。
+- [x] 13.4 R24-04（P2）：清除来源用例剩余Windows硬编码，根parent按每条结果断言；Windows/UNC/POSIX分别条件，未跑宿主明确单列。→ `shouldReturnUnmodifiableSnapshot`改宿主根路径；SearchHandlerTest新增parentToken/assertParent，盘根/UNC/POSIX根均逐结果断言。
+- [x] 13.5 R24-05（P3）：verdict计算入口真实计数，区分条目数/计算次数/term枚举，撤回或替换常量enumerations=1及衍生收益证明，P-00门槛不虚报。→ 新增`LuceneSearchService.scopeVerdictComputationCount`（AtomicLong，每次真正调用ensureDirectoryScopeSupported计数）；benchmark断言首次1/热100仍1/刷新后2；输出打印实测计数。
+- [x] 13.6 R24-06（P3）：modernize proposal/design/spec/tasks以具体版本及例外统一，不再无条件保证最高兼容线最新；同步两change当前SHA、证据/状态，历史报告不覆盖。→ 全部改为"版本表指定版本+显式例外（FlatLaf 3.6.2）"；tasks3.1勾选、delivery-status记录RESOLVED；SHA待本次提交后由下一轮回写。
+
+回交：最终产品SHA的必要定向/clean verify/带隔离探针/真实Java8/P-00/P-01及strict validate、diff结果。Codex再复验第13组并补M-01～06剩余流程；原生窗口截图本轮两次超时属验收工具限制，不能记M通过。第9组与A8继续未完成，直到实际证据和用户决定齐备。

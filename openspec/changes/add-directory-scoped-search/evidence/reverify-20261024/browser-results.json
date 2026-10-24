@@ -1,0 +1,102 @@
+{
+  "head": "4f56d0d500de72abdade2da21e1ca024d1e1bc11",
+  "browser": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/155.0.0.0 Safari/537.36",
+  "basic": [
+    {
+      "name": "recursive A includes child",
+      "status": 200,
+      "count": 2,
+      "rows": 2,
+      "passed": true
+    },
+    {
+      "name": "FOLDER includes selected root",
+      "status": 200,
+      "count": 1,
+      "rows": 1,
+      "passed": true
+    },
+    {
+      "name": "outside source rejected",
+      "status": 422,
+      "rows": 0,
+      "passed": true
+    },
+    {
+      "name": "invalid scoped query",
+      "status": 400,
+      "rows": 0,
+      "passed": true
+    },
+    {
+      "name": "invalid global query",
+      "status": 400,
+      "rows": 0,
+      "passed": true
+    },
+    {
+      "name": "unscoped sees both sources",
+      "status": 200,
+      "count": 3,
+      "rows": 3,
+      "passed": true
+    },
+    {
+      "name": "indexed-only subtree/source hint persists after success",
+      "passed": true,
+      "hint": "Searches indexed content only. A directory scope covers the whole subtree and must be inside a configured index source."
+    },
+    {
+      "name": "failed query excluded from history",
+      "passed": true
+    }
+  ],
+  "races": [
+    {
+      "name": "late success ignored",
+      "passed": true
+    },
+    {
+      "name": "late business-error ignored",
+      "passed": true
+    },
+    {
+      "name": "late network-error ignored",
+      "passed": true
+    },
+    {
+      "name": "blank/Clear zero requests and no late publish",
+      "passed": true
+    },
+    {
+      "name": "current network failure clears rows and no failed history",
+      "passed": true
+    },
+    {
+      "name": "late queries absent from history",
+      "passed": true
+    }
+  ],
+  "actions": [
+    {
+      "name": "clipboard denial gives manual path without false success",
+      "passed": true
+    },
+    {
+      "name": "clipboard receives exact path",
+      "passed": true
+    },
+    {
+      "name": "sorted parent shortcut submits once preserves query",
+      "passed": true
+    },
+    {
+      "name": "root shortcut once no loop",
+      "passed": true
+    },
+    {
+      "name": "Clear once keeps keyword",
+      "passed": true
+    }
+  ]
+}

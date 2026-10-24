@@ -16,13 +16,13 @@ gates:
     status: not_granted
   independent_verification:
     date: 2026-10-24
-    head: 4eb417b4283665ec586538ef5a0670f29eeed7fd
-    jdk17_clean_verify: 149 total /148 passed /0 failures /1 platform skip
-    java8_test: real JVM 1.8.0_40; same counts with argLine probe
-    evidence: ../add-directory-scoped-search/evidence/Codex-QA-2026-10-24.md
-    documentation_issue: QA24-10 latest/EOL claims require reconciliation
-    product_acceptance: directory-search runtime deviations remain; no inferred A8
+    head: 4f56d0d500de72abdade2da21e1ca024d1e1bc11
+    jdk17_clean_verify: 164 total /162 passed /0 failures /2 platform skips; probe present
+    java8_test: real1.8.0_40 same counts
+    evidence: ../add-directory-scoped-search/evidence/Codex-Reverification-2026-10-24.md
+    documentation_issue: RESOLVED_2026-10-24 unconditional latest claim replaced with specified-version wording + explicit FlatLaf-3.6.2 exception_R24-06
+    product_acceptance: two new focused failures in combined product/test behavior; A7 remediation and remaining M before A8
 next_action:
   owner: Devin
-  action: reconcile_QA24-10_documentation_then_Codex_final_SHA_reverification_and_user_A8
-  status: DOCUMENTATION_CORRECTION_AND_COMBINED_ACCEPTANCE_PENDING
+  action: reconcile_latest_claim_R24-06_and_close_combined_A7_findings_then_Codex_M_reverification_then_user_A8
+  status: DOCUMENTATION_AND_COMBINED_ACCEPTANCE_PENDING

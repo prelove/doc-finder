@@ -144,11 +144,11 @@ class DirectoryScopeCheckBenchmark {
                     (System.nanoTime() - t) / 1_000_000.0));
         }
 
-        // --- Scenario: REAL service-cache entry (QA24-11) -----------------
+        // --- Scenario: REAL service-cache entry (QA24-11/R24-05) ----------
         // Unlike the raw helper above, this measures the actual cached
-        // entry point used by production requests. Call counts are proven
-        // via scopeSupportCacheSize: 100 hot calls must produce ZERO new
-        // cached verdicts while the reader stays open.
+        // entry point used by production requests. Verdict-computation
+        // counts come from the real scopeVerdictComputationCount counter —
+        // NOT from cache size (a same-key overwrite would still print 1).
         {
             LuceneSearchService svc = new LuceneSearchService(index,
                     new IndexSettings(), () -> Collections.singletonList(src));
@@ -158,7 +158,8 @@ class DirectoryScopeCheckBenchmark {
                 svc.checkScopeSupport(s); // cold — computes + publishes
                 report.append(String.format("service first call: %.2f ms%n",
                         (System.nanoTime() - t) / 1_000_000.0));
-                assertEquals(1, svc.scopeSupportCacheSize());
+                assertEquals(1, svc.scopeVerdictComputationCount(),
+                        "first call must compute exactly one verdict");
 
                 List<Long> times = new ArrayList<>();
                 for (int i = 0; i < 100; i++) {
@@ -166,11 +167,12 @@ class DirectoryScopeCheckBenchmark {
                     svc.checkScopeSupport(s);
                     times.add(System.nanoTime() - x);
                 }
+                assertEquals(1, svc.scopeVerdictComputationCount(),
+                        "100 hot calls must not recompute while the reader lives");
                 report.append(String.format(
-                        "service cache-hit over 100 calls: p50=%.2f ms p95=%.2f ms (enumerations=1)%n",
-                        median(times), p95(times)));
-                assertEquals(1, svc.scopeSupportCacheSize(),
-                        "hot calls must not recompute while the reader lives");
+                        "service cache-hit over 100 calls: p50=%.2f ms p95=%.2f ms (verdict computations=%d)%n",
+                        median(times), p95(times), svc.scopeVerdictComputationCount()));
+                assertEquals(1, svc.scopeSupportCacheSize());
             }
             // refresh scenario: new commit → new reader → verdict recomputed
             try (IndexWriter w = new IndexWriter(FSDirectory.open(index),
@@ -190,9 +192,11 @@ class DirectoryScopeCheckBenchmark {
                     svc.checkScopeSupport(s2);
                     times.add(System.nanoTime() - x);
                 }
+                assertEquals(2, svc.scopeVerdictComputationCount(),
+                        "a refreshed reader must trigger exactly one more computation");
                 report.append(String.format(
-                        "service cache-hit after refresh (100 calls): p50=%.2f ms p95=%.2f ms%n",
-                        median(times), p95(times)));
+                        "service cache-hit after refresh (100 calls): p50=%.2f ms p95=%.2f ms (verdict computations=%d)%n",
+                        median(times), p95(times), svc.scopeVerdictComputationCount()));
                 assertEquals(1, svc.scopeSupportCacheSize(),
                         "closed reader key evicted; refreshed reader caches exactly once");
             }

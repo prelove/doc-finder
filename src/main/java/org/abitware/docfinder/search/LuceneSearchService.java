@@ -90,6 +90,8 @@ public class LuceneSearchService implements SearchService {
      */
     private volatile boolean closed = false;
     private final Object scopePublishLock = new Object();
+    private final java.util.concurrent.atomic.AtomicLong scopeVerdictComputations =
+            new java.util.concurrent.atomic.AtomicLong();
 
     // SearcherManager based on Directory (read-only) to avoid write.lock ownership in search service
     private volatile SearcherManager searcherManager;
@@ -193,6 +195,16 @@ public class LuceneSearchService implements SearchService {
     }
 
     /**
+     * Number of times a scope verdict was actually computed by calling
+     * ensureDirectoryScopeSupported — distinct from scopeSupportCacheSize()
+     * (entries may be overwritten/evicted; this counter only increments).
+     * Test/evidence seam for R24-05.
+     */
+    long scopeVerdictComputationCount() {
+        return scopeVerdictComputations.get();
+    }
+
+    /**
      * Cached gate for a live acquired searcher. Caches by reader cache-helper
      * key; when helper is null the check runs uncached.
      */
@@ -211,6 +223,7 @@ public class LuceneSearchService implements SearchService {
             }
         }
         try {
+            scopeVerdictComputations.incrementAndGet();
             ensureDirectoryScopeSupported(searcher);
         } catch (SearchException e) {
             // Only the deterministic coverage verdict is cacheable; transient

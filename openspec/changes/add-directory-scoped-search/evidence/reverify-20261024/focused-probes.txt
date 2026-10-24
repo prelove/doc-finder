@@ -1,0 +1,37 @@
+org.abitware.docfinder.search.DirectoryScopedSearchTest
+codexQaShouldLabelExplicitNameQueryGlobally: PASS
+codexQaShouldLabelExplicitNameQueryWithinDirectory: PASS
+codexQaShouldLabelExplicitNameAndContent: PASS
+org.abitware.docfinder.ui.DirectoryScopeDesktopHarnessTest
+codexQaShouldClearPresentedResultsWhenFullRebuildFails: PASS
+codexQaShouldNotSilentlyKeepOldServiceWhenOpeningNewLocationFails: PASS
+codexReverifyShouldIgnoreOldSearchAfterReopenFailure: FAIL
+org.opentest4j.AssertionFailedError: old query must not repopulate unavailable new index results ==> expected: <0> but was: <1>
+	at org.junit.jupiter.api.AssertionFailureBuilder.build(AssertionFailureBuilder.java:151)
+	at org.junit.jupiter.api.AssertionFailureBuilder.buildAndThrow(AssertionFailureBuilder.java:132)
+	at org.junit.jupiter.api.AssertEquals.failNotEqual(AssertEquals.java:197)
+	at org.junit.jupiter.api.AssertEquals.assertEquals(AssertEquals.java:150)
+	at org.junit.jupiter.api.Assertions.assertEquals(Assertions.java:563)
+	at org.abitware.docfinder.ui.DirectoryScopeDesktopHarnessTest.codexReverifyShouldIgnoreOldSearchAfterReopenFailure(DirectoryScopeDesktopHarnessTest.java:621)
+	at java.base/java.lang.reflect.Method.invoke(Method.java:568)
+	at java.base/java.util.ArrayList.forEach(ArrayList.java:1511)
+	at java.base/java.util.ArrayList.forEach(ArrayList.java:1511)
+
+codexReverifyShouldReadConfiguredTempIndexPathExactly: FAIL
+org.opentest4j.AssertionFailedError: test fixture must index exactly under its declared temporary idx ==> expected: <C:\Users\Administrator\AppData\Local\Temp\codex-roundtrip-index-62293643907800> but was: <C:\Users\Administrator\AppData\Local\Temp\docfinder-reverify-20261024-ap2igz6p\checkout\target\test-classes\UsersAdministratorAppDataLocalTempcodex-roundtrip-index-62293643907800>
+	at org.junit.jupiter.api.AssertionFailureBuilder.build(AssertionFailureBuilder.java:151)
+	at org.junit.jupiter.api.AssertionFailureBuilder.buildAndThrow(AssertionFailureBuilder.java:132)
+	at org.junit.jupiter.api.AssertEquals.failNotEqual(AssertEquals.java:197)
+	at org.junit.jupiter.api.AssertEquals.assertEquals(AssertEquals.java:182)
+	at org.junit.jupiter.api.Assertions.assertEquals(Assertions.java:1156)
+	at org.abitware.docfinder.ui.DirectoryScopeDesktopHarnessTest.codexReverifyShouldReadConfiguredTempIndexPathExactly(DirectoryScopeDesktopHarnessTest.java:638)
+	at java.base/java.lang.reflect.Method.invoke(Method.java:568)
+	at java.base/java.util.ArrayList.forEach(ArrayList.java:1511)
+	at java.base/java.util.ArrayList.forEach(ArrayList.java:1511)
+
+codexQaShouldClearPresentedResultsWhenServiceBecomesUnavailable: PASS
+org.abitware.docfinder.ui.components.CodexScopeDisplayProbeTest
+codexQaShouldKeepAppliedScopeVisibleWhenDraftChanges: PASS
+codexQaBrowseConfirmAndCancelShouldSubmitExactlyOnce: PASS
+org.abitware.docfinder.web.DirectoryScopeEndToEndTest
+codexReverifyShouldDistinguishScopeFilterFromUncommittedIsolation: PASS

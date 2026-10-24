@@ -1,0 +1,2114 @@
+{
+  "head": "4f56d0d500de72abdade2da21e1ca024d1e1bc11",
+  "qa_root": "C:\\Users\\Administrator\\AppData\\Local\\Temp\\docfinder-reverify-20261024-ap2igz6p",
+  "jdk17": {
+    "totals": {
+      "tests": 164,
+      "failures": 0,
+      "errors": 0,
+      "skipped": 2
+    },
+    "environment": {
+      "java.version": "17",
+      "java.home": "D:\\java\\java17",
+      "user.dir": "C:\\Users\\Administrator\\AppData\\Local\\Temp\\docfinder-reverify-20261024-ap2igz6p\\checkout\\target\\test-classes",
+      "user.home": "C:\\Users\\Administrator\\AppData\\Local\\Temp\\docfinder-reverify-20261024-ap2igz6p\\checkout\\target/test-home",
+      "docfinder.argline.probe": "present"
+    },
+    "cases": [
+      {
+        "class": "org.abitware.docfinder.index.IndexSettingsTest",
+        "name": "shouldHaveDefaultParseTimeoutSec",
+        "result": "PASS",
+        "message": null
+      },
+      {
+        "class": "org.abitware.docfinder.index.IndexSettingsTest",
+        "name": "shouldAllowDisablingNrtCache",
+        "result": "PASS",
+        "message": null
+      },
+      {
+        "class": "org.abitware.docfinder.index.IndexSettingsTest",
+        "name": "shouldHaveDefaultMaxFileMB",
+        "result": "PASS",
+        "message": null
+      },
+      {
+        "class": "org.abitware.docfinder.index.IndexSettingsTest",
+        "name": "shouldHaveDefaultNrtCacheMaxMB",
+        "result": "PASS",
+        "message": null
+      },
+      {
+        "class": "org.abitware.docfinder.index.IndexSettingsTest",
+        "name": "shouldHaveDefaultMaxExtractChars",
+        "result": "PASS",
+        "message": null
+      },
+      {
+        "class": "org.abitware.docfinder.index.IndexSettingsTest",
+        "name": "shouldHaveDefaultPreviewTimeoutSec",
+        "result": "PASS",
+        "message": null
+      },
+      {
+        "class": "org.abitware.docfinder.index.PathScopeIndexFieldTest",
+        "name": "shouldSupportPrefixQueryForDescendants",
+        "result": "PASS",
+        "message": null
+      },
+      {
+        "class": "org.abitware.docfinder.index.PathScopeIndexFieldTest",
+        "name": "shouldWritePathScopeViaDocumentBuilder",
+        "result": "PASS",
+        "message": null
+      },
+      {
+        "class": "org.abitware.docfinder.index.PathScopeIndexFieldTest",
+        "name": "shouldWritePathScopeOnUpsert",
+        "result": "PASS",
+        "message": null
+      },
+      {
+        "class": "org.abitware.docfinder.index.PathScopeIndexFieldTest",
+        "name": "shouldWritePathScopeForFilesAndFolders",
+        "result": "PASS",
+        "message": null
+      },
+      {
+        "class": "org.abitware.docfinder.index.SourceManagerSearchRootsTest",
+        "name": "shouldFailOnAccessDeniedNotReportEmpty",
+        "result": "PASS",
+        "message": null
+      },
+      {
+        "class": "org.abitware.docfinder.index.SourceManagerSearchRootsTest",
+        "name": "shouldSkipBadLinesAndKeepValid",
+        "result": "PASS",
+        "message": null
+      },
+      {
+        "class": "org.abitware.docfinder.index.SourceManagerSearchRootsTest",
+        "name": "shouldReadLegacyAndNewFormats",
+        "result": "PASS",
+        "message": null
+      },
+      {
+        "class": "org.abitware.docfinder.index.SourceManagerSearchRootsTest",
+        "name": "shouldReturnEmptyForMissingOrCommentOnlyFile",
+        "result": "PASS",
+        "message": null
+      },
+      {
+        "class": "org.abitware.docfinder.index.SourceManagerSearchRootsTest",
+        "name": "shouldFailOnUnreadableFile",
+        "result": "PASS",
+        "message": null
+      },
+      {
+        "class": "org.abitware.docfinder.index.SourceManagerSearchRootsTest",
+        "name": "shouldFailWhenAllDataLinesInvalid",
+        "result": "PASS",
+        "message": null
+      },
+      {
+        "class": "org.abitware.docfinder.index.SourceManagerSearchRootsTest",
+        "name": "shouldReturnUnmodifiableSnapshot",
+        "result": "PASS",
+        "message": null
+      },
+      {
+        "class": "org.abitware.docfinder.search.DirectoryScopeCompatibilityTest",
+        "name": "shouldNotCacheWhenReaderHelperIsNull",
+        "result": "PASS",
+        "message": null
+      },
+      {
+        "class": "org.abitware.docfinder.search.DirectoryScopeCompatibilityTest",
+        "name": "shouldSurviveConcurrentRefreshAndClose",
+        "result": "PASS",
+        "message": null
+      },
+      {
+        "class": "org.abitware.docfinder.search.DirectoryScopeCompatibilityTest",
+        "name": "shouldReuseVerdictPerReaderAndEvictOnReaderClose",
+        "result": "PASS",
+        "message": null
+      },
+      {
+        "class": "org.abitware.docfinder.search.DirectoryScopeCompatibilityTest",
+        "name": "shouldNotPublishVerdictComputedBeforeCloseAfterClose",
+        "result": "PASS",
+        "message": null
+      },
+      {
+        "class": "org.abitware.docfinder.search.DirectoryScopeCompatibilityTest",
+        "name": "shouldAllowScopedSearchWhenOnlyDeletedDocsLackField",
+        "result": "PASS",
+        "message": null
+      },
+      {
+        "class": "org.abitware.docfinder.search.DirectoryScopeCompatibilityTest",
+        "name": "shouldPassEmptyLiveReader",
+        "result": "PASS",
+        "message": null
+      },
+      {
+        "class": "org.abitware.docfinder.search.DirectoryScopeCompatibilityTest",
+        "name": "shouldNotCacheIoFailuresAndRecoverOnNextCheck",
+        "result": "PASS",
+        "message": null
+      },
+      {
+        "class": "org.abitware.docfinder.search.DirectoryScopeCompatibilityTest",
+        "name": "shouldKeepUnscopedSearchWorkingOnOldIndex",
+        "result": "PASS",
+        "message": null
+      },
+      {
+        "class": "org.abitware.docfinder.search.DirectoryScopeCompatibilityTest",
+        "name": "shouldDistinguishDocCountFromNumDocs",
+        "result": "PASS",
+        "message": null
+      },
+      {
+        "class": "org.abitware.docfinder.search.DirectoryScopeCompatibilityTest",
+        "name": "shouldDecideByLiveDocsNotDocStats",
+        "result": "PASS",
+        "message": null
+      },
+      {
+        "class": "org.abitware.docfinder.search.DirectoryScopeCompatibilityTest",
+        "name": "shouldRequireRebuildWhenOfflineSourceLeavesLegacyDocs",
+        "result": "PASS",
+        "message": null
+      },
+      {
+        "class": "org.abitware.docfinder.search.DirectoryScopeCompatibilityTest",
+        "name": "shouldRecheckAfterReaderRefresh",
+        "result": "PASS",
+        "message": null
+      },
+      {
+        "class": "org.abitware.docfinder.search.DirectoryScopeCompatibilityTest",
+        "name": "shouldRejectScopedSearchOnPureOldIndex",
+        "result": "PASS",
+        "message": null
+      },
+      {
+        "class": "org.abitware.docfinder.search.DirectoryScopeCompatibilityTest",
+        "name": "shouldRejectMixedIndexEvenIfScopeDocsAreNew",
+        "result": "PASS",
+        "message": null
+      },
+      {
+        "class": "org.abitware.docfinder.search.DirectoryScopedSearchTest",
+        "name": "shouldReturnZeroHitsForValidEmptyScope",
+        "result": "PASS",
+        "message": null
+      },
+      {
+        "class": "org.abitware.docfinder.search.DirectoryScopedSearchTest",
+        "name": "shouldInvokeProviderOnceAndNotForUnscopedOrBlank",
+        "result": "PASS",
+        "message": null
+      },
+      {
+        "class": "org.abitware.docfinder.search.DirectoryScopedSearchTest",
+        "name": "shouldIncludeSelectedRootItselfForFolderSearch",
+        "result": "PASS",
+        "message": null
+      },
+      {
+        "class": "org.abitware.docfinder.search.DirectoryScopedSearchTest",
+        "name": "shouldRestrictResultsToSelectedDirectoryTree",
+        "result": "PASS",
+        "message": null
+      },
+      {
+        "class": "org.abitware.docfinder.search.DirectoryScopedSearchTest",
+        "name": "shouldReportInvalidDirectoryWithoutFallingBackToGlobal",
+        "result": "PASS",
+        "message": null
+      },
+      {
+        "class": "org.abitware.docfinder.search.DirectoryScopedSearchTest",
+        "name": "shouldMapProviderIoFailureToSourceConfigUnavailable",
+        "result": "PASS",
+        "message": null
+      },
+      {
+        "class": "org.abitware.docfinder.search.DirectoryScopedSearchTest",
+        "name": "shouldApplyTypeFilterBeforeLimit",
+        "result": "PASS",
+        "message": null
+      },
+      {
+        "class": "org.abitware.docfinder.search.DirectoryScopedSearchTest",
+        "name": "shouldLabelExplicitNameQueryWithinDirectory",
+        "result": "PASS",
+        "message": null
+      },
+      {
+        "class": "org.abitware.docfinder.search.DirectoryScopedSearchTest",
+        "name": "shouldLabelExplicitNameQueryGlobally",
+        "result": "PASS",
+        "message": null
+      },
+      {
+        "class": "org.abitware.docfinder.search.DirectoryScopedSearchTest",
+        "name": "shouldNotMistakePosixStyleNameInPathForNameHit",
+        "result": "PASS",
+        "message": null
+      },
+      {
+        "class": "org.abitware.docfinder.search.DirectoryScopedSearchTest",
+        "name": "shouldLabelExplicitNameAndContent",
+        "result": "PASS",
+        "message": null
+      },
+      {
+        "class": "org.abitware.docfinder.search.DirectoryScopedSearchTest",
+        "name": "shouldRejectDirectoryCoveringOnlyParentsOfSource",
+        "result": "PASS",
+        "message": null
+      },
+      {
+        "class": "org.abitware.docfinder.search.DirectoryScopedSearchTest",
+        "name": "shouldUnifyInvalidQueryWithAndWithoutDirectory",
+        "result": "PASS",
+        "message": null
+      },
+      {
+        "class": "org.abitware.docfinder.search.DirectorySourceValidationTest",
+        "name": "shouldAcceptDescendantAndOverlappingSources",
+        "result": "PASS",
+        "message": null
+      },
+      {
+        "class": "org.abitware.docfinder.search.DirectorySourceValidationTest",
+        "name": "shouldExposeSkippedLineNumbersInSnapshotOnly",
+        "result": "PASS",
+        "message": null
+      },
+      {
+        "class": "org.abitware.docfinder.search.DirectorySourceValidationTest",
+        "name": "shouldDistinguishConfigFailureFromUncoveredDirectory",
+        "result": "PASS",
+        "message": null
+      },
+      {
+        "class": "org.abitware.docfinder.search.FilterStateTest",
+        "name": "shouldNormalizeToLowercase",
+        "result": "PASS",
+        "message": null
+      },
+      {
+        "class": "org.abitware.docfinder.search.FilterStateTest",
+        "name": "shouldParseNullString",
+        "result": "PASS",
+        "message": null
+      },
+      {
+        "class": "org.abitware.docfinder.search.FilterStateTest",
+        "name": "shouldIgnoreEmptyTokens",
+        "result": "PASS",
+        "message": null
+      },
+      {
+        "class": "org.abitware.docfinder.search.FilterStateTest",
+        "name": "shouldParseMultipleExtensions",
+        "result": "PASS",
+        "message": null
+      },
+      {
+        "class": "org.abitware.docfinder.search.FilterStateTest",
+        "name": "shouldParseSingleExtension",
+        "result": "PASS",
+        "message": null
+      },
+      {
+        "class": "org.abitware.docfinder.search.FilterStateTest",
+        "name": "shouldTrimWhitespace",
+        "result": "PASS",
+        "message": null
+      },
+      {
+        "class": "org.abitware.docfinder.search.FilterStateTest",
+        "name": "shouldParseEmptyString",
+        "result": "PASS",
+        "message": null
+      },
+      {
+        "class": "org.abitware.docfinder.search.LuceneSearchServiceTest",
+        "name": "shouldReturnRealPathsFromIndex",
+        "result": "PASS",
+        "message": null
+      },
+      {
+        "class": "org.abitware.docfinder.search.LuceneSearchServiceTest",
+        "name": "shouldPreserveUnscopedModesAndScores",
+        "result": "PASS",
+        "message": null
+      },
+      {
+        "class": "org.abitware.docfinder.search.LuceneSearchServiceTest",
+        "name": "shouldReturnEmptyForBlankQuery",
+        "result": "PASS",
+        "message": null
+      },
+      {
+        "class": "org.abitware.docfinder.search.LuceneSearchServiceTest",
+        "name": "shouldPreserveFiltersAndLimits",
+        "result": "PASS",
+        "message": null
+      },
+      {
+        "class": "org.abitware.docfinder.search.SearchErrorMessagesTest",
+        "name": "shouldFallBackToSearchFailedForNullCode",
+        "result": "PASS",
+        "message": null
+      },
+      {
+        "class": "org.abitware.docfinder.search.SearchErrorMessagesTest",
+        "name": "shouldReturnExactFixedTextForEveryCode",
+        "result": "PASS",
+        "message": null
+      },
+      {
+        "class": "org.abitware.docfinder.search.SearchErrorMessagesTest",
+        "name": "shouldNeverExposeRawExceptionDetails",
+        "result": "PASS",
+        "message": null
+      },
+      {
+        "class": "org.abitware.docfinder.search.SearchRequestTest",
+        "name": "shouldReturnEnums",
+        "result": "PASS",
+        "message": null
+      },
+      {
+        "class": "org.abitware.docfinder.search.SearchRequestTest",
+        "name": "shouldEnforceMinimumLimit",
+        "result": "PASS",
+        "message": null
+      },
+      {
+        "class": "org.abitware.docfinder.search.SearchRequestTest",
+        "name": "shouldDefaultDirectoryPathToNull",
+        "result": "PASS",
+        "message": null
+      },
+      {
+        "class": "org.abitware.docfinder.search.SearchRequestTest",
+        "name": "shouldDefaultToAllAndFuzzy",
+        "result": "PASS",
+        "message": null
+      },
+      {
+        "class": "org.abitware.docfinder.search.SearchRequestTest",
+        "name": "shouldStoreTrimmedDirectoryPath",
+        "result": "PASS",
+        "message": null
+      },
+      {
+        "class": "org.abitware.docfinder.search.SearchRequestTest",
+        "name": "shouldHaveMatchModeEnums",
+        "result": "PASS",
+        "message": null
+      },
+      {
+        "class": "org.abitware.docfinder.search.SearchRequestTest",
+        "name": "shouldBuildSearchRequest",
+        "result": "PASS",
+        "message": null
+      },
+      {
+        "class": "org.abitware.docfinder.search.SearchRequestTest",
+        "name": "shouldNormalizeNullQuery",
+        "result": "PASS",
+        "message": null
+      },
+      {
+        "class": "org.abitware.docfinder.search.SearchServiceNotifyTest",
+        "name": "shouldAllowOverridingNotifyIndexCommit",
+        "result": "PASS",
+        "message": null
+      },
+      {
+        "class": "org.abitware.docfinder.search.SearchServiceNotifyTest",
+        "name": "shouldNotifyWithDefaultNoOp",
+        "result": "PASS",
+        "message": null
+      },
+      {
+        "class": "org.abitware.docfinder.ui.components.DirectoryScopePanelTest",
+        "name": "shouldGreyOutPathControlsForAllSourcesAndEnableForCustom",
+        "result": "PASS",
+        "message": null
+      },
+      {
+        "class": "org.abitware.docfinder.ui.components.DirectoryScopePanelTest",
+        "name": "shouldKeepRemovedSourcePathAsCustomAfterRefresh",
+        "result": "PASS",
+        "message": null
+      },
+      {
+        "class": "org.abitware.docfinder.ui.components.DirectoryScopePanelTest",
+        "name": "shouldToggleSourceWarning",
+        "result": "PASS",
+        "message": null
+      },
+      {
+        "class": "org.abitware.docfinder.ui.components.DirectoryScopePanelTest",
+        "name": "shouldNotCommitOnPlainTyping",
+        "result": "PASS",
+        "message": null
+      },
+      {
+        "class": "org.abitware.docfinder.ui.components.DirectoryScopePanelTest",
+        "name": "shouldShowSourceForEquivalentPath",
+        "result": "PASS",
+        "message": null
+      },
+      {
+        "class": "org.abitware.docfinder.ui.components.DirectoryScopePanelTest",
+        "name": "shouldShowAllSourcesAsAppliedScopeWhenUnrestricted",
+        "result": "PASS",
+        "message": null
+      },
+      {
+        "class": "org.abitware.docfinder.ui.components.DirectoryScopePanelTest",
+        "name": "shouldSyncComboDisplayWhileTypingWithoutCommitting",
+        "result": "PASS",
+        "message": null
+      },
+      {
+        "class": "org.abitware.docfinder.ui.components.DirectoryScopePanelTest",
+        "name": "shouldCommitOnceOnEnter",
+        "result": "PASS",
+        "message": null
+      },
+      {
+        "class": "org.abitware.docfinder.ui.components.DirectoryScopePanelTest",
+        "name": "shouldShowCustomForUnknownOrInvalidInput",
+        "result": "PASS",
+        "message": null
+      },
+      {
+        "class": "org.abitware.docfinder.ui.components.DirectoryScopePanelTest",
+        "name": "shouldShowAllSourcesForEmptyPath",
+        "result": "PASS",
+        "message": null
+      },
+      {
+        "class": "org.abitware.docfinder.ui.components.DirectoryScopePanelTest",
+        "name": "shouldDisableControls",
+        "result": "PASS",
+        "message": null
+      },
+      {
+        "class": "org.abitware.docfinder.ui.components.DirectoryScopePanelTest",
+        "name": "shouldKeepAppliedScopeVisibleWhileEditingDraft",
+        "result": "PASS",
+        "message": null
+      },
+      {
+        "class": "org.abitware.docfinder.ui.components.DirectoryScopePanelTest",
+        "name": "shouldCommitOnceOnClearAndAllSources",
+        "result": "PASS",
+        "message": null
+      },
+      {
+        "class": "org.abitware.docfinder.ui.components.DirectoryScopePanelTest",
+        "name": "shouldCommitOnceOnSourceSelection",
+        "result": "PASS",
+        "message": null
+      },
+      {
+        "class": "org.abitware.docfinder.ui.DirectoryScopeDesktopHarnessTest",
+        "name": "shouldInvalidateCompletedSearchWhenIndexingStartsBeforeDone",
+        "result": "PASS",
+        "message": null
+      },
+      {
+        "class": "org.abitware.docfinder.ui.DirectoryScopeDesktopHarnessTest",
+        "name": "shouldMapEveryCodeToFixedStatusText",
+        "result": "PASS",
+        "message": null
+      },
+      {
+        "class": "org.abitware.docfinder.ui.DirectoryScopeDesktopHarnessTest",
+        "name": "shouldNotAddFailedQueryToHistory",
+        "result": "PASS",
+        "message": null
+      },
+      {
+        "class": "org.abitware.docfinder.ui.DirectoryScopeDesktopHarnessTest",
+        "name": "shouldKeepFailureStatusAfterPartialRecoveryPublish",
+        "result": "PASS",
+        "message": null
+      },
+      {
+        "class": "org.abitware.docfinder.ui.DirectoryScopeDesktopHarnessTest",
+        "name": "shouldRunRealIndexAllLifecycleAndPublishService",
+        "result": "PASS",
+        "message": null
+      },
+      {
+        "class": "org.abitware.docfinder.ui.DirectoryScopeDesktopHarnessTest",
+        "name": "shouldClearPresentedResultsWhenServiceBecomesUnavailable",
+        "result": "PASS",
+        "message": null
+      },
+      {
+        "class": "org.abitware.docfinder.ui.DirectoryScopeDesktopHarnessTest",
+        "name": "shouldNotSilentlyKeepOldServiceWhenOpeningNewLocationFails",
+        "result": "PASS",
+        "message": null
+      },
+      {
+        "class": "org.abitware.docfinder.ui.DirectoryScopeDesktopHarnessTest",
+        "name": "shouldInvalidateCompletedSearchWhenEmptyQueryIsSubmittedBeforeDone",
+        "result": "PASS",
+        "message": null
+      },
+      {
+        "class": "org.abitware.docfinder.ui.DirectoryScopeDesktopHarnessTest",
+        "name": "shouldInvalidateCompletedSearchWhenFullRebuildFailsBeforeDone",
+        "result": "PASS",
+        "message": null
+      },
+      {
+        "class": "org.abitware.docfinder.ui.DirectoryScopeDesktopHarnessTest",
+        "name": "shouldCloseStaleOpenCandidateAndKeepNewest",
+        "result": "PASS",
+        "message": null
+      },
+      {
+        "class": "org.abitware.docfinder.ui.DirectoryScopeDesktopHarnessTest",
+        "name": "shouldReportIndexUnavailableOnFailedOpen",
+        "result": "PASS",
+        "message": null
+      },
+      {
+        "class": "org.abitware.docfinder.ui.DirectoryScopeDesktopHarnessTest",
+        "name": "shouldSyncWebServerWhenLockRecoveryStopsService",
+        "result": "PASS",
+        "message": null
+      },
+      {
+        "class": "org.abitware.docfinder.ui.DirectoryScopeDesktopHarnessTest",
+        "name": "shouldClearPresentedResultsWhenFullRebuildFails",
+        "result": "PASS",
+        "message": null
+      },
+      {
+        "class": "org.abitware.docfinder.ui.DirectoryScopeDesktopHarnessTest",
+        "name": "shouldShowIndexUnavailableNotNoResultsWhenServiceTurnsNull",
+        "result": "PASS",
+        "message": null
+      },
+      {
+        "class": "org.abitware.docfinder.ui.DirectoryScopeDesktopHarnessTest",
+        "name": "shouldNotRepublishServiceAfterFullRebuildFailure",
+        "result": "PASS",
+        "message": null
+      },
+      {
+        "class": "org.abitware.docfinder.ui.DirectoryScopeDesktopHarnessTest",
+        "name": "shouldLockFiltersAndScopeControlsWhileIndexing",
+        "result": "PASS",
+        "message": null
+      },
+      {
+        "class": "org.abitware.docfinder.ui.DirectoryScopeQuickActionsTest",
+        "name": "shouldDisableActionsWhileIndexing",
+        "result": "PASS",
+        "message": null
+      },
+      {
+        "class": "org.abitware.docfinder.ui.DirectoryScopeQuickActionsTest",
+        "name": "shouldHandleQuotedPathWithoutBreaking",
+        "result": "PASS",
+        "message": null
+      },
+      {
+        "class": "org.abitware.docfinder.ui.DirectoryScopeQuickActionsTest",
+        "name": "shouldUseParentForFileRow",
+        "result": "PASS",
+        "message": null
+      },
+      {
+        "class": "org.abitware.docfinder.ui.DirectoryScopeQuickActionsTest",
+        "name": "shouldRepeatOnRootItselfWithoutLooping",
+        "result": "PASS",
+        "message": null
+      },
+      {
+        "class": "org.abitware.docfinder.ui.DirectoryScopeQuickActionsTest",
+        "name": "shouldMapSortedViewRowToFolderAndCommitOnce",
+        "result": "PASS",
+        "message": null
+      },
+      {
+        "class": "org.abitware.docfinder.util.AppPathsTest",
+        "name": "shouldBeNormalized",
+        "result": "PASS",
+        "message": null
+      },
+      {
+        "class": "org.abitware.docfinder.util.AppPathsTest",
+        "name": "shouldEndWithDocfinderSegment",
+        "result": "PASS",
+        "message": null
+      },
+      {
+        "class": "org.abitware.docfinder.util.AppPathsTest",
+        "name": "shouldReturnAbsolutePath",
+        "result": "PASS",
+        "message": null
+      },
+      {
+        "class": "org.abitware.docfinder.util.LegacyMigrationTest",
+        "name": "shouldSkipWhenSentinelExists",
+        "result": "PASS",
+        "message": null
+      },
+      {
+        "class": "org.abitware.docfinder.util.LegacyMigrationTest",
+        "name": "shouldNotOverwriteExistingTargetFiles",
+        "result": "PASS",
+        "message": null
+      },
+      {
+        "class": "org.abitware.docfinder.util.LegacyMigrationTest",
+        "name": "shouldNotMigrateWhenLegacyDirEmpty",
+        "result": "PASS",
+        "message": null
+      },
+      {
+        "class": "org.abitware.docfinder.util.LegacyMigrationTest",
+        "name": "shouldCopyLegacyFilesAndWriteSentinel",
+        "result": "PASS",
+        "message": null
+      },
+      {
+        "class": "org.abitware.docfinder.util.LegacyMigrationTest",
+        "name": "shouldNotMigrateWhenLegacyDirMissing",
+        "result": "PASS",
+        "message": null
+      },
+      {
+        "class": "org.abitware.docfinder.util.PathScopeTest",
+        "name": "shouldKeepPosixCaseAndSeparators",
+        "result": "SKIP",
+        "message": null
+      },
+      {
+        "class": "org.abitware.docfinder.util.PathScopeTest",
+        "name": "shouldBuildDescendantPrefix",
+        "result": "PASS",
+        "message": null
+      },
+      {
+        "class": "org.abitware.docfinder.util.PathScopeTest",
+        "name": "shouldMatchIndexedAndQueryNormalization",
+        "result": "PASS",
+        "message": null
+      },
+      {
+        "class": "org.abitware.docfinder.util.PathScopeTest",
+        "name": "shouldRejectInvalidWindowsDirectory",
+        "result": "PASS",
+        "message": null
+      },
+      {
+        "class": "org.abitware.docfinder.util.PathScopeTest",
+        "name": "shouldReturnNullForBlankDirectory",
+        "result": "PASS",
+        "message": null
+      },
+      {
+        "class": "org.abitware.docfinder.util.PathScopeTest",
+        "name": "shouldNormalizeEquivalentWindowsForms",
+        "result": "PASS",
+        "message": null
+      },
+      {
+        "class": "org.abitware.docfinder.util.PathScopeTest",
+        "name": "shouldNormalizeDriveRootAndUnc",
+        "result": "PASS",
+        "message": null
+      },
+      {
+        "class": "org.abitware.docfinder.util.TestEnvironmentIsolationTest",
+        "name": "shouldPreserveExternalArgLineProbe",
+        "result": "PASS",
+        "message": null
+      },
+      {
+        "class": "org.abitware.docfinder.util.TestEnvironmentIsolationTest",
+        "name": "shouldRunForkWithIsolatedUserHome",
+        "result": "PASS",
+        "message": null
+      },
+      {
+        "class": "org.abitware.docfinder.util.TestEnvironmentIsolationTest",
+        "name": "shouldRunForkWithIsolatedWorkingDirectory",
+        "result": "PASS",
+        "message": null
+      },
+      {
+        "class": "org.abitware.docfinder.web.DirectoryScopeEndToEndTest",
+        "name": "shouldServeCommittedDataAfterPartialCommitFailure",
+        "result": "PASS",
+        "message": null
+      },
+      {
+        "class": "org.abitware.docfinder.web.DirectoryScopeEndToEndTest",
+        "name": "shouldSearchWithinDirectoryOverRealHttpChain",
+        "result": "PASS",
+        "message": null
+      },
+      {
+        "class": "org.abitware.docfinder.web.DirectoryScopeEndToEndTest",
+        "name": "shouldExposeUpsertedFileAfterCommit",
+        "result": "PASS",
+        "message": null
+      },
+      {
+        "class": "org.abitware.docfinder.web.DirectoryScopeEndToEndTest",
+        "name": "shouldCycleThroughServiceAvailabilityStates",
+        "result": "PASS",
+        "message": null
+      },
+      {
+        "class": "org.abitware.docfinder.web.DirectoryScopeEndToEndTest",
+        "name": "shouldReflectSourceListChangesWithoutRestart",
+        "result": "PASS",
+        "message": null
+      },
+      {
+        "class": "org.abitware.docfinder.web.DirectoryScopeEndToEndTest",
+        "name": "shouldHandleUnreachableSourceRootWithoutFailingOthers",
+        "result": "PASS",
+        "message": null
+      },
+      {
+        "class": "org.abitware.docfinder.web.DirectoryScopeEndToEndTest",
+        "name": "shouldKeepStaleDocSearchableUntilReindex",
+        "result": "PASS",
+        "message": null
+      },
+      {
+        "class": "org.abitware.docfinder.web.DirectoryScopeEndToEndTest",
+        "name": "shouldMapProviderFailureTo503",
+        "result": "PASS",
+        "message": null
+      },
+      {
+        "class": "org.abitware.docfinder.web.SearchHandlerTest",
+        "name": "shouldEscapeControlCharactersAndBackslashesInJson",
+        "result": "PASS",
+        "message": null
+      },
+      {
+        "class": "org.abitware.docfinder.web.SearchHandlerTest",
+        "name": "shouldSerializeScoresIndependentlyOfFormatLocale",
+        "result": "PASS",
+        "message": null
+      },
+      {
+        "class": "org.abitware.docfinder.web.SearchHandlerTest",
+        "name": "shouldPreserveNonEnglishTextInJson",
+        "result": "PASS",
+        "message": null
+      },
+      {
+        "class": "org.abitware.docfinder.web.SearchHandlerTest",
+        "name": "shouldMapAllEightCodesToStatusAndFixedMessage",
+        "result": "PASS",
+        "message": null
+      },
+      {
+        "class": "org.abitware.docfinder.web.SearchHandlerTest",
+        "name": "shouldReturnEmptySuccessForBlankQueryEvenWhenServiceIsNull",
+        "result": "PASS",
+        "message": null
+      },
+      {
+        "class": "org.abitware.docfinder.web.SearchHandlerTest",
+        "name": "shouldEmitNullParentForPosixRoot",
+        "result": "SKIP",
+        "message": null
+      },
+      {
+        "class": "org.abitware.docfinder.web.SearchHandlerTest",
+        "name": "shouldLeaveDirectoryNullWhenParamAbsent",
+        "result": "PASS",
+        "message": null
+      },
+      {
+        "class": "org.abitware.docfinder.web.SearchHandlerTest",
+        "name": "shouldReturn503IndexUnavailableWhenServiceNull",
+        "result": "PASS",
+        "message": null
+      },
+      {
+        "class": "org.abitware.docfinder.web.SearchHandlerTest",
+        "name": "shouldEmitNullParentDirectoryForRootOrUnparseable",
+        "result": "PASS",
+        "message": null
+      },
+      {
+        "class": "org.abitware.docfinder.web.SearchHandlerTest",
+        "name": "shouldMapUnknownExceptionToSearchFailedWithoutLeaking",
+        "result": "PASS",
+        "message": null
+      },
+      {
+        "class": "org.abitware.docfinder.web.SearchHandlerTest",
+        "name": "shouldMapInvalidQueryConsistentlyWithAndWithoutDirectory",
+        "result": "PASS",
+        "message": null
+      },
+      {
+        "class": "org.abitware.docfinder.web.SearchHandlerTest",
+        "name": "shouldEmitParentDirectoryForUncPath",
+        "result": "PASS",
+        "message": null
+      },
+      {
+        "class": "org.abitware.docfinder.web.SearchHandlerTest",
+        "name": "shouldIncludeParentDirectoryPerResult",
+        "result": "PASS",
+        "message": null
+      },
+      {
+        "class": "org.abitware.docfinder.web.SearchHandlerTest",
+        "name": "shouldPassDirectoryParamToRequest",
+        "result": "PASS",
+        "message": null
+      },
+      {
+        "class": "org.abitware.docfinder.web.ShareManagerTest",
+        "name": "shouldExpireImmediately",
+        "result": "PASS",
+        "message": null
+      },
+      {
+        "class": "org.abitware.docfinder.web.ShareManagerTest",
+        "name": "shouldEnforceMaxDownloads",
+        "result": "PASS",
+        "message": null
+      },
+      {
+        "class": "org.abitware.docfinder.web.ShareManagerTest",
+        "name": "shouldCreateShareWithPassword",
+        "result": "PASS",
+        "message": null
+      },
+      {
+        "class": "org.abitware.docfinder.web.ShareManagerTest",
+        "name": "shouldReturnNullForUnknownToken",
+        "result": "PASS",
+        "message": null
+      },
+      {
+        "class": "org.abitware.docfinder.web.ShareManagerTest",
+        "name": "shouldCreateShareWithToken",
+        "result": "PASS",
+        "message": null
+      },
+      {
+        "class": "org.abitware.docfinder.web.ShareManagerTest",
+        "name": "shouldCleanExpiredEntries",
+        "result": "PASS",
+        "message": null
+      },
+      {
+        "class": "org.abitware.docfinder.web.ShareManagerTest",
+        "name": "shouldRecordDownloads",
+        "result": "PASS",
+        "message": null
+      },
+      {
+        "class": "org.abitware.docfinder.web.ShareManagerTest",
+        "name": "shouldRevokeShare",
+        "result": "PASS",
+        "message": null
+      },
+      {
+        "class": "org.abitware.docfinder.web.ShareManagerTest",
+        "name": "shouldListMultipleShares",
+        "result": "PASS",
+        "message": null
+      },
+      {
+        "class": "org.abitware.docfinder.web.ShareManagerTest",
+        "name": "shouldDetectExpiredShare",
+        "result": "PASS",
+        "message": null
+      },
+      {
+        "class": "org.abitware.docfinder.web.ShareManagerTest",
+        "name": "shouldValidateShareWithCorrectPassword",
+        "result": "PASS",
+        "message": null
+      },
+      {
+        "class": "org.abitware.docfinder.web.ShareManagerTest",
+        "name": "shouldPersistAndReload",
+        "result": "PASS",
+        "message": null
+      },
+      {
+        "class": "org.abitware.docfinder.web.ShareManagerTest",
+        "name": "shouldRejectShareWithWrongPassword",
+        "result": "PASS",
+        "message": null
+      },
+      {
+        "class": "org.abitware.docfinder.web.ShareManagerTest",
+        "name": "shouldRequirePasswordOnlyWhenSet",
+        "result": "PASS",
+        "message": null
+      },
+      {
+        "class": "org.abitware.docfinder.web.ShareManagerTest",
+        "name": "shouldValidateShareWithNoPassword",
+        "result": "PASS",
+        "message": null
+      },
+      {
+        "class": "org.abitware.docfinder.web.WebAssetsOfflineTest",
+        "name": "shouldNotUseExternalHttpResourcesInBundledWebPages",
+        "result": "PASS",
+        "message": null
+      },
+      {
+        "class": "org.abitware.docfinder.web.WebAssetsOfflineTest",
+        "name": "shouldBundleRequiredVendorAssetsForOfflinePreview",
+        "result": "PASS",
+        "message": null
+      },
+      {
+        "class": "org.abitware.docfinder.web.WebAssetsOfflineTest",
+        "name": "shouldExposeDirectoryScopeControlsInIndexPage",
+        "result": "PASS",
+        "message": null
+      }
+    ]
+  },
+  "java8": {
+    "totals": {
+      "tests": 164,
+      "failures": 0,
+      "errors": 0,
+      "skipped": 2
+    },
+    "environment": {
+      "java.version": "1.8.0_40",
+      "java.home": "D:\\java\\java8",
+      "user.dir": "C:\\Users\\Administrator\\AppData\\Local\\Temp\\docfinder-reverify-20261024-ap2igz6p\\checkout\\target\\test-classes",
+      "user.home": "C:\\Users\\Administrator\\AppData\\Local\\Temp\\docfinder-reverify-20261024-ap2igz6p\\checkout\\target/test-home",
+      "docfinder.argline.probe": "present"
+    },
+    "cases": [
+      {
+        "class": "org.abitware.docfinder.index.IndexSettingsTest",
+        "name": "shouldHaveDefaultParseTimeoutSec",
+        "result": "PASS",
+        "message": null
+      },
+      {
+        "class": "org.abitware.docfinder.index.IndexSettingsTest",
+        "name": "shouldAllowDisablingNrtCache",
+        "result": "PASS",
+        "message": null
+      },
+      {
+        "class": "org.abitware.docfinder.index.IndexSettingsTest",
+        "name": "shouldHaveDefaultMaxFileMB",
+        "result": "PASS",
+        "message": null
+      },
+      {
+        "class": "org.abitware.docfinder.index.IndexSettingsTest",
+        "name": "shouldHaveDefaultNrtCacheMaxMB",
+        "result": "PASS",
+        "message": null
+      },
+      {
+        "class": "org.abitware.docfinder.index.IndexSettingsTest",
+        "name": "shouldHaveDefaultMaxExtractChars",
+        "result": "PASS",
+        "message": null
+      },
+      {
+        "class": "org.abitware.docfinder.index.IndexSettingsTest",
+        "name": "shouldHaveDefaultPreviewTimeoutSec",
+        "result": "PASS",
+        "message": null
+      },
+      {
+        "class": "org.abitware.docfinder.index.PathScopeIndexFieldTest",
+        "name": "shouldSupportPrefixQueryForDescendants",
+        "result": "PASS",
+        "message": null
+      },
+      {
+        "class": "org.abitware.docfinder.index.PathScopeIndexFieldTest",
+        "name": "shouldWritePathScopeViaDocumentBuilder",
+        "result": "PASS",
+        "message": null
+      },
+      {
+        "class": "org.abitware.docfinder.index.PathScopeIndexFieldTest",
+        "name": "shouldWritePathScopeOnUpsert",
+        "result": "PASS",
+        "message": null
+      },
+      {
+        "class": "org.abitware.docfinder.index.PathScopeIndexFieldTest",
+        "name": "shouldWritePathScopeForFilesAndFolders",
+        "result": "PASS",
+        "message": null
+      },
+      {
+        "class": "org.abitware.docfinder.index.SourceManagerSearchRootsTest",
+        "name": "shouldFailOnAccessDeniedNotReportEmpty",
+        "result": "PASS",
+        "message": null
+      },
+      {
+        "class": "org.abitware.docfinder.index.SourceManagerSearchRootsTest",
+        "name": "shouldSkipBadLinesAndKeepValid",
+        "result": "PASS",
+        "message": null
+      },
+      {
+        "class": "org.abitware.docfinder.index.SourceManagerSearchRootsTest",
+        "name": "shouldReadLegacyAndNewFormats",
+        "result": "PASS",
+        "message": null
+      },
+      {
+        "class": "org.abitware.docfinder.index.SourceManagerSearchRootsTest",
+        "name": "shouldReturnEmptyForMissingOrCommentOnlyFile",
+        "result": "PASS",
+        "message": null
+      },
+      {
+        "class": "org.abitware.docfinder.index.SourceManagerSearchRootsTest",
+        "name": "shouldFailOnUnreadableFile",
+        "result": "PASS",
+        "message": null
+      },
+      {
+        "class": "org.abitware.docfinder.index.SourceManagerSearchRootsTest",
+        "name": "shouldFailWhenAllDataLinesInvalid",
+        "result": "PASS",
+        "message": null
+      },
+      {
+        "class": "org.abitware.docfinder.index.SourceManagerSearchRootsTest",
+        "name": "shouldReturnUnmodifiableSnapshot",
+        "result": "PASS",
+        "message": null
+      },
+      {
+        "class": "org.abitware.docfinder.search.DirectoryScopeCompatibilityTest",
+        "name": "shouldNotCacheWhenReaderHelperIsNull",
+        "result": "PASS",
+        "message": null
+      },
+      {
+        "class": "org.abitware.docfinder.search.DirectoryScopeCompatibilityTest",
+        "name": "shouldSurviveConcurrentRefreshAndClose",
+        "result": "PASS",
+        "message": null
+      },
+      {
+        "class": "org.abitware.docfinder.search.DirectoryScopeCompatibilityTest",
+        "name": "shouldReuseVerdictPerReaderAndEvictOnReaderClose",
+        "result": "PASS",
+        "message": null
+      },
+      {
+        "class": "org.abitware.docfinder.search.DirectoryScopeCompatibilityTest",
+        "name": "shouldNotPublishVerdictComputedBeforeCloseAfterClose",
+        "result": "PASS",
+        "message": null
+      },
+      {
+        "class": "org.abitware.docfinder.search.DirectoryScopeCompatibilityTest",
+        "name": "shouldAllowScopedSearchWhenOnlyDeletedDocsLackField",
+        "result": "PASS",
+        "message": null
+      },
+      {
+        "class": "org.abitware.docfinder.search.DirectoryScopeCompatibilityTest",
+        "name": "shouldPassEmptyLiveReader",
+        "result": "PASS",
+        "message": null
+      },
+      {
+        "class": "org.abitware.docfinder.search.DirectoryScopeCompatibilityTest",
+        "name": "shouldNotCacheIoFailuresAndRecoverOnNextCheck",
+        "result": "PASS",
+        "message": null
+      },
+      {
+        "class": "org.abitware.docfinder.search.DirectoryScopeCompatibilityTest",
+        "name": "shouldKeepUnscopedSearchWorkingOnOldIndex",
+        "result": "PASS",
+        "message": null
+      },
+      {
+        "class": "org.abitware.docfinder.search.DirectoryScopeCompatibilityTest",
+        "name": "shouldDistinguishDocCountFromNumDocs",
+        "result": "PASS",
+        "message": null
+      },
+      {
+        "class": "org.abitware.docfinder.search.DirectoryScopeCompatibilityTest",
+        "name": "shouldDecideByLiveDocsNotDocStats",
+        "result": "PASS",
+        "message": null
+      },
+      {
+        "class": "org.abitware.docfinder.search.DirectoryScopeCompatibilityTest",
+        "name": "shouldRequireRebuildWhenOfflineSourceLeavesLegacyDocs",
+        "result": "PASS",
+        "message": null
+      },
+      {
+        "class": "org.abitware.docfinder.search.DirectoryScopeCompatibilityTest",
+        "name": "shouldRecheckAfterReaderRefresh",
+        "result": "PASS",
+        "message": null
+      },
+      {
+        "class": "org.abitware.docfinder.search.DirectoryScopeCompatibilityTest",
+        "name": "shouldRejectScopedSearchOnPureOldIndex",
+        "result": "PASS",
+        "message": null
+      },
+      {
+        "class": "org.abitware.docfinder.search.DirectoryScopeCompatibilityTest",
+        "name": "shouldRejectMixedIndexEvenIfScopeDocsAreNew",
+        "result": "PASS",
+        "message": null
+      },
+      {
+        "class": "org.abitware.docfinder.search.DirectoryScopedSearchTest",
+        "name": "shouldReturnZeroHitsForValidEmptyScope",
+        "result": "PASS",
+        "message": null
+      },
+      {
+        "class": "org.abitware.docfinder.search.DirectoryScopedSearchTest",
+        "name": "shouldInvokeProviderOnceAndNotForUnscopedOrBlank",
+        "result": "PASS",
+        "message": null
+      },
+      {
+        "class": "org.abitware.docfinder.search.DirectoryScopedSearchTest",
+        "name": "shouldIncludeSelectedRootItselfForFolderSearch",
+        "result": "PASS",
+        "message": null
+      },
+      {
+        "class": "org.abitware.docfinder.search.DirectoryScopedSearchTest",
+        "name": "shouldRestrictResultsToSelectedDirectoryTree",
+        "result": "PASS",
+        "message": null
+      },
+      {
+        "class": "org.abitware.docfinder.search.DirectoryScopedSearchTest",
+        "name": "shouldReportInvalidDirectoryWithoutFallingBackToGlobal",
+        "result": "PASS",
+        "message": null
+      },
+      {
+        "class": "org.abitware.docfinder.search.DirectoryScopedSearchTest",
+        "name": "shouldMapProviderIoFailureToSourceConfigUnavailable",
+        "result": "PASS",
+        "message": null
+      },
+      {
+        "class": "org.abitware.docfinder.search.DirectoryScopedSearchTest",
+        "name": "shouldApplyTypeFilterBeforeLimit",
+        "result": "PASS",
+        "message": null
+      },
+      {
+        "class": "org.abitware.docfinder.search.DirectoryScopedSearchTest",
+        "name": "shouldLabelExplicitNameQueryWithinDirectory",
+        "result": "PASS",
+        "message": null
+      },
+      {
+        "class": "org.abitware.docfinder.search.DirectoryScopedSearchTest",
+        "name": "shouldLabelExplicitNameQueryGlobally",
+        "result": "PASS",
+        "message": null
+      },
+      {
+        "class": "org.abitware.docfinder.search.DirectoryScopedSearchTest",
+        "name": "shouldNotMistakePosixStyleNameInPathForNameHit",
+        "result": "PASS",
+        "message": null
+      },
+      {
+        "class": "org.abitware.docfinder.search.DirectoryScopedSearchTest",
+        "name": "shouldLabelExplicitNameAndContent",
+        "result": "PASS",
+        "message": null
+      },
+      {
+        "class": "org.abitware.docfinder.search.DirectoryScopedSearchTest",
+        "name": "shouldRejectDirectoryCoveringOnlyParentsOfSource",
+        "result": "PASS",
+        "message": null
+      },
+      {
+        "class": "org.abitware.docfinder.search.DirectoryScopedSearchTest",
+        "name": "shouldUnifyInvalidQueryWithAndWithoutDirectory",
+        "result": "PASS",
+        "message": null
+      },
+      {
+        "class": "org.abitware.docfinder.search.DirectorySourceValidationTest",
+        "name": "shouldAcceptDescendantAndOverlappingSources",
+        "result": "PASS",
+        "message": null
+      },
+      {
+        "class": "org.abitware.docfinder.search.DirectorySourceValidationTest",
+        "name": "shouldExposeSkippedLineNumbersInSnapshotOnly",
+        "result": "PASS",
+        "message": null
+      },
+      {
+        "class": "org.abitware.docfinder.search.DirectorySourceValidationTest",
+        "name": "shouldDistinguishConfigFailureFromUncoveredDirectory",
+        "result": "PASS",
+        "message": null
+      },
+      {
+        "class": "org.abitware.docfinder.search.FilterStateTest",
+        "name": "shouldNormalizeToLowercase",
+        "result": "PASS",
+        "message": null
+      },
+      {
+        "class": "org.abitware.docfinder.search.FilterStateTest",
+        "name": "shouldParseNullString",
+        "result": "PASS",
+        "message": null
+      },
+      {
+        "class": "org.abitware.docfinder.search.FilterStateTest",
+        "name": "shouldIgnoreEmptyTokens",
+        "result": "PASS",
+        "message": null
+      },
+      {
+        "class": "org.abitware.docfinder.search.FilterStateTest",
+        "name": "shouldParseMultipleExtensions",
+        "result": "PASS",
+        "message": null
+      },
+      {
+        "class": "org.abitware.docfinder.search.FilterStateTest",
+        "name": "shouldParseSingleExtension",
+        "result": "PASS",
+        "message": null
+      },
+      {
+        "class": "org.abitware.docfinder.search.FilterStateTest",
+        "name": "shouldTrimWhitespace",
+        "result": "PASS",
+        "message": null
+      },
+      {
+        "class": "org.abitware.docfinder.search.FilterStateTest",
+        "name": "shouldParseEmptyString",
+        "result": "PASS",
+        "message": null
+      },
+      {
+        "class": "org.abitware.docfinder.search.LuceneSearchServiceTest",
+        "name": "shouldReturnRealPathsFromIndex",
+        "result": "PASS",
+        "message": null
+      },
+      {
+        "class": "org.abitware.docfinder.search.LuceneSearchServiceTest",
+        "name": "shouldPreserveUnscopedModesAndScores",
+        "result": "PASS",
+        "message": null
+      },
+      {
+        "class": "org.abitware.docfinder.search.LuceneSearchServiceTest",
+        "name": "shouldReturnEmptyForBlankQuery",
+        "result": "PASS",
+        "message": null
+      },
+      {
+        "class": "org.abitware.docfinder.search.LuceneSearchServiceTest",
+        "name": "shouldPreserveFiltersAndLimits",
+        "result": "PASS",
+        "message": null
+      },
+      {
+        "class": "org.abitware.docfinder.search.SearchErrorMessagesTest",
+        "name": "shouldFallBackToSearchFailedForNullCode",
+        "result": "PASS",
+        "message": null
+      },
+      {
+        "class": "org.abitware.docfinder.search.SearchErrorMessagesTest",
+        "name": "shouldReturnExactFixedTextForEveryCode",
+        "result": "PASS",
+        "message": null
+      },
+      {
+        "class": "org.abitware.docfinder.search.SearchErrorMessagesTest",
+        "name": "shouldNeverExposeRawExceptionDetails",
+        "result": "PASS",
+        "message": null
+      },
+      {
+        "class": "org.abitware.docfinder.search.SearchRequestTest",
+        "name": "shouldReturnEnums",
+        "result": "PASS",
+        "message": null
+      },
+      {
+        "class": "org.abitware.docfinder.search.SearchRequestTest",
+        "name": "shouldEnforceMinimumLimit",
+        "result": "PASS",
+        "message": null
+      },
+      {
+        "class": "org.abitware.docfinder.search.SearchRequestTest",
+        "name": "shouldDefaultDirectoryPathToNull",
+        "result": "PASS",
+        "message": null
+      },
+      {
+        "class": "org.abitware.docfinder.search.SearchRequestTest",
+        "name": "shouldDefaultToAllAndFuzzy",
+        "result": "PASS",
+        "message": null
+      },
+      {
+        "class": "org.abitware.docfinder.search.SearchRequestTest",
+        "name": "shouldStoreTrimmedDirectoryPath",
+        "result": "PASS",
+        "message": null
+      },
+      {
+        "class": "org.abitware.docfinder.search.SearchRequestTest",
+        "name": "shouldHaveMatchModeEnums",
+        "result": "PASS",
+        "message": null
+      },
+      {
+        "class": "org.abitware.docfinder.search.SearchRequestTest",
+        "name": "shouldBuildSearchRequest",
+        "result": "PASS",
+        "message": null
+      },
+      {
+        "class": "org.abitware.docfinder.search.SearchRequestTest",
+        "name": "shouldNormalizeNullQuery",
+        "result": "PASS",
+        "message": null
+      },
+      {
+        "class": "org.abitware.docfinder.search.SearchServiceNotifyTest",
+        "name": "shouldAllowOverridingNotifyIndexCommit",
+        "result": "PASS",
+        "message": null
+      },
+      {
+        "class": "org.abitware.docfinder.search.SearchServiceNotifyTest",
+        "name": "shouldNotifyWithDefaultNoOp",
+        "result": "PASS",
+        "message": null
+      },
+      {
+        "class": "org.abitware.docfinder.ui.components.DirectoryScopePanelTest",
+        "name": "shouldGreyOutPathControlsForAllSourcesAndEnableForCustom",
+        "result": "PASS",
+        "message": null
+      },
+      {
+        "class": "org.abitware.docfinder.ui.components.DirectoryScopePanelTest",
+        "name": "shouldKeepRemovedSourcePathAsCustomAfterRefresh",
+        "result": "PASS",
+        "message": null
+      },
+      {
+        "class": "org.abitware.docfinder.ui.components.DirectoryScopePanelTest",
+        "name": "shouldToggleSourceWarning",
+        "result": "PASS",
+        "message": null
+      },
+      {
+        "class": "org.abitware.docfinder.ui.components.DirectoryScopePanelTest",
+        "name": "shouldNotCommitOnPlainTyping",
+        "result": "PASS",
+        "message": null
+      },
+      {
+        "class": "org.abitware.docfinder.ui.components.DirectoryScopePanelTest",
+        "name": "shouldShowSourceForEquivalentPath",
+        "result": "PASS",
+        "message": null
+      },
+      {
+        "class": "org.abitware.docfinder.ui.components.DirectoryScopePanelTest",
+        "name": "shouldShowAllSourcesAsAppliedScopeWhenUnrestricted",
+        "result": "PASS",
+        "message": null
+      },
+      {
+        "class": "org.abitware.docfinder.ui.components.DirectoryScopePanelTest",
+        "name": "shouldSyncComboDisplayWhileTypingWithoutCommitting",
+        "result": "PASS",
+        "message": null
+      },
+      {
+        "class": "org.abitware.docfinder.ui.components.DirectoryScopePanelTest",
+        "name": "shouldCommitOnceOnEnter",
+        "result": "PASS",
+        "message": null
+      },
+      {
+        "class": "org.abitware.docfinder.ui.components.DirectoryScopePanelTest",
+        "name": "shouldShowCustomForUnknownOrInvalidInput",
+        "result": "PASS",
+        "message": null
+      },
+      {
+        "class": "org.abitware.docfinder.ui.components.DirectoryScopePanelTest",
+        "name": "shouldShowAllSourcesForEmptyPath",
+        "result": "PASS",
+        "message": null
+      },
+      {
+        "class": "org.abitware.docfinder.ui.components.DirectoryScopePanelTest",
+        "name": "shouldDisableControls",
+        "result": "PASS",
+        "message": null
+      },
+      {
+        "class": "org.abitware.docfinder.ui.components.DirectoryScopePanelTest",
+        "name": "shouldKeepAppliedScopeVisibleWhileEditingDraft",
+        "result": "PASS",
+        "message": null
+      },
+      {
+        "class": "org.abitware.docfinder.ui.components.DirectoryScopePanelTest",
+        "name": "shouldCommitOnceOnClearAndAllSources",
+        "result": "PASS",
+        "message": null
+      },
+      {
+        "class": "org.abitware.docfinder.ui.components.DirectoryScopePanelTest",
+        "name": "shouldCommitOnceOnSourceSelection",
+        "result": "PASS",
+        "message": null
+      },
+      {
+        "class": "org.abitware.docfinder.ui.DirectoryScopeDesktopHarnessTest",
+        "name": "shouldInvalidateCompletedSearchWhenIndexingStartsBeforeDone",
+        "result": "PASS",
+        "message": null
+      },
+      {
+        "class": "org.abitware.docfinder.ui.DirectoryScopeDesktopHarnessTest",
+        "name": "shouldMapEveryCodeToFixedStatusText",
+        "result": "PASS",
+        "message": null
+      },
+      {
+        "class": "org.abitware.docfinder.ui.DirectoryScopeDesktopHarnessTest",
+        "name": "shouldNotAddFailedQueryToHistory",
+        "result": "PASS",
+        "message": null
+      },
+      {
+        "class": "org.abitware.docfinder.ui.DirectoryScopeDesktopHarnessTest",
+        "name": "shouldKeepFailureStatusAfterPartialRecoveryPublish",
+        "result": "PASS",
+        "message": null
+      },
+      {
+        "class": "org.abitware.docfinder.ui.DirectoryScopeDesktopHarnessTest",
+        "name": "shouldRunRealIndexAllLifecycleAndPublishService",
+        "result": "PASS",
+        "message": null
+      },
+      {
+        "class": "org.abitware.docfinder.ui.DirectoryScopeDesktopHarnessTest",
+        "name": "shouldClearPresentedResultsWhenServiceBecomesUnavailable",
+        "result": "PASS",
+        "message": null
+      },
+      {
+        "class": "org.abitware.docfinder.ui.DirectoryScopeDesktopHarnessTest",
+        "name": "shouldNotSilentlyKeepOldServiceWhenOpeningNewLocationFails",
+        "result": "PASS",
+        "message": null
+      },
+      {
+        "class": "org.abitware.docfinder.ui.DirectoryScopeDesktopHarnessTest",
+        "name": "shouldInvalidateCompletedSearchWhenEmptyQueryIsSubmittedBeforeDone",
+        "result": "PASS",
+        "message": null
+      },
+      {
+        "class": "org.abitware.docfinder.ui.DirectoryScopeDesktopHarnessTest",
+        "name": "shouldInvalidateCompletedSearchWhenFullRebuildFailsBeforeDone",
+        "result": "PASS",
+        "message": null
+      },
+      {
+        "class": "org.abitware.docfinder.ui.DirectoryScopeDesktopHarnessTest",
+        "name": "shouldCloseStaleOpenCandidateAndKeepNewest",
+        "result": "PASS",
+        "message": null
+      },
+      {
+        "class": "org.abitware.docfinder.ui.DirectoryScopeDesktopHarnessTest",
+        "name": "shouldReportIndexUnavailableOnFailedOpen",
+        "result": "PASS",
+        "message": null
+      },
+      {
+        "class": "org.abitware.docfinder.ui.DirectoryScopeDesktopHarnessTest",
+        "name": "shouldSyncWebServerWhenLockRecoveryStopsService",
+        "result": "PASS",
+        "message": null
+      },
+      {
+        "class": "org.abitware.docfinder.ui.DirectoryScopeDesktopHarnessTest",
+        "name": "shouldClearPresentedResultsWhenFullRebuildFails",
+        "result": "PASS",
+        "message": null
+      },
+      {
+        "class": "org.abitware.docfinder.ui.DirectoryScopeDesktopHarnessTest",
+        "name": "shouldShowIndexUnavailableNotNoResultsWhenServiceTurnsNull",
+        "result": "PASS",
+        "message": null
+      },
+      {
+        "class": "org.abitware.docfinder.ui.DirectoryScopeDesktopHarnessTest",
+        "name": "shouldNotRepublishServiceAfterFullRebuildFailure",
+        "result": "PASS",
+        "message": null
+      },
+      {
+        "class": "org.abitware.docfinder.ui.DirectoryScopeDesktopHarnessTest",
+        "name": "shouldLockFiltersAndScopeControlsWhileIndexing",
+        "result": "PASS",
+        "message": null
+      },
+      {
+        "class": "org.abitware.docfinder.ui.DirectoryScopeQuickActionsTest",
+        "name": "shouldDisableActionsWhileIndexing",
+        "result": "PASS",
+        "message": null
+      },
+      {
+        "class": "org.abitware.docfinder.ui.DirectoryScopeQuickActionsTest",
+        "name": "shouldHandleQuotedPathWithoutBreaking",
+        "result": "PASS",
+        "message": null
+      },
+      {
+        "class": "org.abitware.docfinder.ui.DirectoryScopeQuickActionsTest",
+        "name": "shouldUseParentForFileRow",
+        "result": "PASS",
+        "message": null
+      },
+      {
+        "class": "org.abitware.docfinder.ui.DirectoryScopeQuickActionsTest",
+        "name": "shouldRepeatOnRootItselfWithoutLooping",
+        "result": "PASS",
+        "message": null
+      },
+      {
+        "class": "org.abitware.docfinder.ui.DirectoryScopeQuickActionsTest",
+        "name": "shouldMapSortedViewRowToFolderAndCommitOnce",
+        "result": "PASS",
+        "message": null
+      },
+      {
+        "class": "org.abitware.docfinder.util.AppPathsTest",
+        "name": "shouldBeNormalized",
+        "result": "PASS",
+        "message": null
+      },
+      {
+        "class": "org.abitware.docfinder.util.AppPathsTest",
+        "name": "shouldEndWithDocfinderSegment",
+        "result": "PASS",
+        "message": null
+      },
+      {
+        "class": "org.abitware.docfinder.util.AppPathsTest",
+        "name": "shouldReturnAbsolutePath",
+        "result": "PASS",
+        "message": null
+      },
+      {
+        "class": "org.abitware.docfinder.util.LegacyMigrationTest",
+        "name": "shouldSkipWhenSentinelExists",
+        "result": "PASS",
+        "message": null
+      },
+      {
+        "class": "org.abitware.docfinder.util.LegacyMigrationTest",
+        "name": "shouldNotOverwriteExistingTargetFiles",
+        "result": "PASS",
+        "message": null
+      },
+      {
+        "class": "org.abitware.docfinder.util.LegacyMigrationTest",
+        "name": "shouldNotMigrateWhenLegacyDirEmpty",
+        "result": "PASS",
+        "message": null
+      },
+      {
+        "class": "org.abitware.docfinder.util.LegacyMigrationTest",
+        "name": "shouldCopyLegacyFilesAndWriteSentinel",
+        "result": "PASS",
+        "message": null
+      },
+      {
+        "class": "org.abitware.docfinder.util.LegacyMigrationTest",
+        "name": "shouldNotMigrateWhenLegacyDirMissing",
+        "result": "PASS",
+        "message": null
+      },
+      {
+        "class": "org.abitware.docfinder.util.PathScopeTest",
+        "name": "shouldKeepPosixCaseAndSeparators",
+        "result": "SKIP",
+        "message": null
+      },
+      {
+        "class": "org.abitware.docfinder.util.PathScopeTest",
+        "name": "shouldBuildDescendantPrefix",
+        "result": "PASS",
+        "message": null
+      },
+      {
+        "class": "org.abitware.docfinder.util.PathScopeTest",
+        "name": "shouldMatchIndexedAndQueryNormalization",
+        "result": "PASS",
+        "message": null
+      },
+      {
+        "class": "org.abitware.docfinder.util.PathScopeTest",
+        "name": "shouldRejectInvalidWindowsDirectory",
+        "result": "PASS",
+        "message": null
+      },
+      {
+        "class": "org.abitware.docfinder.util.PathScopeTest",
+        "name": "shouldReturnNullForBlankDirectory",
+        "result": "PASS",
+        "message": null
+      },
+      {
+        "class": "org.abitware.docfinder.util.PathScopeTest",
+        "name": "shouldNormalizeEquivalentWindowsForms",
+        "result": "PASS",
+        "message": null
+      },
+      {
+        "class": "org.abitware.docfinder.util.PathScopeTest",
+        "name": "shouldNormalizeDriveRootAndUnc",
+        "result": "PASS",
+        "message": null
+      },
+      {
+        "class": "org.abitware.docfinder.util.TestEnvironmentIsolationTest",
+        "name": "shouldPreserveExternalArgLineProbe",
+        "result": "PASS",
+        "message": null
+      },
+      {
+        "class": "org.abitware.docfinder.util.TestEnvironmentIsolationTest",
+        "name": "shouldRunForkWithIsolatedUserHome",
+        "result": "PASS",
+        "message": null
+      },
+      {
+        "class": "org.abitware.docfinder.util.TestEnvironmentIsolationTest",
+        "name": "shouldRunForkWithIsolatedWorkingDirectory",
+        "result": "PASS",
+        "message": null
+      },
+      {
+        "class": "org.abitware.docfinder.web.DirectoryScopeEndToEndTest",
+        "name": "shouldServeCommittedDataAfterPartialCommitFailure",
+        "result": "PASS",
+        "message": null
+      },
+      {
+        "class": "org.abitware.docfinder.web.DirectoryScopeEndToEndTest",
+        "name": "shouldSearchWithinDirectoryOverRealHttpChain",
+        "result": "PASS",
+        "message": null
+      },
+      {
+        "class": "org.abitware.docfinder.web.DirectoryScopeEndToEndTest",
+        "name": "shouldExposeUpsertedFileAfterCommit",
+        "result": "PASS",
+        "message": null
+      },
+      {
+        "class": "org.abitware.docfinder.web.DirectoryScopeEndToEndTest",
+        "name": "shouldCycleThroughServiceAvailabilityStates",
+        "result": "PASS",
+        "message": null
+      },
+      {
+        "class": "org.abitware.docfinder.web.DirectoryScopeEndToEndTest",
+        "name": "shouldReflectSourceListChangesWithoutRestart",
+        "result": "PASS",
+        "message": null
+      },
+      {
+        "class": "org.abitware.docfinder.web.DirectoryScopeEndToEndTest",
+        "name": "shouldHandleUnreachableSourceRootWithoutFailingOthers",
+        "result": "PASS",
+        "message": null
+      },
+      {
+        "class": "org.abitware.docfinder.web.DirectoryScopeEndToEndTest",
+        "name": "shouldKeepStaleDocSearchableUntilReindex",
+        "result": "PASS",
+        "message": null
+      },
+      {
+        "class": "org.abitware.docfinder.web.DirectoryScopeEndToEndTest",
+        "name": "shouldMapProviderFailureTo503",
+        "result": "PASS",
+        "message": null
+      },
+      {
+        "class": "org.abitware.docfinder.web.SearchHandlerTest",
+        "name": "shouldEscapeControlCharactersAndBackslashesInJson",
+        "result": "PASS",
+        "message": null
+      },
+      {
+        "class": "org.abitware.docfinder.web.SearchHandlerTest",
+        "name": "shouldSerializeScoresIndependentlyOfFormatLocale",
+        "result": "PASS",
+        "message": null
+      },
+      {
+        "class": "org.abitware.docfinder.web.SearchHandlerTest",
+        "name": "shouldPreserveNonEnglishTextInJson",
+        "result": "PASS",
+        "message": null
+      },
+      {
+        "class": "org.abitware.docfinder.web.SearchHandlerTest",
+        "name": "shouldMapAllEightCodesToStatusAndFixedMessage",
+        "result": "PASS",
+        "message": null
+      },
+      {
+        "class": "org.abitware.docfinder.web.SearchHandlerTest",
+        "name": "shouldReturnEmptySuccessForBlankQueryEvenWhenServiceIsNull",
+        "result": "PASS",
+        "message": null
+      },
+      {
+        "class": "org.abitware.docfinder.web.SearchHandlerTest",
+        "name": "shouldEmitNullParentForPosixRoot",
+        "result": "SKIP",
+        "message": null
+      },
+      {
+        "class": "org.abitware.docfinder.web.SearchHandlerTest",
+        "name": "shouldLeaveDirectoryNullWhenParamAbsent",
+        "result": "PASS",
+        "message": null
+      },
+      {
+        "class": "org.abitware.docfinder.web.SearchHandlerTest",
+        "name": "shouldReturn503IndexUnavailableWhenServiceNull",
+        "result": "PASS",
+        "message": null
+      },
+      {
+        "class": "org.abitware.docfinder.web.SearchHandlerTest",
+        "name": "shouldEmitNullParentDirectoryForRootOrUnparseable",
+        "result": "PASS",
+        "message": null
+      },
+      {
+        "class": "org.abitware.docfinder.web.SearchHandlerTest",
+        "name": "shouldMapUnknownExceptionToSearchFailedWithoutLeaking",
+        "result": "PASS",
+        "message": null
+      },
+      {
+        "class": "org.abitware.docfinder.web.SearchHandlerTest",
+        "name": "shouldMapInvalidQueryConsistentlyWithAndWithoutDirectory",
+        "result": "PASS",
+        "message": null
+      },
+      {
+        "class": "org.abitware.docfinder.web.SearchHandlerTest",
+        "name": "shouldEmitParentDirectoryForUncPath",
+        "result": "PASS",
+        "message": null
+      },
+      {
+        "class": "org.abitware.docfinder.web.SearchHandlerTest",
+        "name": "shouldIncludeParentDirectoryPerResult",
+        "result": "PASS",
+        "message": null
+      },
+      {
+        "class": "org.abitware.docfinder.web.SearchHandlerTest",
+        "name": "shouldPassDirectoryParamToRequest",
+        "result": "PASS",
+        "message": null
+      },
+      {
+        "class": "org.abitware.docfinder.web.ShareManagerTest",
+        "name": "shouldExpireImmediately",
+        "result": "PASS",
+        "message": null
+      },
+      {
+        "class": "org.abitware.docfinder.web.ShareManagerTest",
+        "name": "shouldEnforceMaxDownloads",
+        "result": "PASS",
+        "message": null
+      },
+      {
+        "class": "org.abitware.docfinder.web.ShareManagerTest",
+        "name": "shouldCreateShareWithPassword",
+        "result": "PASS",
+        "message": null
+      },
+      {
+        "class": "org.abitware.docfinder.web.ShareManagerTest",
+        "name": "shouldReturnNullForUnknownToken",
+        "result": "PASS",
+        "message": null
+      },
+      {
+        "class": "org.abitware.docfinder.web.ShareManagerTest",
+        "name": "shouldCreateShareWithToken",
+        "result": "PASS",
+        "message": null
+      },
+      {
+        "class": "org.abitware.docfinder.web.ShareManagerTest",
+        "name": "shouldCleanExpiredEntries",
+        "result": "PASS",
+        "message": null
+      },
+      {
+        "class": "org.abitware.docfinder.web.ShareManagerTest",
+        "name": "shouldRecordDownloads",
+        "result": "PASS",
+        "message": null
+      },
+      {
+        "class": "org.abitware.docfinder.web.ShareManagerTest",
+        "name": "shouldRevokeShare",
+        "result": "PASS",
+        "message": null
+      },
+      {
+        "class": "org.abitware.docfinder.web.ShareManagerTest",
+        "name": "shouldListMultipleShares",
+        "result": "PASS",
+        "message": null
+      },
+      {
+        "class": "org.abitware.docfinder.web.ShareManagerTest",
+        "name": "shouldDetectExpiredShare",
+        "result": "PASS",
+        "message": null
+      },
+      {
+        "class": "org.abitware.docfinder.web.ShareManagerTest",
+        "name": "shouldValidateShareWithCorrectPassword",
+        "result": "PASS",
+        "message": null
+      },
+      {
+        "class": "org.abitware.docfinder.web.ShareManagerTest",
+        "name": "shouldPersistAndReload",
+        "result": "PASS",
+        "message": null
+      },
+      {
+        "class": "org.abitware.docfinder.web.ShareManagerTest",
+        "name": "shouldRejectShareWithWrongPassword",
+        "result": "PASS",
+        "message": null
+      },
+      {
+        "class": "org.abitware.docfinder.web.ShareManagerTest",
+        "name": "shouldRequirePasswordOnlyWhenSet",
+        "result": "PASS",
+        "message": null
+      },
+      {
+        "class": "org.abitware.docfinder.web.ShareManagerTest",
+        "name": "shouldValidateShareWithNoPassword",
+        "result": "PASS",
+        "message": null
+      },
+      {
+        "class": "org.abitware.docfinder.web.WebAssetsOfflineTest",
+        "name": "shouldNotUseExternalHttpResourcesInBundledWebPages",
+        "result": "PASS",
+        "message": null
+      },
+      {
+        "class": "org.abitware.docfinder.web.WebAssetsOfflineTest",
+        "name": "shouldBundleRequiredVendorAssetsForOfflinePreview",
+        "result": "PASS",
+        "message": null
+      },
+      {
+        "class": "org.abitware.docfinder.web.WebAssetsOfflineTest",
+        "name": "shouldExposeDirectoryScopeControlsInIndexPage",
+        "result": "PASS",
+        "message": null
+      }
+    ]
+  },
+  "focused": {
+    "totals": {
+      "tests": 11,
+      "failures": 2,
+      "errors": 0,
+      "skipped": 0
+    },
+    "environment": {
+      "java.version": "17",
+      "java.home": "D:\\java\\java17",
+      "user.dir": "C:\\Users\\Administrator\\AppData\\Local\\Temp\\docfinder-reverify-20261024-ap2igz6p\\checkout\\target\\test-classes",
+      "user.home": "C:\\Users\\Administrator\\AppData\\Local\\Temp\\docfinder-reverify-20261024-ap2igz6p\\checkout\\target/test-home",
+      "docfinder.argline.probe": "present"
+    },
+    "cases": [
+      {
+        "class": "org.abitware.docfinder.search.DirectoryScopedSearchTest",
+        "name": "codexQaShouldLabelExplicitNameQueryGlobally",
+        "result": "PASS",
+        "message": null
+      },
+      {
+        "class": "org.abitware.docfinder.search.DirectoryScopedSearchTest",
+        "name": "codexQaShouldLabelExplicitNameQueryWithinDirectory",
+        "result": "PASS",
+        "message": null
+      },
+      {
+        "class": "org.abitware.docfinder.search.DirectoryScopedSearchTest",
+        "name": "codexQaShouldLabelExplicitNameAndContent",
+        "result": "PASS",
+        "message": null
+      },
+      {
+        "class": "org.abitware.docfinder.ui.components.CodexScopeDisplayProbeTest",
+        "name": "codexQaShouldKeepAppliedScopeVisibleWhenDraftChanges",
+        "result": "PASS",
+        "message": null
+      },
+      {
+        "class": "org.abitware.docfinder.ui.components.CodexScopeDisplayProbeTest",
+        "name": "codexQaBrowseConfirmAndCancelShouldSubmitExactlyOnce",
+        "result": "PASS",
+        "message": null
+      },
+      {
+        "class": "org.abitware.docfinder.ui.DirectoryScopeDesktopHarnessTest",
+        "name": "codexQaShouldClearPresentedResultsWhenFullRebuildFails",
+        "result": "PASS",
+        "message": null
+      },
+      {
+        "class": "org.abitware.docfinder.ui.DirectoryScopeDesktopHarnessTest",
+        "name": "codexQaShouldNotSilentlyKeepOldServiceWhenOpeningNewLocationFails",
+        "result": "PASS",
+        "message": null
+      },
+      {
+        "class": "org.abitware.docfinder.ui.DirectoryScopeDesktopHarnessTest",
+        "name": "codexReverifyShouldIgnoreOldSearchAfterReopenFailure",
+        "result": "FAIL",
+        "message": "old query must not repopulate unavailable new index results ==> expected: <0> but was: <1>"
+      },
+      {
+        "class": "org.abitware.docfinder.ui.DirectoryScopeDesktopHarnessTest",
+        "name": "codexReverifyShouldReadConfiguredTempIndexPathExactly",
+        "result": "FAIL",
+        "message": "test fixture must index exactly under its declared temporary idx ==> expected: <C:\\Users\\Administrator\\AppData\\Local\\Temp\\codex-roundtrip-index-62293643907800> but was: <C:\\Users\\Administrator\\AppData\\Local\\Temp\\docfinder-reverify-20261024-ap2igz6p\\checkout\\target\\test-classes\\UsersAdministratorAppDataLocalTempcodex-roundtrip-index-62293643907800>"
+      },
+      {
+        "class": "org.abitware.docfinder.ui.DirectoryScopeDesktopHarnessTest",
+        "name": "codexQaShouldClearPresentedResultsWhenServiceBecomesUnavailable",
+        "result": "PASS",
+        "message": null
+      },
+      {
+        "class": "org.abitware.docfinder.web.DirectoryScopeEndToEndTest",
+        "name": "codexReverifyShouldDistinguishScopeFilterFromUncommittedIsolation",
+        "result": "PASS",
+        "message": null
+      }
+    ]
+  },
+  "jar_sha256": "b4796270e4a20eee54d48dbea801b14803e41e7c5de2738b53a66a2a193127a4",
+  "control_files_unchanged": true,
+  "control_files": {
+    "config.properties": "19c4a612b9f02bc22c36cb786222b0028aace031ef5f58b475219ee38f5b72d8",
+    "sources.txt": "1e65af854f098bd1ee627564894d73c12dadf6100217216e78cccca290565287",
+    "shares.properties": "2446b78d81bc213466d78fdffca0e107e42baa5d3b5b8bc496d989b680db4b28",
+    "history.txt": "8bc98e5f52ed8bb855ca4c44a67b2b4316dfdbc70ff0f20262c68e3aa15b3f65"
+  },
+  "misdirected_indices_inside_qa_copy": [
+    "C:\\Users\\Administrator\\AppData\\Local\\Temp\\docfinder-reverify-20261024-ap2igz6p\\checkout\\target\\test-classes\\UsersAdministratorAppDataLocalTempqa-indexall-idx-61967877243800",
+    "C:\\Users\\Administrator\\AppData\\Local\\Temp\\docfinder-reverify-20261024-ap2igz6p\\checkout\\target\\test-classes\\UsersAdministratorAppDataLocalTempqa-indexall-idx-62098847344600"
+  ],
+  "historical_misdirected_indices_at_drive_root": [
+    "C:\\UsersAdministratorAppDataLocalTempqa-indexall-idx-59092432944100",
+    "C:\\UsersAdministratorAppDataLocalTempqa-indexall-idx-59313077434700",
+    "C:\\UsersAdministratorAppDataLocalTempqa-indexall-idx-59466230580700",
+    "C:\\UsersAdministratorAppDataLocalTempqa-indexall-idx-60535305363100"
+  ],
+  "native_window_capture": {
+    "result": "NOT_VERIFIED",
+    "attempt1": "FrameArrived timed out: timed out waiting on channel",
+    "attempt2": "window capture timed out: timed out waiting on channel"
+  },
+  "fixture_process_stopped": true,
+  "browser_page_closed": true
+}
