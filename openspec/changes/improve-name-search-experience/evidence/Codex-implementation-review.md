@@ -1,6 +1,6 @@
 # B 独立复验
 
-**最新结论（2026-10-25，932c62c）**：两项P2已关闭，正常排序复位及核心功能通过；仅留一项空结果排序状态P3和内置帮助小收尾，再交用户试用。以下2026-10-24段落为首次复验历史，最新结果见文末。
+**最新结论（2026-10-25，2c47ab2）**：BQA-01/02/03全部关闭，实施及收尾复验通过，等待当前JAR的用户短试用接受。下方按时间保留首次发现及后续修复，最新结果见文末。
 
 复验提交：`81978a23f817dbfaaa517e942a8ac39a2663a03f`。结论：核心功能通过，交付前修正下面两处回归；不增加方案评审轮次。当前工作树中的修复尚不计为已通过。
 
@@ -44,3 +44,15 @@
 原始证据根：`C:\Users\Administrator\AppData\Local\Temp\docfinder-final-b-qa-20261025-iw6q2f1o\`，含clean-verify.log、java8-test.log、两套XML、summary.json；contracts/下为EXACT与Enter/空查询探针，web/下为26项HTTP JSON、复位后的选中状态JSON及截图、P3截图。真实config/sources/shares/history哈希不变。
 
 JAR：71,938,064字节；SHA256 `6618b0e2379650dbd063272f303730cf513a6346222fc33786a2e571b7ee2d42`。用户尚未接受当前B候选，暂不合并或归档；Devin仅处理tasks 9.3，随后Codex定向复验及用户短试用。
+
+
+## 2026-10-25 最后收尾关闭：2c47ab2
+
+- 产品提交 `2c47ab2490f87e4c7124c7979bf2fec645049943`；通过git ls-remote确认已推送origin/codex/name-search。源码差异仅空态清理、对应两项回归和内置帮助。
+- **独立定向测试通过**：干净Git快照在JDK17 clean package及真实Java8 1.8.0_40 fork分别执行32项，0失败/错误/跳过：TriStateSortDesktopTest 7、QueryDebounceDesktopTest 6、NameSubstringSearchTest 16、WebAssetsOfflineTest 3。未重复声称本轮执行全套200项；上轮独立198全套及开发者报告200项分别保留原证据范围。
+- **BQA-03关闭**：直接运行开发者交付JAR（非仅测试独立构建）。桌面排序后清空查询输出 rows=0, keys=0, resetEnabled=false；Web实际点击确认空查询、无匹配、INVALID_QUERY三个空态均0行/0箭头/按钮禁用。正常恢复仍保留body-only.txt选择及预览，完整引擎顺序恢复正确。
+- EXACT/连续Enter/程序化写入/Timer探针直接在同一交付JAR和Java8运行通过；JAR内已包含新增帮助说明。应用类均为Java8字节码，未发现JDT编译错误占位字符串。独立构建与交付JAR未要求逐字节可重复（若干class字节有差异），因此通过结论同时依据交付二进制实测，不将源码测试冒充该JAR测试。
+- 本地交付JAR SHA256核实为 `C5740ED4AF7DF04FC77561461EAAEDF645E8C4702C56774227B48CC07421CB82`；路径 `E:\idea_projects\doc-finder\target\docfinder-1.0.0.jar`。当前验收绑定此代码SHA与JAR哈希。
+- 真实config/sources/shares/history四文件哈希未变，测试服务及临时页面均已关闭。原始证据根：`C:\Users\Administrator\AppData\Local\Temp\docfinder-b-closeout-20261025-7m54scgq\`，含两套XML与日志、contracts下桌面/EXACT探针、web/browser-results.json与截图。
+
+结论：没有剩余实施发现；23/25关闭，只待8.1用户接受和8.2交付归档。未将“Devin已完成”当作用户接受，也不启动C1或扩大新功能。

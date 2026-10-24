@@ -3,10 +3,10 @@ change: improve-name-search-experience
 package_version: "0.3"
 updated_at: 2026-10-25
 timezone: Asia/Tokyo
-phase: CORE_VERIFIED_FINAL_POLISH_AND_USER_TRIAL_PENDING
+phase: VERIFIED_PENDING_USER_ACCEPTANCE
 implementation_authorized: true
 planning_root_verified: true
-source_head_at_review: 932c62c532f9cf832d132a20752d3650e0d6be53
+source_head_at_review: 2c47ab2490f87e4c7124c7979bf2fec645049943
 roles:
   product_project_quality: Codex
   plan_author_implementer: Devin
@@ -21,26 +21,27 @@ review:
   open_p2: 0
   performance_evidence: evidence/Codex-implementation-review.md;
     independent_100k_768MB_p95_below_100ms
-  open_p3: 1
+  open_p3: 0
 progress:
-  implementation_tasks_complete: 22
+  implementation_tasks_complete: 23
   implementation_tasks_total: 25
   current_a_host_acceptance_complete: true
   closed_by_process_waiver:
     - "1.2"
   alternative_verification:
     - 5.1_real_controls_executor_counts_existing_worker_regressions
+  implementation_complete: true
 gates:
   final_plan_approval: user_directed_proceed_existing_B_scope_without_further_formal_rounds
   implementation_approval: granted_for_existing_zero_migration_B_scope
   ngram_schema_migration_approval: not_granted
-  user_acceptance: pending_current_B_trial_after_9_3_polish
+  user_acceptance: pending_for_2c47ab2_and_C5740ED4_JAR
 next_action:
-  owner: Devin_then_Codex_then_user
-  action: finish_9_3_empty_result_sort_state_and_builtin_help_then_targeted_retest_and_user_trial
+  owner: user_then_Codex
+  action: short_trial_then_record_acceptance_8_1_and_authorized_delivery_archive_8_2
   input: ../../../docs/handoffs/2026-10-24-name-search-plan.md
-  product_code_allowed: true
-  delivery: new_commit_and_JAR_with_hash_no_new_plan_round
+  product_code_allowed: false
+  delivery: existing_verified_JAR_no_new_implementation_tasks
 implementer_assessment:
   status: n02_findings_addressed_in_0_3
   evidence: reviews/codex-0.2.md
@@ -79,22 +80,27 @@ performance_policy: 100k measurement retained;100ms optimization target;
 
 independent_implementation_review:
   owner: Codex
-  reviewed_head: 932c62c532f9cf832d132a20752d3650e0d6be53
-  status: core_pass_P2_closed_one_P3_polish_pending
+  reviewed_head: 2c47ab2490f87e4c7124c7979bf2fec645049943
+  status: PASS_ready_for_user_acceptance_no_open_findings
   evidence: evidence/Codex-implementation-review.md
-  full_suite_jdk17: 198_total_196_pass_0_failure_0_error_2_POSIX_skipped
-  full_suite_java8_1_8_0_40: 198_total_196_pass_0_failure_0_error_2_POSIX_skipped
-  real_http_java8: 26_scenarios_pass
-  desktop: 6_debounce_and_5_sort_tests_pass; independent_Enter_and_EXACT_probes_pass
-  browser: three_state_sort_reset_engine_order_selection_preview_and_new_results_pass
+  full_suite_jdk17: baseline_932c62c_198_total_196_pass_0_failure_2_POSIX_skipped
+  full_suite_java8_1_8_0_40: baseline_932c62c_198_total_196_pass_0_failure_2_POSIX_skipped
+  real_http_java8: baseline_932c62c_26_scenarios_pass;
+    current_JAR_Web_empty_and_error_sort_cases_pass
+  desktop: current_7_sort_6_debounce_tests_pass;
+    delivered_JAR_empty_query_keys0_button_disabled_EXACT_and_Enter_probes_pass
+  browser: delivered_JAR_empty_query_no_match_invalid_query_and_normal_restore_selection_preview_pass
   closed_fixes:
     - BQA-01_EXACT_routing
     - BQA-02_duplicate_Enter_submit
-  open_fixes:
-    - BQA-03_P3_empty_result_sort_state
-  docs_followup: external_guides_and_roadmap_synced; builtin_sort_help_to_Devin_9_3
+    - BQA-03_empty_result_sort_state
+  open_fixes: []
+  docs_followup: complete_including_builtin_help
   historical_RED_record: waived_do_not_fabricate
-  tasks_note: 22_of_25_closed; 9.3_polish_8.1_user_acceptance_8.2_delivery_remain
+  tasks_note: 23_of_25_closed; only_8.1_user_acceptance_and_8.2_delivery_remain
   migration_required: false
-  jar_sha256: 6618b0e2379650dbd063272f303730cf513a6346222fc33786a2e571b7ee2d42
-  jar_bytes: 71938064
+  jar_sha256: c5740ed4af7df04fc77561461eaaedf645e8c4702c56774227b48cc07421cb82
+  jar_bytes: 71937900
+  current_targeted_jdk17: 32_total_32_pass_0_failure_0_skipped_clean_package
+  current_targeted_java8_1_8_0_40: 32_total_32_pass_0_failure_0_skipped
+  jar_path: E:/idea_projects/doc-finder/target/docfinder-1.0.0.jar
