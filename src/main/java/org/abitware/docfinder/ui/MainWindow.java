@@ -492,27 +492,24 @@ public class MainWindow extends JFrame implements MenuBarPanel.MenuListener {
 
 		JScrollPane center = new JScrollPane(resultTable);
 
-		// Header strip: a visible way back to the engine order. Restoring only
-		// reorders the current view — no re-search, and JTable remaps the
-		// selected row (and its preview) across sort changes.
+		// Restore control lives on the Applied-hint row (far right, above the
+		// preview), not on its own strip — the split divider stays clean.
+		// Restoring only reorders the current view — no re-search, and JTable
+		// remaps the selected row (and its preview) across sort changes.
 		resetSortBtn = new JButton("Restore default sort");
-		resetSortBtn.setMargin(new java.awt.Insets(1, 8, 1, 8));
+		resetSortBtn.setMargin(new java.awt.Insets(0, 8, 0, 8));
 		resetSortBtn.setEnabled(false);
 		resetSortBtn.addActionListener(e -> resultSorter.setSortKeys(null));
 		resultSorter.addRowSorterListener(e ->
 				resetSortBtn.setEnabled(!resultSorter.getSortKeys().isEmpty()));
-		JPanel tableHead = new JPanel(new FlowLayout(FlowLayout.LEFT, 4, 1));
-		tableHead.add(resetSortBtn);
-		JPanel tableWrap = new JPanel(new BorderLayout());
-		tableWrap.add(tableHead, BorderLayout.NORTH);
-		tableWrap.add(center, BorderLayout.CENTER);
+		directoryScopePanel.addHintTrailing(resetSortBtn);
 
 		// Preview pane: HTML, non-editable
 		preview.setEditable(false);
 		JScrollPane right = new JScrollPane(preview);
 		right.setPreferredSize(new Dimension(360, 560));
 
-		split = new JSplitPane(JSplitPane.HORIZONTAL_SPLIT, tableWrap, right);
+		split = new JSplitPane(JSplitPane.HORIZONTAL_SPLIT, center, right);
 		split.setResizeWeight(0.75); // Left 75% / Right 25%
 		split.setOneTouchExpandable(true);
 		javax.swing.SwingUtilities.invokeLater(() -> split.setDividerLocation(0.75));

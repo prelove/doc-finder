@@ -45,6 +45,7 @@ public class DirectoryScopePanel extends JPanel {
 
     private final JLabel searchInLabel = new JLabel("Search in:");
     private final JPanel right = new JPanel(new FlowLayout(FlowLayout.RIGHT, 6, 0));
+    private final JPanel southEast = new JPanel(new FlowLayout(FlowLayout.RIGHT, 6, 0));
     private final List<String> sources = new ArrayList<>();
     private String committedPath = "";
     private boolean suppressComboEvents = false;
@@ -80,7 +81,8 @@ public class DirectoryScopePanel extends JPanel {
 
         JPanel south = new JPanel(new BorderLayout(6, 0));
         south.add(hintLabel, BorderLayout.WEST);
-        south.add(warningLabel, BorderLayout.EAST);
+        southEast.add(warningLabel);
+        south.add(southEast, BorderLayout.EAST);
 
         JPanel center = new JPanel(new BorderLayout(0, 2));
         center.add(pathField, BorderLayout.NORTH);
@@ -166,6 +168,11 @@ public class DirectoryScopePanel extends JPanel {
     /** One-time non-modal warning about skipped source rows. */
     public void setSourceWarning(boolean hasSkippedRows) {
         warningLabel.setVisible(hasSkippedRows);
+    }
+
+    /** Appends a trailing control to the Applied-hint row, right of the warning label. */
+    public void addHintTrailing(javax.swing.JComponent c) {
+        southEast.add(c);
     }
 
     /* Exposed for tests/harness. */
