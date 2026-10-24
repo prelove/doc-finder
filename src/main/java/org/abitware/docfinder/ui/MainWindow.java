@@ -155,6 +155,12 @@ public class MainWindow extends JFrame implements MenuBarPanel.MenuListener {
 	private volatile boolean isIndexing = false;
 	private final ExecutorService searchExecutor = Executors.newSingleThreadExecutor();
 
+	// Debounce (D6): class-A typing immediately invalidates in-flight work and
+	// restarts this single 250ms timer; class-B submissions stop it and submit
+	// once; class-C programmatic writes never reach the document listener.
+	private javax.swing.Timer searchDebounceTimer;
+	private boolean programmaticQueryEdit = false;
+
 	// ========= Constructor =========
 	public MainWindow(SearchService searchService) {
 		super("DocFinder");
@@ -253,6 +259,16 @@ public class MainWindow extends JFrame implements MenuBarPanel.MenuListener {
 		searchField.putClientProperty("JTextField.placeholderText",
 				"Search... (e.g. report*, content:\"zero knowledge\", name:\"瑷▓\")");
 
+		// Debounce: a single 250ms non-repeating timer that only delays the
+		// submit; user typing invalidates in-flight work immediately (D6 A).
+		searchDebounceTimer = new javax.swing.Timer(250, e -> doSearch());
+		searchDebounceTimer.setRepeats(false);
+		searchField.getDocument().addDocumentListener(new javax.swing.event.DocumentListener() {
+			@Override public void insertUpdate(javax.swing.event.DocumentEvent e) { onUserTyping(); }
+			@Override public void removeUpdate(javax.swing.event.DocumentEvent e) { onUserTyping(); }
+			@Override public void changedUpdate(javax.swing.event.DocumentEvent e) { onUserTyping(); }
+		});
+
 		// History dropdown selection + editor Enter both go through combo action.
 		queryBox.addActionListener(e -> {
 			if (suppressQueryActions)
@@ -319,10 +335,40 @@ public class MainWindow extends JFrame implements MenuBarPanel.MenuListener {
 		}
 	}
 
+	/**
+	 * Programmatic write (class C): updates the control only — never submits,
+	 * never starts debounce, never touches in-flight state (D6).
+	 */
 	private void setQueryText(String s) {
 		javax.swing.JTextField tf = getActiveSearchField();
-		if (tf != null)
+		if (tf == null)
+			return;
+		programmaticQueryEdit = true;
+		try {
 			tf.setText(s);
+		} finally {
+			programmaticQueryEdit = false;
+		}
+	}
+
+	/** Class A: real user edit — in-flight request dies now; submit is delayed. */
+	private void onUserTyping() {
+		if (programmaticQueryEdit || suppressQueryActions)
+			return;
+		searchSequence++;
+		if (activeSearchWorker != null) {
+			activeSearchWorker.cancel(true);
+			activeSearchWorker = null;
+		}
+		if (searchDebounceTimer != null) {
+			searchDebounceTimer.restart();
+		}
+	}
+
+	private void stopSearchDebounce() {
+		if (searchDebounceTimer != null && searchDebounceTimer.isRunning()) {
+			searchDebounceTimer.stop();
+		}
 	}
 
 	private javax.swing.JTextField getActiveSearchField() {
@@ -720,7 +766,8 @@ public class MainWindow extends JFrame implements MenuBarPanel.MenuListener {
 			javax.swing.DefaultComboBoxModel<String> m = (javax.swing.DefaultComboBoxModel<String>) queryBox.getModel();
 			m.removeAllElements();
 
-			// 3) Clear current input
+			// 3) Clear current input (also drops any pending debounced search)
+			stopSearchDebounce();
 			setQueryText("");
 
 			// 4) Status prompt
@@ -859,6 +906,7 @@ public class MainWindow extends JFrame implements MenuBarPanel.MenuListener {
 		java.nio.file.Path indexDir = sm.getIndexDir();
 		isIndexing = true;
 		setIndexingUiEnabled(false);
+		stopSearchDebounce();
 		searchSequence++;
 		if (activeSearchWorker != null) {
 			activeSearchWorker.cancel(true);
@@ -1664,6 +1712,7 @@ public class MainWindow extends JFrame implements MenuBarPanel.MenuListener {
 		isIndexing = true;
 		setIndexingUiEnabled(false);
 		openServiceSequence++;
+		stopSearchDebounce();
 		searchSequence++;
 		if (activeSearchWorker != null) {
 			activeSearchWorker.cancel(true);
@@ -1719,6 +1768,7 @@ public class MainWindow extends JFrame implements MenuBarPanel.MenuListener {
 		openServiceSequence++;
 		// Invalidate/cancel in-flight searches directly so this method stays
 		// correct if it is ever reused outside the rebuild worker path.
+		stopSearchDebounce();
 		searchSequence++;
 		if (activeSearchWorker != null) {
 			activeSearchWorker.cancel(true);
@@ -1927,6 +1977,10 @@ public class MainWindow extends JFrame implements MenuBarPanel.MenuListener {
 
 	private void doSearch() {
 		log.debug("doSearch() called.");
+		// Every explicit submission path (Enter, history pick, scope/mode/dir
+		// change, Clear, quick action, Apply filters, the debounce fire itself)
+		// cancels any pending debounce — class B submits exactly once (D6).
+		stopSearchDebounce();
 		long token = ++searchSequence;
 		if (isIndexing) {
 			clearPresentedResults("Indexing in progress.");
@@ -1999,7 +2053,8 @@ public class MainWindow extends JFrame implements MenuBarPanel.MenuListener {
 
 
 
-	private void populateResults(String query, List<SearchResult> list, long elapsedMs) {
+	private void populateResults(String query, List<SearchResult> list, long elapsedMs,
+			org.abitware.docfinder.search.TriState hasMore) {
 
 		if (list == null) {
 
@@ -2034,7 +2089,13 @@ public class MainWindow extends JFrame implements MenuBarPanel.MenuListener {
 
 		} else {
 
-			statusLabel.setText(String.format("Results: %d  |  %d ms", list.size(), elapsedMs));
+			// Tri-state truncation hint (D5): TRUE claims more exist, FALSE
+			// claims complete, UNKNOWN must not claim either.
+			if (hasMore == org.abitware.docfinder.search.TriState.TRUE) {
+				statusLabel.setText(String.format("Showing first %d results  |  %d ms", list.size(), elapsedMs));
+			} else {
+				statusLabel.setText(String.format("Results: %d  |  %d ms", list.size(), elapsedMs));
+			}
 
 			resultTable.setRowSelectionInterval(0, 0);
 
@@ -2061,6 +2122,8 @@ public class MainWindow extends JFrame implements MenuBarPanel.MenuListener {
 		private final MatchMode matchMode;
 
 		private final String directoryPath;
+
+		private org.abitware.docfinder.search.SearchOutcome outcome;
 
 		private final long startedAt = System.currentTimeMillis();
 
@@ -2100,9 +2163,9 @@ public class MainWindow extends JFrame implements MenuBarPanel.MenuListener {
 
 			SearchRequest request = new SearchRequest(query, 100, filter, scope, matchMode, directoryPath);
 			log.debug("Executing search for token: {}", token);
-			List<SearchResult> results = svc.search(request);
-			log.debug("Search for token {} completed with {} results.", token, results.size());
-			return results;
+			outcome = svc.searchDetailed(request);
+			log.debug("Search for token {} completed with {} results.", token, outcome.results.size());
+			return outcome.results;
 
 		}
 
@@ -2188,7 +2251,9 @@ public class MainWindow extends JFrame implements MenuBarPanel.MenuListener {
 
 			long elapsed = Math.max(0L, System.currentTimeMillis() - startedAt);
 
-			populateResults(query, list, elapsed);
+			org.abitware.docfinder.search.TriState hasMore = (outcome == null)
+					? org.abitware.docfinder.search.TriState.UNKNOWN : outcome.hasMore;
+			populateResults(query, list, elapsed, hasMore);
 
 		}
 
@@ -2237,13 +2302,22 @@ public class MainWindow extends JFrame implements MenuBarPanel.MenuListener {
 
         // 更新下拉模型：去重reset顶、最多100
 		javax.swing.DefaultComboBoxModel<String> m = (javax.swing.DefaultComboBoxModel<String>) queryBox.getModel();
+		// Preserve the user's current draft + caret across the model rebuild:
+		// removeAllElements may reset the editor, and a stale-result rewrite
+		// must never clobber text typed while the search was in flight (D6 C).
+		javax.swing.JTextField tf = getActiveSearchField();
+		String draft = (tf == null) ? "" : tf.getText();
+		int caret = (tf == null) ? 0 : tf.getCaretPosition();
 		suppressQueryActions = true;
         // 简单粗暴：清空重加（100 项以内性能无感）
 		m.removeAllElements();
 		for (String s : latest)
 			m.addElement(s);
 		suppressQueryActions = false;
-		setQueryText(q); // 保持编辑器文本，不触发额外查询
+		setQueryText(draft);
+		if (tf != null) {
+			tf.setCaretPosition(Math.min(caret, draft.length()));
+		}
 	}
 
     // 新增方法：
@@ -2637,7 +2711,8 @@ public class MainWindow extends JFrame implements MenuBarPanel.MenuListener {
                 + "<li>Path edits are a draft until Enter, source selection or Browse confirmation. Check <b>Applied</b> for the submitted scope; Clear returns to all sources.</li>"
                 + "<li>Right-click a result: <b>Search in this folder</b> or <b>Search in containing folder</b>.</li>"
                 + "<li>For old indexes, try <b>Index All Sources</b> first. Check offline sources and back up before a manual Full Rebuild if legacy records remain. Rebuild is non-atomic and search is unavailable during it.</li>"
-                + "<li>For a filename middle fragment, use <code>name:*report*</code>. Default literal substring search and typing debounce are proposed future work.</li>"
+                + "<li>Default (Fuzzy) search also matches filename middle fragments: <code>report</code> finds <code>AnnualReport2026.pdf</code>. Multiple words must all match the name. Name matches rank above content-only hits.</li>"
+                + "<li>Typing searches automatically after a short pause; Enter or a scope change searches immediately.</li>"
                 + "<li>EXACT includes analyzed phrase matching for the selected fields; it is not restricted to full filename equality.</li>"
                 + "</ul>" +
 
@@ -2981,6 +3056,7 @@ public class MainWindow extends JFrame implements MenuBarPanel.MenuListener {
 	}
 	@Override
 	public void dispose() {
+		stopSearchDebounce();
 		try {
 			UIManager.removePropertyChangeListener(lafListener);
 		} catch (Exception ignore) {

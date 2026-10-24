@@ -1039,7 +1039,12 @@
         selectedIndex = -1;
         renderResults();
         var scopeNote = dir ? ' — scope: ' + dir + ' (includes all subfolders)' : ' — scope: all sources';
-        statusBar.textContent = currentResults.length + ' result(s) in ' + elapsed + ' ms' + scopeNote;
+        // hasMore/truncated arrive as a boolean pair or are absent when the
+        // backend cannot tell; an absent field must not claim completeness.
+        var countText = (data.hasMore === true)
+            ? 'Showing first ' + currentResults.length + ' results'
+            : currentResults.length + ' result(s)';
+        statusBar.textContent = countText + ' in ' + elapsed + ' ms' + scopeNote;
       })
       .catch(function(e) {
         if (token !== searchToken) return;

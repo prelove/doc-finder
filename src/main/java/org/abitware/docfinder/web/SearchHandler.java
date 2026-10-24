@@ -89,9 +89,9 @@ class SearchHandler implements HttpHandler {
         }
 
         SearchRequest req = new SearchRequest(q, limit, filter, scope, mode, directory);
-        List<SearchResult> results;
+        SearchOutcome outcome;
         try {
-            results = svc.search(req);
+            outcome = svc.searchDetailed(req);
         } catch (SearchException e) {
             log.log(Level.WARNING, "Search failed (code=" + e.getCode() + "): " + e.getMessage(), e);
             sendError(exchange, e.getCode());
@@ -102,7 +102,7 @@ class SearchHandler implements HttpHandler {
             return;
         }
 
-        sendJson(exchange, 200, toJson(results));
+        sendJson(exchange, 200, toJson(outcome));
     }
 
     private static int statusFor(SearchException.Code code) {
@@ -129,9 +129,17 @@ class SearchHandler implements HttpHandler {
 
     // --- JSON 序列化（不依赖外部库）---
 
-    private static String toJson(List<SearchResult> results) {
+    private static String toJson(SearchOutcome outcome) {
+        List<SearchResult> results = outcome.results;
         StringBuilder sb = new StringBuilder();
-        sb.append("{\"count\":").append(results.size()).append(",\"results\":[");
+        sb.append("{\"count\":").append(results.size());
+        // Tri-state truncation (D5): hasMore and truncated always agree, and
+        // UNKNOWN omits both fields rather than guessing false.
+        if (outcome.hasMore != TriState.UNKNOWN) {
+            boolean more = outcome.hasMore == TriState.TRUE;
+            sb.append(",\"hasMore\":").append(more).append(",\"truncated\":").append(more);
+        }
+        sb.append(",\"results\":[");
         for (int i = 0; i < results.size(); i++) {
             if (i > 0) sb.append(',');
             SearchResult r = results.get(i);

@@ -5,9 +5,11 @@ import com.sun.net.httpserver.HttpContext;
 import com.sun.net.httpserver.HttpExchange;
 import com.sun.net.httpserver.HttpPrincipal;
 import org.abitware.docfinder.search.SearchException;
+import org.abitware.docfinder.search.SearchOutcome;
 import org.abitware.docfinder.search.SearchRequest;
 import org.abitware.docfinder.search.SearchResult;
 import org.abitware.docfinder.search.SearchService;
+import org.abitware.docfinder.search.TriState;
 import org.junit.jupiter.api.Test;
 
 import java.io.ByteArrayInputStream;
@@ -72,12 +74,21 @@ class SearchHandlerTest {
         SearchRequest lastRequest;
         List<SearchResult> canned = Collections.emptyList();
         RuntimeException failure;
+        TriState verdict; // null → inherit default UNKNOWN wrapper
 
         @Override
         public List<SearchResult> search(SearchRequest request) {
             lastRequest = request;
             if (failure != null) throw failure;
             return canned;
+        }
+
+        @Override
+        public SearchOutcome searchDetailed(SearchRequest request) {
+            if (verdict == null) {
+                return SearchService.super.searchDetailed(request);
+            }
+            return new SearchOutcome(search(request), verdict);
         }
 
         @Override public void close() { }
@@ -271,6 +282,36 @@ class SearchHandlerTest {
         String body = ex.bodyText();
         assertTrue(body.contains("\"code\":\"SEARCH_FAILED\""), body);
         assertFalse(body.contains("secret-stack-cause-12345"), body);
+    }
+
+    // ── Tri-state truncation fields (D5/R1-04) ──────────────────────────────
+
+    @Test
+    void shouldOmitHasMoreAndTruncatedWhenVerdictUnknown() throws Exception {
+        StubService svc = new StubService(); // default wrapper → UNKNOWN
+        svc.canned = Collections.singletonList(new SearchResult(
+                "a.txt", hostDir("Root").resolve("a.txt").toString(), 1f, 0L, 0L, "name", 0L, false));
+        FakeExchange ex = get(svc, "q=a");
+        assertEquals(200, ex.status);
+        String body = ex.bodyText();
+        assertFalse(body.contains("hasMore"), "UNKNOWN must not claim a verdict: " + body);
+        assertFalse(body.contains("truncated"), "UNKNOWN must not claim a verdict: " + body);
+    }
+
+    @Test
+    void shouldEmitConsistentBooleanPairForKnownVerdicts() throws Exception {
+        StubService svc = new StubService();
+        svc.canned = Collections.singletonList(new SearchResult(
+                "a.txt", hostDir("Root").resolve("a.txt").toString(), 1f, 0L, 0L, "name", 0L, false));
+        svc.verdict = TriState.TRUE;
+        String body = get(svc, "q=a").bodyText();
+        assertTrue(body.contains("\"hasMore\":true"), body);
+        assertTrue(body.contains("\"truncated\":true"), body);
+
+        svc.verdict = TriState.FALSE;
+        body = get(svc, "q=a").bodyText();
+        assertTrue(body.contains("\"hasMore\":false"), body);
+        assertTrue(body.contains("\"truncated\":false"), body);
     }
 
     // ── JSON safety ─────────────────────────────────────────────────────────

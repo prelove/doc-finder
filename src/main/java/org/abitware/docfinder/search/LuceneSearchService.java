@@ -29,6 +29,9 @@ import org.apache.lucene.queryparser.classic.ParseException;
 import org.apache.lucene.queryparser.classic.QueryParser;
 import org.apache.lucene.search.BooleanClause;
 import org.apache.lucene.search.BooleanQuery;
+import org.apache.lucene.search.BoostQuery;
+import org.apache.lucene.search.ConstantScoreQuery;
+import org.apache.lucene.search.DisjunctionMaxQuery;
 import org.apache.lucene.search.Explanation;
 import org.apache.lucene.search.IndexSearcher;
 import org.apache.lucene.search.MatchAllDocsQuery;
@@ -351,12 +354,18 @@ public class LuceneSearchService implements SearchService {
 
     @Override
     public List<SearchResult> search(SearchRequest request) {
+        // One-direction delegation: searchDetailed is the execution core (R1-04).
+        return searchDetailed(request).results;
+    }
+
+    @Override
+    public SearchOutcome searchDetailed(SearchRequest request) {
         List<SearchResult> out = new ArrayList<>();
-        if (request == null) return out;
+        if (request == null) return new SearchOutcome(out, TriState.FALSE);
 
         String rawQuery = request.query == null ? "" : request.query.trim();
         // Blank query short-circuits before directory/source/syntax checks (D3).
-        if (rawQuery.isEmpty()) return out;
+        if (rawQuery.isEmpty()) return new SearchOutcome(out, TriState.FALSE);
 
         FilterState filter = request.filter;
         SearchScope scope = request.scope == null ? SearchScope.ALL : request.scope;
@@ -382,59 +391,52 @@ public class LuceneSearchService implements SearchService {
             }
 
             NamePreprocess np = extractNameWildcards(rawQuery);
-            boolean advanced = hasAdvancedSyntax(np.qRest);
+            boolean advanced = hasAdvancedSyntax(np.qRest) || hasBooleanOperatorToken(np.qRest);
+            List<String> literalTokens = literalTokensIfEligible(np.qRest, scope, matchMode, advanced);
 
-            Query userQuery = buildUserQuery(np.qRest, scope, matchMode, advanced);
+            int limit = Math.max(1, Math.min(request.limit, 200));
+            int fetchLimit = limit + 1; // limit+1 probing (D5)
 
-            BooleanQuery.Builder root = new BooleanQuery.Builder();
-            if (userQuery == null || (userQuery instanceof BooleanQuery && ((BooleanQuery) userQuery).clauses().isEmpty())) {
-                root.add(new MatchAllDocsQuery(), BooleanClause.Occur.MUST);
+            TriState hasMore;
+            if (literalTokens != null && scope == SearchScope.ALL) {
+                // D4 dual-list merge (R1-01: one acquired searcher for both
+                // branches, doc fetches and explanations; second-branch
+                // failure propagates as SEARCH_FAILED, no partial success).
+                hasMore = searchAllLiteral(searcher, out, np, literalTokens,
+                        scope, filter, scopedDir, limit, fetchLimit);
             } else {
-                root.add(userQuery, BooleanClause.Occur.MUST);
+                Query userQuery;
+                if (literalTokens != null) {
+                    // NAME/FOLDER literal: name condition is the whole keyword query.
+                    userQuery = buildNameCondition(literalTokens);
+                } else {
+                    userQuery = buildUserQuery(np.qRest, scope, matchMode, advanced);
+                }
+
+                BooleanQuery.Builder root = new BooleanQuery.Builder();
+                if (userQuery == null || (userQuery instanceof BooleanQuery && ((BooleanQuery) userQuery).clauses().isEmpty())) {
+                    root.add(new MatchAllDocsQuery(), BooleanClause.Occur.MUST);
+                } else {
+                    root.add(userQuery, BooleanClause.Occur.MUST);
+                }
+
+                List<Query> nameClauses = new ArrayList<>();
+                addNameWildcardMust(root, np.nameWildcards, nameClauses);
+                addKindFilter(root, scope);
+                addFilters(root, filter);
+                if (scopedDir != null) {
+                    addDirectoryFilter(root, scopedDir);
+                }
+
+                TopDocs top = searcher.search(root.build(), fetchLimit);
+                boolean tierSort = literalTokens != null;
+                appendResults(searcher, out, top, userQuery, nameClauses, null, null, tierSort);
+                hasMore = (out.size() > limit) ? TriState.TRUE : TriState.FALSE;
+                if (out.size() > limit) {
+                    out.subList(limit, out.size()).clear();
+                }
             }
-
-            List<Query> nameClauses = new ArrayList<>();
-            addNameWildcardMust(root, np.nameWildcards, nameClauses);
-
-            if (scope == SearchScope.FOLDER) {
-                root.add(new TermQuery(new Term(FIELD_KIND, KIND_FOLDER)), BooleanClause.Occur.MUST);
-            } else {
-                // Type filtering inside the query (before Top-N) so excluded
-                // high-score folders cannot consume the limit (D4).
-                root.add(new TermQuery(new Term(FIELD_KIND, KIND_FOLDER)),
-                        BooleanClause.Occur.MUST_NOT);
-            }
-
-            addFilters(root, filter);
-            if (scopedDir != null) {
-                addDirectoryFilter(root, scopedDir);
-            }
-
-            Query finalQuery = root.build();
-
-            int fetchLimit = Math.max(1, Math.min(request.limit, 200));
-            TopDocs top = searcher.search(finalQuery, fetchLimit);
-            for (ScoreDoc sd : top.scoreDocs) {
-                Document d = searcher.doc(sd.doc);
-
-                boolean isFolder = KIND_FOLDER.equalsIgnoreCase(d.get(FIELD_KIND));
-
-                String name = d.get(FIELD_NAME);
-                String path = d.get(FIELD_PATH);
-                long ctime = getStoredLong(d, FIELD_CTIME_DISPLAY);
-                long atime = getStoredLong(d, FIELD_ATIME_DISPLAY);
-                long size = getStoredLong(d, FIELD_SIZE);
-                if (isFolder) size = 0L;
-
-                // Explain only the keyword/name query, not directory/type/time
-                // filters, so a POSIX dir literally named "name:" cannot be
-                // misreported as a name-source hit (D4). Explicit name:
-                // patterns are part of the explained query (QA24-03).
-                Query explainQuery = buildExplainQuery(userQuery, nameClauses);
-                String match = isFolder ? "folder" : detectMatchType(searcher, explainQuery, sd.doc);
-
-                out.add(new SearchResult(name, path, sd.score, ctime, atime, match, size, isFolder));
-            }
+            return new SearchOutcome(out, hasMore);
         } catch (SearchException ex) {
             throw ex;
         } catch (ParseException ex) {
@@ -460,8 +462,253 @@ public class LuceneSearchService implements SearchService {
                 }
             }
         }
+    }
 
-        return out;
+    /**
+     * ALL + literal FUZZY: name-hit list (constant tiers only, no BM25) merged
+     * before the content-only list (parsed content MUST + name MUST_NOT), so a
+     * high-tier name hit can never be displaced by unbounded content scores
+     * and can never be cut by a shared Top-N (D4/N02-01).
+     */
+    private TriState searchAllLiteral(IndexSearcher searcher, List<SearchResult> out,
+                                      NamePreprocess np, List<String> literalTokens,
+                                      SearchScope scope, FilterState filter, String scopedDir,
+                                      int limit, int fetchLimit) throws IOException, ParseException {
+        Query nameCond = buildNameCondition(literalTokens);
+        Query contentQ = buildLiteralContentQuery(np.qRest); // null when analysis yields no terms
+
+        // List 1: name condition + shared filters.
+        BooleanQuery.Builder nameRoot = new BooleanQuery.Builder();
+        nameRoot.add(nameCond, BooleanClause.Occur.MUST);
+        List<Query> nameClauses = new ArrayList<>();
+        addNameWildcardMust(nameRoot, np.nameWildcards, nameClauses);
+        addKindFilter(nameRoot, scope);
+        addFilters(nameRoot, filter);
+        if (scopedDir != null) {
+            addDirectoryFilter(nameRoot, scopedDir);
+        }
+        TopDocs nameTop = searcher.search(nameRoot.build(), fetchLimit);
+        appendResults(searcher, out, nameTop, null, null, nameCond, contentQ, true);
+
+        // List 2: content-only hits fill the remaining quota; MUST_NOT keeps
+        // the lists disjoint so name+content docs live only in list 1.
+        if (out.size() < fetchLimit && contentQ != null) {
+            BooleanQuery.Builder contentRoot = new BooleanQuery.Builder();
+            contentRoot.add(contentQ, BooleanClause.Occur.MUST);
+            contentRoot.add(nameCond, BooleanClause.Occur.MUST_NOT);
+            addNameWildcardMust(contentRoot, np.nameWildcards, new ArrayList<Query>());
+            addKindFilter(contentRoot, scope);
+            addFilters(contentRoot, filter);
+            if (scopedDir != null) {
+                addDirectoryFilter(contentRoot, scopedDir);
+            }
+            TopDocs contentTop = searcher.search(contentRoot.build(), fetchLimit - out.size());
+            appendResults(searcher, out, contentTop, null, null, nameCond, contentQ, false);
+        }
+
+        TriState hasMore = (out.size() > limit) ? TriState.TRUE : TriState.FALSE;
+        if (out.size() > limit) {
+            out.subList(limit, out.size()).clear();
+        }
+        return hasMore;
+    }
+
+    /**
+     * Materialize ScoreDocs into SearchResults. When tierSort is set the slice
+     * is re-ordered by (-score, name length, path) — the tie-break honestly
+     * applies only within the fetched window (D4). Match source is explained
+     * against the original name/content sub-queries (R1-03), or via the
+     * legacy single-query explanation path when nameQ/contentQ are null.
+     */
+    private void appendResults(IndexSearcher searcher, List<SearchResult> out, TopDocs top,
+                               Query userQuery, List<Query> nameClauses,
+                               Query nameQ, Query contentQ, boolean tierSort) throws IOException {
+        List<SearchResult> slice = new ArrayList<>(top.scoreDocs.length);
+        Query explainQuery = (userQuery != null || (nameClauses != null && !nameClauses.isEmpty()))
+                ? buildExplainQuery(userQuery, nameClauses) : null;
+        for (ScoreDoc sd : top.scoreDocs) {
+            Document d = searcher.doc(sd.doc);
+            boolean isFolder = KIND_FOLDER.equalsIgnoreCase(d.get(FIELD_KIND));
+            String name = d.get(FIELD_NAME);
+            String path = d.get(FIELD_PATH);
+            long ctime = getStoredLong(d, FIELD_CTIME_DISPLAY);
+            long atime = getStoredLong(d, FIELD_ATIME_DISPLAY);
+            long size = getStoredLong(d, FIELD_SIZE);
+            if (isFolder) size = 0L;
+
+            String match;
+            if (isFolder) {
+                match = "folder";
+            } else if (nameQ != null || contentQ != null) {
+                match = matchFromBranches(searcher, nameQ, contentQ, sd.doc);
+            } else {
+                match = detectMatchType(searcher, explainQuery, sd.doc);
+            }
+            slice.add(new SearchResult(name, path, sd.score, ctime, atime, match, size, isFolder));
+        }
+        if (tierSort) {
+            slice.sort((a, b) -> {
+                int c = Float.compare(b.score, a.score);
+                if (c != 0) return c;
+                c = Integer.compare(a.name == null ? Integer.MAX_VALUE : a.name.length(),
+                        b.name == null ? Integer.MAX_VALUE : b.name.length());
+                if (c != 0) return c;
+                return String.CASE_INSENSITIVE_ORDER.compare(
+                        a.path == null ? "" : a.path, b.path == null ? "" : b.path);
+            });
+        }
+        out.addAll(slice);
+    }
+
+    /**
+     * Match source from the two original keyword sub-queries — never the
+     * MUST_NOT-decorated content-only retrieval query (R1-03).
+     */
+    private String matchFromBranches(IndexSearcher searcher, Query nameQ, Query contentQ, int docId) {
+        boolean n = false, c = false;
+        try {
+            if (nameQ != null) n = searcher.explain(nameQ, docId).isMatch();
+        } catch (Exception ignore) {
+        }
+        try {
+            if (contentQ != null) c = searcher.explain(contentQ, docId).isMatch();
+        } catch (Exception ignore) {
+        }
+        if (n && c) return "name+content";
+        if (n) return "name";
+        if (c) return "content";
+        return "";
+    }
+
+    private void addKindFilter(BooleanQuery.Builder root, SearchScope scope) {
+        if (scope == SearchScope.FOLDER) {
+            root.add(new TermQuery(new Term(FIELD_KIND, KIND_FOLDER)), BooleanClause.Occur.MUST);
+        } else {
+            // Type filtering inside the query (before Top-N) so excluded
+            // high-score folders cannot consume the limit (D4).
+            root.add(new TermQuery(new Term(FIELD_KIND, KIND_FOLDER)),
+                    BooleanClause.Occur.MUST_NOT);
+        }
+    }
+
+    /* ---------------- literal name-substring path (D2/D3) ----------------- */
+
+    private static final int MAX_LITERAL_TOKENS = 16;
+    private static final int MAX_LITERAL_TOKEN_CODEPOINTS = 64;
+
+    /**
+     * Literal classification: only plain-FUZZY inputs without advanced syntax
+     * or boolean-operator tokens take the name-substring path, and only for
+     * NAME/FOLDER/ALL scopes (CONTENT, EXACT and explicit advanced syntax are
+     * frozen paths — R1 routing boundary).
+     */
+    private List<String> literalTokensIfEligible(String qRest, SearchScope scope,
+                                                 MatchMode matchMode, boolean advanced) {
+        if (advanced || matchMode != MatchMode.FUZZY || qRest == null || qRest.isEmpty()) {
+            return null;
+        }
+        if (scope != SearchScope.NAME && scope != SearchScope.FOLDER && scope != SearchScope.ALL) {
+            return null;
+        }
+        List<String> toks = splitLiteralTokens(qRest);
+        if (toks.isEmpty()) {
+            return null;
+        }
+        if (toks.size() > MAX_LITERAL_TOKENS) {
+            throw new SearchException(SearchException.Code.INVALID_QUERY,
+                    "invalid query syntax: too many words (max " + MAX_LITERAL_TOKENS + ")");
+        }
+        for (String t : toks) {
+            if (t.codePointCount(0, t.length()) > MAX_LITERAL_TOKEN_CODEPOINTS) {
+                throw new SearchException(SearchException.Code.INVALID_QUERY,
+                        "invalid query syntax: word too long (max " + MAX_LITERAL_TOKEN_CODEPOINTS + " chars)");
+            }
+        }
+        return toks;
+    }
+
+    /** Split on Unicode whitespace (Character.isWhitespace || isSpaceChar). */
+    private List<String> splitLiteralTokens(String q) {
+        List<String> toks = new ArrayList<>();
+        StringBuilder cur = new StringBuilder();
+        int[] cps = q.codePoints().toArray();
+        for (int cp : cps) {
+            if (Character.isWhitespace(cp) || Character.isSpaceChar(cp)) {
+                if (cur.length() > 0) {
+                    toks.add(cur.toString());
+                    cur.setLength(0);
+                }
+            } else {
+                cur.appendCodePoint(cp);
+            }
+        }
+        if (cur.length() > 0) {
+            toks.add(cur.toString());
+        }
+        return toks;
+    }
+
+    /**
+     * Boolean operators count as advanced syntax only as independent lexical
+     * tokens (whole-word, uppercase as the classic parser requires) —
+     * "band"/"SANDY" must not be misclassified (D3).
+     */
+    private boolean hasBooleanOperatorToken(String qRest) {
+        if (qRest == null || qRest.isEmpty()) return false;
+        for (String t : splitLiteralTokens(qRest)) {
+            if ("AND".equals(t) || "OR".equals(t) || "NOT".equals(t)) return true;
+        }
+        return false;
+    }
+
+    /**
+     * One word's three constant tiers on name_raw (lowercased stored form):
+     * exact=4, prefix=3, substring=2 via DisjunctionMax(tie=0). Multi-word
+     * conditions AND across words; the document name score is the sum of the
+     * per-word tier constants (D2).
+     */
+    private Query buildNameCondition(List<String> tokens) {
+        BooleanQuery.Builder all = new BooleanQuery.Builder();
+        for (String tok : tokens) {
+            String t = tok.toLowerCase(Locale.ROOT);
+            List<Query> tiers = new ArrayList<>(3);
+            tiers.add(new BoostQuery(new ConstantScoreQuery(
+                    new TermQuery(new Term(FIELD_NAME_RAW, t))), 4.0f));
+            tiers.add(new BoostQuery(new ConstantScoreQuery(
+                    new PrefixQuery(new Term(FIELD_NAME_RAW, t))), 3.0f));
+            tiers.add(new BoostQuery(new ConstantScoreQuery(
+                    new WildcardQuery(new Term(FIELD_NAME_RAW, "*" + escapeWildcard(t) + "*"))), 2.0f));
+            all.add(new DisjunctionMaxQuery(tiers, 0.0f), BooleanClause.Occur.MUST);
+        }
+        return all.build();
+    }
+
+    /** Escape wildcard meta characters for WildcardQuery (backslash is the escape char). */
+    private static String escapeWildcard(String literal) {
+        StringBuilder sb = new StringBuilder(literal.length() + 4);
+        for (int i = 0; i < literal.length(); i++) {
+            char c = literal.charAt(i);
+            if (c == '\\' || c == '*' || c == '?') {
+                sb.append('\\');
+            }
+            sb.append(c);
+        }
+        return sb.toString();
+    }
+
+    /**
+     * ALL literal content branch: literal-escape the raw input, then reuse the
+     * existing content-field parser/analyzer rules (R1-02). Returns null when
+     * analysis yields no terms — the content list simply has no hits.
+     */
+    private Query buildLiteralContentQuery(String qRest) throws ParseException {
+        String escaped = QueryParser.escape(qRest);
+        MultiFieldQueryParser parser = new MultiFieldQueryParser(CONTENT_FIELDS, queryAnalyzer);
+        Query q = parser.parse(escaped);
+        if (q == null || (q instanceof BooleanQuery && ((BooleanQuery) q).clauses().isEmpty())) {
+            return null;
+        }
+        return q;
     }
 
     @Override
@@ -627,7 +874,7 @@ public class LuceneSearchService implements SearchService {
         if (input == null || input.isEmpty()) return false;
         for (int i = 0; i < input.length(); i++) {
             char c = input.charAt(i);
-            if (c == ':' || c == '*' || c == '?' || c == '"' || c == ')' || c == '!') {
+            if (c == ':' || c == '*' || c == '?' || c == '"' || c == '(' || c == ')' || c == '!') {
                 return true;
             }
         }
