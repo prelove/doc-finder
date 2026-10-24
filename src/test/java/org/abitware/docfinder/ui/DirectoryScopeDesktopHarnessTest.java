@@ -361,6 +361,71 @@ class DirectoryScopeDesktopHarnessTest {
     }
 
     @Test
+    void shouldSyncWebServerWhenLockRecoveryStopsService() throws Exception {
+        FakeService svc = new FakeService();
+        win = new HarnessWindow(null);
+        org.abitware.docfinder.web.WebServer web =
+                new org.abitware.docfinder.web.WebServer(0, "127.0.0.1");
+        win.setWebServer(web);
+        // Publish through setSearchService so the web server holds the same
+        // reference — the defect under test is that lock recovery used to
+        // clear only the desktop field and leave the web side stale.
+        onEdt(() -> win.setSearchService(svc));
+        java.lang.reflect.Field f =
+                org.abitware.docfinder.web.WebServer.class.getDeclaredField("searchService");
+        f.setAccessible(true);
+        assertSame(svc, f.get(web), "setup: web must hold the published service");
+        // Production calls this from a background thread before deleting index
+        // files; invoking off-EDT exercises the invokeAndWait path and proves
+        // the close still completes synchronously without deadlock.
+        Method m = MainWindow.class.getDeclaredMethod("stopIndexServicesForLockRecovery");
+        m.setAccessible(true);
+        Thread t = new Thread(() -> {
+            try {
+                m.invoke(win);
+            } catch (Exception e) {
+                throw new RuntimeException(e);
+            }
+        });
+        t.start();
+        t.join(10_000);
+        assertFalse(t.isAlive(), "lock recovery must not deadlock off-EDT");
+
+        assertTrue(svc.closed.get(), "old service must be closed");
+        assertNull(win.getCurrentSearchService(), "service must be unpublished");
+        assertNull(f.get(web), "web server must observe INDEX_UNAVAILABLE, not a stale service");
+    }
+
+    @Test
+    void shouldInvalidateCompletedSearchWhenFullRebuildFailsBeforeDone() throws Exception {
+        FakeService fake = new FakeService();
+        fake.finished = new CountDownLatch(1);
+        fake.canned = Collections.singletonList(
+                new SearchResult("late.txt", "p/late.txt", 1f, 0L, 0L, "name", 1L, false));
+        win = new HarnessWindow(fake);
+
+        // Worker finished in the background but its done() is still queued on
+        // the EDT; a rebuild failure must invalidate it before it publishes.
+        onEdt(() -> {
+            try {
+                win.getSearchField().setText("alpha");
+                invokeDoSearch(win);
+                assertTrue(fake.finished.await(10, TimeUnit.SECONDS));
+                win.handleFullRebuildFailure();
+            } catch (Exception e) {
+                throw new RuntimeException(e);
+            }
+        });
+        Thread.sleep(500);
+        onEdt(() -> { });
+
+        assertEquals(0, win.getResultTable().getRowCount(), "late result must not publish after rebuild failure");
+        assertEquals("Rebuild failed. Search is unavailable until the index is rebuilt. See the application log.",
+                win.getStatusLabel().getText());
+        assertNull(win.getCurrentSearchService());
+    }
+
+    @Test
     void shouldNotRepublishServiceAfterFullRebuildFailure() throws Exception {
         win = new HarnessWindow(null);
         FakeService old = new FakeService();

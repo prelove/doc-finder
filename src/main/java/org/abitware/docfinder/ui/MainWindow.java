@@ -1717,6 +1717,13 @@ public class MainWindow extends JFrame implements MenuBarPanel.MenuListener {
 	 */
 	void handleFullRebuildFailure() {
 		openServiceSequence++;
+		// Invalidate/cancel in-flight searches directly so this method stays
+		// correct if it is ever reused outside the rebuild worker path.
+		searchSequence++;
+		if (activeSearchWorker != null) {
+			activeSearchWorker.cancel(true);
+			activeSearchWorker = null;
+		}
 		setSearchService(null);
 		statusLabel.setText("Rebuild failed. Search is unavailable until the index is rebuilt. See the application log.");
 	}
@@ -1773,9 +1780,13 @@ public class MainWindow extends JFrame implements MenuBarPanel.MenuListener {
 		}
 		try {
 			openServiceSequence++; // invalidate any pending service open candidates
-			if (searchService != null) {
-				searchService.close();
-				searchService = null;
+			// Route through setSearchService so the web server also observes the
+			// service going away (INDEX_UNAVAILABLE), and so the close still
+			// completes before index files are deleted below.
+			if (javax.swing.SwingUtilities.isEventDispatchThread()) {
+				setSearchService(null);
+			} else {
+				javax.swing.SwingUtilities.invokeAndWait(() -> setSearchService(null));
 			}
 		} catch (Exception ex) {
 			log.warn("Failed to stop search service before lock recovery: {}", ex.getMessage());
