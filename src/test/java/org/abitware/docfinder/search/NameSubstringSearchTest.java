@@ -57,6 +57,8 @@ class NameSubstringSearchTest {
         write(source.resolve(ZHIFU_FILE), "lorem ipsum");
         write(source.resolve(EMOJI_FILE), "lorem ipsum");
         write(source.resolve("beta-notes.txt"), "report findings inside");
+        write(source.resolve("foo and bar notes.txt"), "lorem ipsum"); // EXACT phrase hit
+        write(source.resolve("bar foo.txt"), "lorem ipsum");          // same words, wrong order
         write(source.resolve("sub").resolve("report-sub.txt"), "lorem ipsum");
         write(source.resolve("reports").resolve("inside.txt"), "lorem ipsum");
         for (int i = 1; i <= 5; i++) {
@@ -207,6 +209,33 @@ class NameSubstringSearchTest {
         List<SearchResult> exactFull = detailed("annualreport2026.pdf", 50, SearchScope.NAME, MatchMode.EXACT).results;
         assertTrue(exactFull.stream().anyMatch(r -> "AnnualReport2026.PDF".equals(r.name)),
                 "EXACT full-name term must still hit");
+    }
+
+    @Test
+    void shouldKeepExactFrozenForBooleanAndParenInputs() {
+        // Regression: the new literal classification must not steer EXACT —
+        // 'foo AND bar' stays the frozen phrase semantics (hit order matters),
+        // not the parsed boolean query which also matches 'bar foo.txt'.
+        List<SearchResult> rs = detailed("foo AND bar", 50, SearchScope.ALL, MatchMode.EXACT).results;
+        assertTrue(names(rs).contains("foo and bar notes.txt"),
+                "EXACT phrase must hit consecutive-word name");
+        assertFalse(names(rs).contains("bar foo.txt"),
+                "parsed-boolean result must not appear under frozen EXACT");
+
+        // '(' must not make EXACT error — frozen path treats it literally and
+        // still returns the report-named hits (old behavior, Codex repro).
+        List<SearchResult> paren = detailed("report (", 50, SearchScope.NAME, MatchMode.EXACT).results;
+        assertTrue(names(paren).contains("report"),
+                "EXACT 'report (' must keep returning the report file, not error");
+    }
+
+    @Test
+    void shouldKeepBooleanAndParenOutOfLiteralPath() {
+        // FUZZY 'report (' was INVALID_QUERY before the change (parser path).
+        SearchException e = assertThrows(SearchException.class,
+                () -> search("report (", 50, SearchScope.NAME));
+        assertEquals(SearchException.Code.INVALID_QUERY, e.getCode(),
+                "FUZZY 'report (' must keep the parser/INVALID_QUERY contract");
     }
 
     @Test

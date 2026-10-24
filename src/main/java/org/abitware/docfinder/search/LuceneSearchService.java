@@ -391,7 +391,11 @@ public class LuceneSearchService implements SearchService {
             }
 
             NamePreprocess np = extractNameWildcards(rawQuery);
-            boolean advanced = hasAdvancedSyntax(np.qRest) || hasBooleanOperatorToken(np.qRest);
+            // Frozen steering flag: the original advanced-syntax set only.
+            // The new literal classification adds its own exclusions inside
+            // literalTokensIfEligible and must not alter EXACT/advanced
+            // routing (regression: 'foo AND bar' and 'report (' changed).
+            boolean advanced = hasAdvancedSyntax(np.qRest);
             List<String> literalTokens = literalTokensIfEligible(np.qRest, scope, matchMode, advanced);
 
             int limit = Math.max(1, Math.min(request.limit, 200));
@@ -604,7 +608,8 @@ public class LuceneSearchService implements SearchService {
      */
     private List<String> literalTokensIfEligible(String qRest, SearchScope scope,
                                                  MatchMode matchMode, boolean advanced) {
-        if (advanced || matchMode != MatchMode.FUZZY || qRest == null || qRest.isEmpty()) {
+        if (advanced || matchMode != MatchMode.FUZZY || qRest == null || qRest.isEmpty()
+                || hasBooleanOperatorToken(qRest) || qRest.indexOf('(') >= 0) {
             return null;
         }
         if (scope != SearchScope.NAME && scope != SearchScope.FOLDER && scope != SearchScope.ALL) {
@@ -874,7 +879,7 @@ public class LuceneSearchService implements SearchService {
         if (input == null || input.isEmpty()) return false;
         for (int i = 0; i < input.length(); i++) {
             char c = input.charAt(i);
-            if (c == ':' || c == '*' || c == '?' || c == '"' || c == '(' || c == ')' || c == '!') {
+            if (c == ':' || c == '*' || c == '?' || c == '"' || c == ')' || c == '!') {
                 return true;
             }
         }

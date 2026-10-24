@@ -103,7 +103,7 @@ DocFinder is a desktop utility that lets you search **file names and file conten
 
 ## Search Semantics
 - Scopes: ALL searches file names and content; NAME searches file names; CONTENT searches content; FOLDER searches folder names. ALL and NAME exclude folders.
-- Ordinary filename input currently uses analyzed terms and prefix expansion. For a middle fragment, use `name:*report*`. Default literal substring search and typing debounce are roadmap B proposals, not implemented features.
+- Ordinary FUZZY filename input is matched literally against the raw name: middle fragments (`report` → `AnnualReport2026.PDF`), single characters, CJK and symbols all match without wildcards. Multiple words must all appear in the name. Name hits rank above content hits in ALL (exact name > prefix > substring tiers). Typing is debounced 250ms; truncation is reported as "Showing first N results" when the total is unknown.
 - EXACT combines a raw full-name term and analyzed phrase matching for the selected fields; it is not exclusively full-filename equality. Explicit field/wildcard syntax retains its own path.
 - Directory scopes include descendants and require a configured source. Search does not scan or add a source. A path draft takes effect on Enter/selection; Applied shows the submitted scope.
 - **Multi‑field parsing** with boosts: `name^2.0`, `content^1.2`, `content_zh^1.2`, `content_ja^1.2`.
@@ -307,7 +307,7 @@ Paths are relative to the JVM working directory (`user.dir`), which may differ f
 
 ## Roadmap
 - A: directory-scoped implementation and automated remediation verified; the user confirmed latest manual acceptance fully successful. Accepted specifications are synchronized and the completed change is archived.
-- B: `improve-name-search-experience` proposal under review; implementation not approved.
+- B: `improve-name-search-experience` implemented on `codex/name-search` — literal name substring, multi-word AND, tier-ranked dual-list ALL, 250ms debounce and tri-state truncation; awaiting final acceptance.
 - C1/C2: index consistency, watcher recovery and staged content extraction remain future work.
 - D: selected Java8-compatible dependency upgrades implemented; supported newer-Java stacks and native validation remain separate.
 - [Product sequence](docs/roadmap.md) and [delivery status](openspec/changes/archive/2026-10-24-add-directory-scoped-search/delivery-status.yaml) define current gates.

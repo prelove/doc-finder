@@ -161,6 +161,13 @@ public class MainWindow extends JFrame implements MenuBarPanel.MenuListener {
 	private javax.swing.Timer searchDebounceTimer;
 	private boolean programmaticQueryEdit = false;
 
+	// Editable JComboBox can deliver one Enter commit as two ActionEvents when
+	// the typed text is not yet in the model (verified on a real Swing field:
+	// first Enter on a new keyword submitted twice, later Enters once). Drop a
+	// duplicate event carrying the same text within a single gesture (D6 B).
+	// Editable-combo duplicate events are filtered by event semantics in the
+	// action listener (comboBoxEdited vs comboBoxChanged), not by time windows.
+
 	// ========= Constructor =========
 	public MainWindow(SearchService searchService) {
 		super("DocFinder");
@@ -257,7 +264,7 @@ public class MainWindow extends JFrame implements MenuBarPanel.MenuListener {
 		// Install placeholder for query box editor (JTextField)
 		searchField = getActiveSearchField();
 		searchField.putClientProperty("JTextField.placeholderText",
-				"Search... (e.g. report*, content:\"zero knowledge\", name:\"瑷▓\")");
+				"Search... (e.g. report*, content:\"zero knowledge\", name:\"检查清单\")");
 
 		// Debounce: a single 250ms non-repeating timer that only delays the
 		// submit; user typing invalidates in-flight work immediately (D6 A).
@@ -270,15 +277,29 @@ public class MainWindow extends JFrame implements MenuBarPanel.MenuListener {
 		});
 
 		// History dropdown selection + editor Enter both go through combo action.
+		// An Enter commit on text that is new to the model fires two events
+		// (comboBoxChanged then comboBoxEdited); Enter on an already-selected
+		// value fires only comboBoxEdited. Dedup by event semantics: the edit
+		// commit is the Enter signal, and comboBoxChanged only counts when it is
+		// a real dropdown pick (popup open, selection is a model entry).
 		queryBox.addActionListener(e -> {
 			if (suppressQueryActions)
 				return;
-			Object sel = queryBox.getSelectedItem();
-			if (sel != null && queryBox.isPopupVisible()) {
-				setQueryText(sel.toString());
+			String command = e.getActionCommand();
+			if ("comboBoxEdited".equals(command)) {
+				String text = getQueryText();
+				if (!text.isEmpty()) {
+					doSearch();
+				}
+				return;
 			}
-			if (!getQueryText().isEmpty()) {
-				doSearch();
+			Object sel = queryBox.getSelectedItem();
+			if ("comboBoxChanged".equals(command) && sel != null && queryBox.isPopupVisible()
+					&& queryBox.getSelectedIndex() >= 0) {
+				setQueryText(sel.toString());
+				if (!getQueryText().isEmpty()) {
+					doSearch();
+				}
 			}
 		});
 
