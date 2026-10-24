@@ -19,5 +19,7 @@ if not defined JAR (
 set "JAVA=%JAVA_HOME%\bin\javaw.exe"
 if not exist "%JAVA%" set "JAVA=javaw.exe"
 
-start "" "%JAVA%" -Xms256m -Xmx1024m -Dfile.encoding=UTF-8 -jar "%BASE%%JAR%"
+rem -Xms stays small so startup stays light; -Xmx only lets the heap grow
+rem when the OS has free memory. Lower -Xmx if the machine is short on RAM.
+start "" "%JAVA%" -Xms256m -Xmx2048m -Dfile.encoding=UTF-8 -jar "%BASE%%JAR%"
 exit /b 0
