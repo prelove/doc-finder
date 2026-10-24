@@ -1,0 +1,130 @@
+--- a/src/test/java/org/abitware/docfinder/search/DirectoryScopedSearchTest.java
++++ b/src/test/java/org/abitware/docfinder/search/DirectoryScopedSearchTest.java
+@@ -241,4 +241,35 @@
+                         || "name+content".equals(x.match)),
+                 "CONTENT-scope results report content match source");
+     }
++
++    @Test
++    void codexQaShouldLabelExplicitNameQueryGlobally() {
++        List<SearchResult> hits=service.search(new SearchRequest("name:alpha-report.txt",100,null,SearchScope.NAME,MatchMode.FUZZY));
++        assertEquals(1,hits.size());
++        assertEquals("name",hits.get(0).match,"explicit name query must retain name source");
++    }
++    @Test
++    void codexQaShouldLabelExplicitNameQueryWithinDirectory() {
++        List<SearchResult> hits=scoped("name:alpha-report.txt",source.toString(),SearchScope.NAME);
++        assertEquals(1,hits.size());
++        assertEquals("name",hits.get(0).match,"scoped explicit name must retain source");
++    }
++    @Test
++    void codexQaShouldLabelExplicitNameAndContent() {
++        List<SearchResult> hits=scoped("name:alpha-report.txt content:alpha",source.toString(),SearchScope.ALL);
++        assertEquals(1,hits.size());
++        assertEquals("name+content",hits.get(0).match,"explicit name + content must expose both sources");
++    }
++
++
++    @Test
++    void codexFinalShouldCharacterizeExactAnalyzedNamePhrase() throws Exception {
++        Path p = source.resolve("final report draft.txt");
++        write(p, "unrelated payload");
++        try (LuceneIndexer ix = new LuceneIndexer(index,new IndexSettings())) { ix.upsertFile(p);ix.commit(); }
++        List<SearchResult> hits = service.search(new SearchRequest("report",100,null,SearchScope.NAME,MatchMode.EXACT));
++        assertTrue(hits.stream().anyMatch(x->x.path.equals(p.toString())),
++            "current EXACT includes analyzed name phrase; it is not restricted to raw full-name equality");
++    }
++
+ }
+--- a/src/test/java/org/abitware/docfinder/ui/DirectoryScopeDesktopHarnessTest.java
++++ b/src/test/java/org/abitware/docfinder/ui/DirectoryScopeDesktopHarnessTest.java
+@@ -592,8 +592,8 @@
+         }
+     }
+ 
+-    @Test
+-    void shouldKeepPartialStatusAfterRealIndexAllSecondSourceCommitFails() throws Exception {
++    @org.junit.jupiter.api.RepeatedTest(5)
++    void codexWatchdogShouldKeepPartialStatusAfterRealIndexAllSecondSourceCommitFails() throws Exception {
+         // R24-03: REAL indexAllSources entry; source A commits, then the
+         // index dir is made unwritable before source B's commit — the second
+         // commit REALLY fails. The partial-failure text must survive publish
+@@ -998,4 +998,78 @@
+         win.reopenSearchServiceAsync(java.nio.file.Paths.get("idx"), new IndexSettings());
+         assertTrue(waitForStatus(expectedMsg(SearchException.Code.INDEX_UNAVAILABLE), 10_000));
+     }
++
++    @Test
++    void codexQaShouldClearPresentedResultsWhenServiceBecomesUnavailable() throws Exception {
++        FakeService fake=new FakeService();
++        fake.canned=Collections.singletonList(new SearchResult("old.txt","p/old.txt",1f,0,0,"name",1,false));
++        win=new HarnessWindow(fake);
++        setQuery(win,"alpha");invokeDoSearch(win);
++        assertTrue(waitForStatusPrefix("Results:",10000));
++        assertEquals(1,win.getResultTable().getRowCount());
++        onEdt(()->win.setSearchService(null));
++        invokeDoSearch(win);
++        assertEquals(0,win.getResultTable().getRowCount(),"unavailable search must clear earlier successful results");
++    }
++    @Test
++    void codexQaShouldClearPresentedResultsWhenFullRebuildFails() throws Exception {
++        FakeService fake=new FakeService();
++        fake.canned=Collections.singletonList(new SearchResult("old.txt","p/old.txt",1f,0,0,"name",1,false));
++        win=new HarnessWindow(fake);
++        setQuery(win,"alpha");invokeDoSearch(win);
++        assertTrue(waitForStatusPrefix("Results:",10000));
++        assertEquals(1,win.getResultTable().getRowCount());
++        onEdt(()->win.handleFullRebuildFailure());
++        assertEquals(0,win.getResultTable().getRowCount(),"rebuild failure must clear already rendered results");
++    }
++    @Test
++    void codexQaShouldNotSilentlyKeepOldServiceWhenOpeningNewLocationFails() throws Exception {
++        FakeService old=new FakeService();
++        win=new HarnessWindow(old);
++        win.openFailure=new RuntimeException("new location cannot open");
++        win.reopenSearchServiceAsync(java.nio.file.Paths.get("other-index"),new IndexSettings());
++        assertTrue(waitForStatus(expectedMsg(SearchException.Code.INDEX_UNAVAILABLE),10000));
++        assertNull(win.getCurrentSearchService(),"unavailable new location must not leave old service active");
++    }
++
++
++    @Test
++    void codexFinalShouldClearAlreadyCompletedOldResultWhenOpenFails() throws Exception {
++        FakeService old = new FakeService();
++        old.canned = Collections.singletonList(new SearchResult("completed-old.txt", "p/completed-old.txt", 1f, 0, 0, "name", 1, false));
++        win = new HarnessWindow(old);
++        setQuery(win, "alpha"); invokeDoSearch(win);
++        assertTrue(waitForStatusPrefix("Results:", 10_000));
++        assertEquals(1, win.getResultTable().getRowCount(), "old done must execute BEFORE the failure transition");
++        win.openFailure = new RuntimeException("new index unavailable");
++        win.reopenSearchServiceAsync(java.nio.file.Paths.get("other-index"), new IndexSettings());
++        String unavailable = expectedMsg(SearchException.Code.INDEX_UNAVAILABLE);
++        assertTrue(waitForStatus(unavailable, 10_000));
++        onEdt(() -> { });
++        assertEquals(0, win.getResultTable().getRowCount());
++        assertNull(win.getCurrentSearchService());
++        assertTrue(old.closed.get());
++        assertEquals(unavailable, win.getStatusLabel().getText());
++    }
++
++    @Test
++    void codexFinalShouldIgnoreBlockedOldResultAfterFailedOpen() throws Exception {
++        FakeService old = new FakeService();
++        CountDownLatch release = new CountDownLatch(1);
++        old.entered = new CountDownLatch(1); old.finished = new CountDownLatch(1);old.blockOn=release;
++        old.canned = Collections.singletonList(new SearchResult("late-old.txt", "p/late-old.txt", 1f,0,0,"name",1,false));
++        win = new HarnessWindow(old);
++        try {
++            setQuery(win,"alpha");invokeDoSearch(win);
++            assertTrue(old.entered.await(10,TimeUnit.SECONDS));
++            win.openFailure=new RuntimeException("open failed");
++            win.reopenSearchServiceAsync(java.nio.file.Paths.get("other-index"),new IndexSettings());
++            String unavailable=expectedMsg(SearchException.Code.INDEX_UNAVAILABLE);
++            assertTrue(waitForStatus(unavailable,10_000));
++            release.countDown();assertTrue(old.finished.await(10,TimeUnit.SECONDS));
++            waitForStatusPrefix("Results:",1200);onEdt(()->{});
++            assertEquals(0,win.getResultTable().getRowCount());assertEquals(unavailable,win.getStatusLabel().getText());
++        } finally { release.countDown(); }
++    }
++
+ }

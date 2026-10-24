@@ -1,0 +1,28 @@
+{
+  "source_head": "0e8de6dcefe155fb7d8e938df332ea3d14942ca4",
+  "main_source_sha256": "7db42a28024ae0983184a3eaeed2346a3b6632b04a7967074e830e01febe6d84",
+  "test_counts": {
+    "tests": 169,
+    "failures": 0,
+    "errors": 0,
+    "skipped": 2
+  },
+  "skips": [
+    "org.abitware.docfinder.util.PathScopeTest#shouldKeepPosixCaseAndSeparators",
+    "org.abitware.docfinder.web.SearchHandlerTest#shouldEmitNullParentForPosixRoot"
+  ],
+  "fork_environment": {
+    "java.version": "17",
+    "user.dir": "C:\\Users\\Administrator\\AppData\\Local\\Temp\\docfinder-closeout-20261024-dk3q6a6_\\checkout\\target\\test-classes",
+    "user.home": "C:\\Users\\Administrator\\AppData\\Local\\Temp\\docfinder-closeout-20261024-dk3q6a6_\\checkout\\target/test-home",
+    "docfinder.argline.probe": "present"
+  },
+  "jar_sha256": "8fbdcad6dd4177859f7a1a4a41fa5618617de0f4238a01bed9dae55f53964a61",
+  "runtime_controls_unchanged": true,
+  "qa_root": "C:\\Users\\Administrator\\AppData\\Local\\Temp\\docfinder-closeout-20261024-dk3q6a6_",
+  "user_acceptance": "PASS_USER_REPORTED; direct quote in ../User-Acceptance-2026-10-24.md",
+  "main_spec_requirements": {
+    "directory-scoped-search": 12,
+    "build-modernization": 4
+  }
+}

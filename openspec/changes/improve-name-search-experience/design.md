@@ -1,5 +1,8 @@
 # Design
 
+> 2026-10-24 Codex评审：CHANGES_REQUESTED。此为未批准的0.1草案，B-01～09见 [评审意见](review.md)；修订0.2并经Claude复核/用户批准前不得实施，当前0/22。
+
+
 ## Context
 
 现有名称命中路径（`LuceneSearchService.buildUserQuery`/`shouldAddNamePrefix`）在 FUZZY 下对 `name`（StandardAnalyzer 分词）做解析查询，并对 ASCII 单词型输入追加 `name`/`name_raw` 前缀查询；仅 FOLDER 范围额外加 `name_raw` 的 `*term*` 通配。`name_raw` 是小写 StringField，天然支持 TermQuery/PrefixQuery/WildcardQuery。中段匹配缺失的原因：`AnnualReport2026.PDF` 分词为单一词项，子串无前缀锚点。

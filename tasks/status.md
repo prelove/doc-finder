@@ -2,25 +2,24 @@
 
 ## Current Snapshot (2026-10-24)
 
-### Directory-Scoped Search change (openspec `add-directory-scoped-search`)
+- **Observed source/remote**: 0e8de6d at local HEAD and independently queried origin main. New local documentation/help updates are uncommitted.
+- **A implementation**: R24-01..06 independently closed. JDK17 clean verify and real Java8 each 169 total /167 pass /0 fail /2 platform skips; current help-copy variant separately rerun with same result. 16 additional checks pass, including 5 watchdog injections.
+- **Host acceptance**: user subsequently confirmed latest manual acceptance fully successful and asked to continue submission/delivery. PASS_USER_REPORTED; A8 accepted. Earlier NOT_EXECUTED and native-tool limits are historical observations, not current user acceptance status.
+- **Dependency modernization**: selected Java8-compatible versions verified with A; remaining upstream EOL risks documented. No blanket latest/security guarantee.
+- **Cleanup commits**: unused ui.workers classes removed; source references and full build checked. Launcher keeps -Xmx2048m, with corrected native-memory/commit guidance; raising Xmx is not a proven fix for the recorded native mmap failure.
+- **Live-data report**: implementer reported a legacy index without path_scope and later scoped-search recovery. Codex did not scan or rebuild business data; this report is not a replacement for formal M records.
+- **B proposal**: improve-name-search-experience exists, 0/22 implementation tasks. Codex CHANGES_REQUESTED (3 P1, 6 P2 plan issues); revise0.2, Claude review, user approval before coding.
+- **Documentation**: README/README_CN/UsageGuide and in-app help synchronized with current scope, actual data locations/preview routes, existing EXACT semantics and future-feature boundary.
+- **Housekeeping**: .playwright-mcp remains local untracked artifacts; no jerr4.txt currently reported by git. Leave unrelated/runtime artifacts untouched.
 
-- **Implementation**: A0–A7 all delivered; section 11 (F-findings) and section 12 (QA24) closed; section 13 R24-01..06 remediated and committed (`8f756dd`, report `da3db49` — both pushed to origin).
-- **Field verification on live data**: user's scoped search returned empty — root cause was the production index predating the `path_scope` field (8672 docs, 0 scope terms), plus a mid-indexing JVM OOM crash (`hs_err_pid9580.log`, native mmap failure at -Xmx1024m). Full rebuild on the current build resolved it; scoped search confirmed working end-to-end.
-- **Cleanup this round** (local commits, unpushed): `824fb4d` remove dead `ui.workers.SearchWorker`/`SearchExecutor` that silently dropped `directoryPath`; `748f297` remove dead `IndexingManager`; `a0b6caf` launcher heap `-Xmx2048m` headroom for index runs.
-- **Verification**: `mvn test` green on `a0b6caf` — 169 tests / 0 failures / 3 platform skips.
+### Next actions
 
-### Open items / next step
+1. Codex completes authorized commit/push, main-spec sync and archive of accepted A/dependency changes.
+2. Devin revises B proposal only against [B review](../openspec/changes/improve-name-search-experience/review.md); no B implementation permission is inferred.
+3. Claude reviews revised B plan, user approves its actual fingerprint and implementation scope.
+4. A8 is accepted; record actual delivery SHA and archive locations, then continue B plan revision without new implementation authorization.
 
-1. **Codex independent reverify** of R24 fixes on the new HEAD (`a0b6caf`, includes cleanup commits) — delivery-status `next_action` owner: Codex.
-2. **M-01~M-06 host acceptance** still open (runbook: `openspec/changes/add-directory-scoped-search/evidence/M-Acceptance-Runbook.md`); user's manual testing already exercised scoped search successfully but formal records are pending.
-3. **A8**: user acceptance + delivery authorization (push/PR/archive) — 3 local commits ahead of `origin/main`.
-4. `modernize-java-dependencies`: implemented, R24-06 wording resolved; pending combined acceptance with the scoped-search change.
-5. Housekeeping: `jerr4.txt` is untracked junk in repo root (decide delete vs ignore); `.playwright-mcp/` and `hs_err_pid*.log` already gitignored.
-
-### Roadmap candidates (per `openspec/.../roadmap.md`)
-
-- **B** improve-name-search-experience (substring name match, debounce, ranking) — next proposed change, not yet created.
-- **C1/C2** index consistency & watcher lifecycle; **D** Java/dependency modernization — separate changes, user picks priority.
+Latest A evidence: [final review](../openspec/changes/add-directory-scoped-search/evidence/Codex-Final-Review-2026-10-24.md). PM handoff: [next dispatch](../openspec/changes/add-directory-scoped-search/evidence/Next-Dispatch-2026-10-24.md).
 
 ---
 

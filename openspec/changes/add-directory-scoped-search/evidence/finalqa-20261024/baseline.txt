@@ -1,0 +1,17 @@
+{
+  "totals": {
+    "tests": 169,
+    "failures": 0,
+    "errors": 0,
+    "skipped": 2
+  },
+  "environment": {
+    "java.version": "17",
+    "java.home": "D:\\java\\java17",
+    "user.dir": "C:\\Users\\Administrator\\AppData\\Local\\Temp\\docfinder-finalqa-20261024-5q25y5l9\\checkout\\target\\test-classes",
+    "user.home": "C:\\Users\\Administrator\\AppData\\Local\\Temp\\docfinder-finalqa-20261024-5q25y5l9\\checkout\\target/test-home",
+    "docfinder.argline.probe": "present"
+  }
+}
+org.abitware.docfinder.util.PathScopeTest#shouldKeepPosixCaseAndSeparators SKIP
+org.abitware.docfinder.web.SearchHandlerTest#shouldEmitNullParentForPosixRoot SKIP

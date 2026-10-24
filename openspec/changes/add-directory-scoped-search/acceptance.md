@@ -1,23 +1,23 @@
 # Acceptance and Evidence
 
-批准版本0.4；最新独立复验2026-10-24（4f56d0d）：clean verify及真实Java8各164总数/162通过/0失败/2平台跳过，原8探针全通过；11项补充总计9通过/2失败，实际浏览器19项通过。A7第13组需补修，A8未通过。见 [最新独立复验](evidence/Codex-Reverification-2026-10-24.md)；Devin修复报告为实现者证据，不替代本轮发现闭环。此前149/22及164/3数字均是各自历史运行。
+当前结论：2026-10-24用户明确“手动验收完全成功”，最新版A阶段与指定依赖升级组合接受，A8通过。此前独立169套件/Java8/16检查与Web证据保持各自范围；本次M完整手测为PASS_USER_REPORTED，不冒充Codex全项重跑。见 [用户确认](evidence/User-Acceptance-2026-10-24.md)。当前进行授权提交推送和归档。
 
 ## Traceability
 
 | DS | 自动验证（拟新增/扩展） | 任务包 | 交互 | 当前结果 |
 | --- | --- | --- | --- | --- |
-| DS-01 整树/根自身/兄弟 | DirectoryScopedSearchTest、DirectoryScopeEndToEndTest | A3/A7 | M-01/M-04 | 4f56d0d套件及实际Web整树/根自身/兄弟通过；M-01全表未完成 |
-| DS-02 路径 | PathScopeTest、HTTP编码测试 | A1/A6 | M-01/M-04 | 套件通过；原生选择器确认/取消探针通过；真实POSIX/UNC未跑；R24-02测试配置路径错误待修 |
-| DS-03 条件/Top-N/类型 | LuceneSearchServiceTest、DirectoryScopedSearchTest | A0/A3 | M-01 | 显式name全局/限定/组合3原探针独立通过；常规过滤/Top-N通过 |
-| DS-04 来源/离线/状态 | SourceManagerSearchRootsTest、DirectorySourceValidationTest（含好坏行混合）、无提交HTTP fixture | A1/A3/A6 | M-02/M-04 | 仅NoSuchFile为空/ACL拒读套件通过；剩余POSIX路径夹具R24-04待修 |
-| DS-05 旧/混合/刷新 | DirectoryScopeCompatibilityTest | A4 | M-06 | 两删除反例、close交错套件通过；P-00服务/100热样本已跑，计算次数证明R24-05未通过 |
-| DS-06 实际全量/upsert | LuceneIndexerPathScopeTest、DocumentBuilderTest、EndToEnd | A2/A7 | M-06 | 实际indexer/upsert套件通过；Index All测试实际路径和生命周期证明R24-02/03待补 |
-| DS-07 桌面 | DirectoryScopePanelTest（含路径等价/坏行警告）、DesktopHarness | A5a | M-01/M-02/M-03 | Applied标签及选择器探针通过；窗口截取两次超时，视觉/完整来源管理实机未完成 |
-| DS-08 Web | SearchHandlerTest、WebAssetsOfflineTest（仅资源） | A6 | M-04/M-05 | 本轮19浏览器场景通过，含持久索引说明；真实409/503等M-04全表未全跑 |
-| DS-09 错误 | SearchErrorMessagesTest、DesktopHarness八Code/未知消息映射、HTTP映射 | A3/A4/A5a/A6 | M-02/M-04 | 原null/重建失败清理探针通过；重开失败后的迟到旧结果R24-01仍失败 |
-| DS-10 空词/兼容 | provider计数=0、旧请求回归 | A0/A3/A6 | M-03/M-05 | 现有空词/token套件及本轮Web迟到通过；实际Index All入口时序R24-03待补 |
-| DS-11 快捷定位/复制 | EDT动作/服务器parentDirectory/前端受控响应测试 | A5a/A5b/A6 | M-01/M-04 | 本轮Web排序/快捷/复制受控分支通过；桌面全流程/真实根仍未全跑 |
-| DS-12 首次建库/重建恢复 | DesktopHarness、HTTP unavailable/恢复与集成测试 | A5a/A6/A7 | M-02/M-06 | 基础旧服务关闭已修；重开失败后旧worker回填R24-01及实际部分失败证据R24-02/03未闭环 |
+| DS-01 整树/根自身/兄弟 | DirectoryScopedSearchTest、DirectoryScopeEndToEndTest | A3/A7 | M-01/M-04 | 套件/本轮真实Web整树、根自身通过；桌面全清单待补 |
+| DS-02 路径 | PathScopeTest、HTTP编码测试 | A1/A6 | M-01/M-04 | 当前路径/选择器/真实索引位置守卫通过；POSIX宿主/真实UNC未验 |
+| DS-03 条件/Top-N/类型 | LuceneSearchServiceTest、DirectoryScopedSearchTest | A0/A3 | M-01 | 条件/Top-N/EXACT真实现状特征通过；未改名称语义，B提案另外评审 |
+| DS-04 来源/离线/状态 | SourceManagerSearchRootsTest、DirectorySourceValidationTest（含好坏行混合）、无提交HTTP fixture | A1/A3/A6 | M-02/M-04 | 来源读取/ACL拒读/坏行套件通过；桌面来源管理/警告视觉仍待补 |
+| DS-05 旧/混合/刷新 | DirectoryScopeCompatibilityTest | A4 | M-06 | 旧/混合/两种删除统计/close交错通过，P-00实际计算1→1→2证实 |
+| DS-06 实际全量/upsert | LuceneIndexerPathScopeTest、DocumentBuilderTest、EndToEnd | A2/A7 | M-06 | 真实全量/upsert/Index All/部分提交及reader断言通过；M-06完整UI链路待补 |
+| DS-07 桌面 | DirectoryScopePanelTest（含路径等价/坏行警告）、DesktopHarness | A5a | M-01/M-02/M-03 | 组件/Applied/选择器/禁用态通过；本轮native AX仅窗框且截图超时，点击级M-01尚缺 |
+| DS-08 Web | SearchHandlerTest、WebAssetsOfflineTest（仅资源） | A6 | M-04/M-05 | 当前8项实际Web流程通过；页面/handler的Git tree与上次相同，旧竞态记录按原范围保留 |
+| DS-09 错误 | SearchErrorMessagesTest、DesktopHarness八Code/未知消息映射、HTTP映射 | A3/A4/A5a/A6 | M-02/M-04 | 八Code映射/清理通过，reopen失败前后两种EDT顺序验证通过，R24-01关闭 |
+| DS-10 空词/兼容 | provider计数=0、旧请求回归 | A0/A3/A6 | M-03/M-05 | 空词/兼容/token及真实Index All在途失效通过，完整主机关闭/输入记录待补 |
+| DS-11 快捷定位/复制 | EDT动作/服务器parentDirectory/前端受控响应测试 | A5a/A5b/A6 | M-01/M-04 | 当前实际Web排序父目录/Clear/clipboard回读通过；拒绝分支仍引用旧受控证据，桌面全表待补 |
+| DS-12 首次建库/重建恢复 | DesktopHarness、HTTP unavailable/恢复与集成测试 | A5a/A6/A7 | M-02/M-06 | 首建/部分失败/重建可用性自动链路通过，watchdog5次全过，R24闭环；完整M-06待补 |
 
 实现者不得以“测试类存在/代码看起来支持”标通过。每行引用真实报告或观察记录；平台skip、仅stub、未跑GUI均单列。
 
@@ -127,3 +127,17 @@ M-01/02部分自动通过，原生窗口截取两次超时，完整点击/视觉
 第13组六项全部补修，详见 [Devin-R24-Remediation-2026-10-24](evidence/Devin-R24-Remediation-2026-10-24.md)：重开失败时失效在途旧查询（迟到成功/错误均不回填）；Index All 测试改 `ConfigManager.setIndexDir` 正确序列化 + 读回/允许根守卫 + reader 级文档断言；真实 Index All 在途失效与"watchdog ACL 拒写"部分失败链路；未提交 B 用全局查询证明（并加"已提交 B 全局可见"对照）；宿主路径夹具与逐结果 parent 断言；`scopeVerdictComputationCount` 真实计算计数替代 cacheSize 常量；modernize 文档统一为指定版本+显式例外。4 个 `C:\UsersAdministratorAppDataLocalTempqa-indexall-idx-*` 历史越界测试目录已逐一核验为测试产物并精确清理。
 
 实现者自验：harness 20/20、定向套件 45/45（1 项 POSIX 平台跳过）；P-00 服务入口 verdict computations=1（100 热调用）/刷新后=2（实测）。M-01～06 主机记录与 Codex 复验未完成；A8 未启动。
+
+## 最新主机与交付边界
+
+以 [Codex-Final-Review](evidence/Codex-Final-Review-2026-10-24.md) 的M表为准：M-01/02/03/04/06完整实机清单仍部分，原生截图工具限制不等于通过；M-05旧受控场景通过，当前web源代码/资源与4f56d0d的Git tree相同，本轮未重新故障注入。代码与自动验证已交付，用户A8与归档仍未授予。新名称B功能不在本A验收中。
+
+
+## 用户最新版手工验收状态确认（2026-10-24）
+
+用户直接答复：“尚未进行最新版手动验收”。最新用户手测状态为NOT_EXECUTED，不是失败或通过；记录见 [原始答复与版本边界](evidence/User-Manual-Acceptance-2026-10-24.md)。保留Codex自动/harness/Web已验证范围，M缺项及A8继续待完成，旧版本冒烟不替代最新版。
+
+
+## 最新用户最终接受
+
+[用户验收与继续交付原文](evidence/User-Acceptance-2026-10-24.md)关闭最新版手测缺口；旧NOT_EXECUTED仅为历史。M-01～06的用户总体验收统一记录为PASS_USER_REPORTED，原有Codex部分实测/工具限制仍保留，不伪造执行者或具体环境。native/POSIX/真实UNC边界未扩展。

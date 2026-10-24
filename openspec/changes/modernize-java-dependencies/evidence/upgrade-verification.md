@@ -51,3 +51,8 @@ QA24-10文档意见：不能声称本次“全部最新”或“消除EOL风险�
 ## 4f56d0d独立复验（2026-10-24，本日第二轮）
 
 独立完整JDK17 clean verify及Java8 1.8.0_40 fork各164总数/162通过/0失败/2平台跳过（有argLine隔离探针），JAR SHA-256=b4796270e4a20eee54d48dbea801b14803e41e7c5de2738b53a66a2a193127a4。目录检索另有新增2目标失败及证据缺口，不能因为依赖回归套件通过宣称组合版本已验收。EOL说明已补，版本“最新”的无条件承诺仍需R24-06统一；详见 [独立复验](../../add-directory-scoped-search/evidence/Codex-Reverification-2026-10-24.md)。native/正式App Java8全流程/漏洞扫描未执行。
+
+
+## 0e8de6d及帮助文案变体独立复核
+
+JDK17 clean verify/真实Java8均分别169总数、167通过、0失败、2平台跳过；R24-06指定版本/例外文案已一致，未再改变依赖。A修复独立关闭，但M全表与用户组合验收仍待。详见 [最终报告](../../add-directory-scoped-search/evidence/Codex-Final-Review-2026-10-24.md)。

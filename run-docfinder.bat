@@ -19,7 +19,8 @@ if not defined JAR (
 set "JAVA=%JAVA_HOME%\bin\javaw.exe"
 if not exist "%JAVA%" set "JAVA=javaw.exe"
 
-rem -Xms stays small so startup stays light; -Xmx only lets the heap grow
-rem when the OS has free memory. Lower -Xmx if the machine is short on RAM.
+rem -Xmx is the Java heap ceiling; use a suitable 64-bit JVM for this value.
+rem Native mmap/commit exhaustion is not fixed by raising this ceiling.
+rem Lower -Xmx on constrained systems and check system commit/pagefile capacity.
 start "" "%JAVA%" -Xms256m -Xmx2048m -Dfile.encoding=UTF-8 -jar "%BASE%%JAR%"
 exit /b 0

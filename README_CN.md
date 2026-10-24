@@ -27,13 +27,16 @@ _本地文件名与内容搜索工具，支持 Windows / macOS / Linux。快速�
 --- 
 
 ## 项目概述
-DocFinder 是一款桌面实用程序，提供类似 Everything 风格的响应式 UI，用于搜索**文件名和文件内容**。它使用 **Lucene** 进行索引和搜索，**Tika** 进行内容提取，并添加了 **SmartChinese** / **Kuromoji** 分词器来更好地处理中文和日文文本。索引是**只读**的（不会修改时间戳或内容），并通过超时和启发式算法进行优化。
+DocFinder 是一款桌面实用程序，提供类似 Everything 风格的响应式 UI，用于搜索**文件名和文件内容**。它使用 **Lucene** 进行索引和搜索，**Tika** 进行内容提取，并添加了 **SmartChinese** / **Kuromoji** 分词器来更好地处理中文和日文文本。索引是**只读**的（不主动改写源文件内容或修改时间；读取可能由操作系统更新访问时间），并通过超时和启发式算法进行优化。
 
 --- 
 
 ## 主要功能
 
 ### 搜索功能
+- **目录整树检索**：在已配置来源中选目录或输入绝对路径，默认含子目录，FOLDER可命中选定目录自身；只查索引，不自动扫描或添加来源。
+- **范围操作**：来源下拉、Custom、Browse、Clear；路径编辑为草稿，提交前以Applied显示范围查询；结果可继续限定到目录/父目录。
+- **当前名称行为**：普通输入采用分词/前缀，中段匹配可用 `name:*report*`。默认字面子串、250ms防抖与截断提示属于B提案，尚未实施。EXACT包含整名term和分词短语，不是仅完整文件名相等。
 - **全文搜索**：跨**文件名**和**内容**的自由文本（多字段查询）
 - **字段搜索**：`name:`（仅文件名）、`content:`（仅内容）
 - **通配符文件名查询**：`name:*.xlsx`、`name:report-??.pdf`、`name:"检查清单_07.xlsx"`
@@ -67,18 +70,19 @@ DocFinder 是一款桌面实用程序，提供类似 Everything 风格的响应�
 
 ## 架构设计
 - **UI**：Swing（英文字符串）。主窗口显示搜索栏、结果表、预览和状态栏。菜单：文件（索引、设置）、帮助（用法、关于）。集成了托盘图标和全局热键
-- **索引**：Lucene 索引存储在 `~/.docfinder/index` 下。每次操作使用单个写入器；多根索引迭代源
+- **索引**：Lucene 索引存储在 `./.docfinder/index` 下。每次操作使用单个写入器；多根索引迭代源
 - **提取**：Apache Tika 配合执行器 + 超时（可取消）。流仅使用 `StandardOpenOption.READ` 打开
 - **监控器**：
   - 本地：Java NIO `WatchService` 监控创建/修改/删除；合并并异步处理
   - 网络：轮询调度器；快照/差异；背压以避免 UI 阻塞
-- **持久化**：源列表 `~/.docfinder/sources.txt`（`path|0/1`）、查询历史和应用设置存储在 `~/.docfinder/` 下
+- **持久化**：源列表 `./.docfinder/sources.txt`（`path|0/1`）、查询历史和应用设置存储在 `./.docfinder/` 下
 
 --- 
 
 ## 索引结构与分词器
 
 ### Lucene 字段（每个文件）
+- `path_scope`：规范化目录边界，仅索引不存储；原path继续作标识/显示，旧限定检索可能需补字段。
 - `path` — `StringField`，**规范化**，存储。主键。所有更新/删除使用规范化值
 - `name` — `TextField`，存储。用于分析文件名匹配和提升
 - `name_raw` — `StringField`，**小写且不分析**。通过 `name:` 实现精确/通配符文件名搜索
@@ -134,7 +138,7 @@ DocFinder 是一款桌面实用程序，提供类似 Everything 风格的响应�
 ## 数据源：本地与网络
 
 ### 存储
-`~/.docfinder/sources.txt` 包含 `path|0/1` 行（`1 = 网络`）。旧的单列文件会自动升级。
+`./.docfinder/sources.txt` 包含 `path|0/1` 行（`1 = 网络`）。旧的单列文件会自动升级。
 
 ### 检测（Windows）
 尝试 PowerShell `Get-PSDrive`、`net use`、`wmic`，带缓存；回退到 `FileStore` 类型和 UNC 前缀。映射驱动器（`J:\`、`M:\`）在解析为远程目标时被视为网络。
@@ -186,7 +190,7 @@ mvn clean package
 java -jar target/docfinder-1.0.0.jar
 ```
 
-> 或从 IDE 启动。应用使用 `~/.docfinder` 作为运行时数据目录。
+> 或从 IDE 启动。应用使用 `./.docfinder` 作为运行时数据目录。
 
 ### Maven 主要依赖
 ```xml
@@ -241,12 +245,12 @@ java -jar target/docfinder-1.0.0.jar
   <dependency>
     <groupId>com.formdev</groupId>
     <artifactId>flatlaf</artifactId>
-    <version>3.2</version>
+    <version>3.6.2</version>
   </dependency>
   <dependency>
     <groupId>com.formdev</groupId>
     <artifactId>flatlaf-intellij-themes</artifactId>
-    <version>3.2</version>
+    <version>3.6.2</version>
   </dependency>
 </dependencies>
 ```
@@ -267,9 +271,11 @@ java -jar target/docfinder-1.0.0.jar
 --- 
 
 ## 数据存储位置
-- **索引**：`~/.docfinder/index/`
-- **源**：`~/.docfinder/sources.txt`（`path|0/1`，其中 `1 = 网络`）
-- **历史记录和设置**：`~/.docfinder/…`
+
+以下相对于JVM工作目录user.dir，不一定是JAR目录。index.dir可覆盖索引位置；启动可能从旧 `~/.docfinder` 迁移，旧位置不是当前默认。
+- **索引**：`./.docfinder/index/`
+- **源**：`./.docfinder/sources.txt`（`path|0/1`，其中 `1 = 网络`）
+- **历史记录和设置**：`./.docfinder/…`
 
 --- 
 
@@ -283,6 +289,8 @@ java -jar target/docfinder-1.0.0.jar
 --- 
 
 ## 性能说明
+- 启动脚本为 `-Xms256m -Xmx2048m`，宜使用64位JVM；资源受限时降低上限。提高Xmx不保证修复native mmap失败，需核对系统提交内存/分页文件。
+- 旧索引先Index All Sources；残留旧记录仍阻断时，检查来源可达性，维护时段备份后再Full Rebuild。它先清空后重建、非原子，期间不可搜索。
 - 通配符 `*.ext` 通过 `ext` MUST 子句加速
 - 前缀提升提高简短文件名标记的相关性
 - 索引写入器为批量索引使用更大的 RAM 缓冲区；如需要可在代码中调整
@@ -291,10 +299,11 @@ java -jar target/docfinder-1.0.0.jar
 --- 
 
 ## 开发路线图
-- 路径通配符（`path:`）和正则表达式搜索
-- 内容命中的代码片段高亮预览
-- UI 主题优化（例如 BeautyEye 或类似）作为可选模块
-- 设置和源的导出/导入
+- A：目录检索实现/自动修复已核验，用户已确认最新版手工验收完全成功，当前完成授权交付归档。
+- B：improve-name-search-experience提案评审中，未批准实施。
+- C1/C2：索引一致性、监控恢复、异步正文解析属于后续change。
+- D：Java8约束下的指定依赖升级已实施，新Java栈/native另行评估。
+- 以 [产品路线图](docs/roadmap.md) 和 [当前状态](openspec/changes/add-directory-scoped-search/delivery-status.yaml) 为准。
 
 --- 
 
@@ -341,13 +350,13 @@ _待定_（MIT/Apache‑2.0/专有 — 选择一个并添加许可证文件）
 ### 核心技术
 - **Java 8+** - 基础运行环境
 - **Apache Lucene 8.11.2** - 索引和搜索引擎
-- **Apache Tika 2.9.2** - 内容提取和解析
+- **Apache Tika 2.9.4** - 内容提取和解析
 - **Apache Maven 3.6+** - 项目构建工具
 
 ### UI 框架
 - **Java Swing** - 主要 UI 框架
-- **FlatLaf 3.2** - 现代 Look and Feel
-- **FlatLaf IntelliJ Themes 3.2** - IntelliJ 风格主题
+- **FlatLaf 3.6.2** - 现代 Look and Feel
+- **FlatLaf IntelliJ Themes 3.6.2** - IntelliJ 风格主题
 
 ### 多语言支持
 - **SmartChineseAnalyzer** - 中文分词
@@ -395,34 +404,8 @@ src/main/java/org/abitware/docfinder/
 
 --- 
 
-## 重构说明
+## 当前实现边界
 
-本项目已完成组件化重构，将大型类拆分为职责单一的组件：
+实际生产入口仍为MainWindow、LuceneSearchService和LuceneIndexer。MainWindow内部SearchWorker负责当前异步搜索；DirectoryScopePanel负责范围交互，MenuBarPanel连接菜单。此前未接线的ui.workers搜索/索引类已删除。
 
-### UI 组件重构
-- **MainWindow.java** (~1000行) → 6个专门的UI组件
-  - `SearchPanel` - 搜索输入和过滤器
-  - `ResultsPanel` - 结果表格和操作
-  - `PreviewPanel` - 文件预览
-  - `StatusBarPanel` - 状态栏
-  - `MenuBarPanel` - 菜单栏
-  - `SearchWorker` - 后台搜索任务
-
-### 搜索服务重构
-- **LuceneSearchService.java** (~500行) → 3个查询处理组件
-  - `QueryBuilder` - 查询构建逻辑
-  - `QueryExecutor` - 查询执行和结果处理
-  - `LuceneSearchServiceRefactored` - 轻量级服务接口
-
-### 索引服务重构
-- **LuceneIndexer.java** (~600行) → 3个内容处理组件
-  - `ContentExtractor` - 文本内容提取
-  - `DocumentBuilder` - Lucene文档构建
-  - `LuceneIndexerRefactored` - 核心索引操作
-
-### 重构优势
-- **可维护性提升** - 从3个大型类拆分为15个专门组件
-- **职责分离清晰** - UI、搜索、索引逻辑完全分离
-- **扩展性增强** - 新功能可通过添加组件实现
-- **测试友好** - 每个组件都可独立测试
-- **向后兼容** - 保持所有原有功能不变
+search.query中的遗留QueryBuilder/QueryExecutor和保留的index/content组件不能视为所有生产请求都已迁入的新架构；以实际调用和测试为准。不存在的LuceneSearchServiceRefactored/LuceneIndexerRefactored不再作为完成重构成果。Web实现位于web包，静态资源在src/main/resources/web。

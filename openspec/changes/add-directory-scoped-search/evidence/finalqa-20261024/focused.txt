@@ -1,0 +1,31 @@
+{
+  "totals": {
+    "tests": 16,
+    "failures": 0,
+    "errors": 0,
+    "skipped": 0
+  },
+  "environment": {
+    "java.version": "17",
+    "java.home": "D:\\java\\java17",
+    "user.dir": "C:\\Users\\Administrator\\AppData\\Local\\Temp\\docfinder-finalqa-20261024-5q25y5l9\\checkout\\target\\test-classes",
+    "user.home": "C:\\Users\\Administrator\\AppData\\Local\\Temp\\docfinder-finalqa-20261024-5q25y5l9\\checkout\\target/test-home",
+    "docfinder.argline.probe": "present"
+  }
+}
+org.abitware.docfinder.search.DirectoryScopedSearchTest#codexFinalShouldCharacterizeExactAnalyzedNamePhrase PASS
+org.abitware.docfinder.search.DirectoryScopedSearchTest#codexQaShouldLabelExplicitNameQueryGlobally PASS
+org.abitware.docfinder.search.DirectoryScopedSearchTest#codexQaShouldLabelExplicitNameQueryWithinDirectory PASS
+org.abitware.docfinder.search.DirectoryScopedSearchTest#codexQaShouldLabelExplicitNameAndContent PASS
+org.abitware.docfinder.ui.components.CodexScopeDisplayProbeTest#codexQaShouldKeepAppliedScopeVisibleWhenDraftChanges PASS
+org.abitware.docfinder.ui.components.CodexScopeDisplayProbeTest#codexQaBrowseConfirmAndCancelShouldSubmitExactlyOnce PASS
+org.abitware.docfinder.ui.DirectoryScopeDesktopHarnessTest#codexQaShouldClearPresentedResultsWhenFullRebuildFails PASS
+org.abitware.docfinder.ui.DirectoryScopeDesktopHarnessTest#codexQaShouldNotSilentlyKeepOldServiceWhenOpeningNewLocationFails PASS
+org.abitware.docfinder.ui.DirectoryScopeDesktopHarnessTest#codexFinalShouldIgnoreBlockedOldResultAfterFailedOpen PASS
+org.abitware.docfinder.ui.DirectoryScopeDesktopHarnessTest#codexWatchdogShouldKeepPartialStatusAfterRealIndexAllSecondSourceCommitFails()[1] PASS
+org.abitware.docfinder.ui.DirectoryScopeDesktopHarnessTest#codexWatchdogShouldKeepPartialStatusAfterRealIndexAllSecondSourceCommitFails()[2] PASS
+org.abitware.docfinder.ui.DirectoryScopeDesktopHarnessTest#codexWatchdogShouldKeepPartialStatusAfterRealIndexAllSecondSourceCommitFails()[3] PASS
+org.abitware.docfinder.ui.DirectoryScopeDesktopHarnessTest#codexWatchdogShouldKeepPartialStatusAfterRealIndexAllSecondSourceCommitFails()[4] PASS
+org.abitware.docfinder.ui.DirectoryScopeDesktopHarnessTest#codexWatchdogShouldKeepPartialStatusAfterRealIndexAllSecondSourceCommitFails()[5] PASS
+org.abitware.docfinder.ui.DirectoryScopeDesktopHarnessTest#codexFinalShouldClearAlreadyCompletedOldResultWhenOpenFails PASS
+org.abitware.docfinder.ui.DirectoryScopeDesktopHarnessTest#codexQaShouldClearPresentedResultsWhenServiceBecomesUnavailable PASS

@@ -1,8 +1,11 @@
 # Proposal
 
+> 2026-10-24 Codex评审：CHANGES_REQUESTED。此为未批准的0.1草案，B-01～09见 [评审意见](review.md)；修订0.2并经Claude复核/用户批准前不得实施，当前0/22。
+
+
 ## Why
 
-用户按名称中段（如 `report` 命中 `AnnualReport2026.PDF`）检索时经常找不到文件：`name` 字段经 StandardAnalyzer 分词后不含子串词项，`name_raw` 的前缀查询又只覆盖开头，通配符包含匹配目前仅对 FOLDER scope 生效，NAME/ALL 行为不一致。目录限定检索（A 阶段）已稳定，本 change 解决"按名定位"这一最高频检索体验。
+用户按名称中段（如 `report` 命中 `AnnualReport2026.PDF`）检索时经常找不到文件：`name` 字段经 StandardAnalyzer 分词后不含子串词项，`name_raw` 的前缀查询又只覆盖开头，通配符包含匹配目前仅对 FOLDER scope 生效，NAME/ALL 行为不一致。目录限定检索（A 阶段）实现与自动修复已交付，正式主机验收仍待补，本 change 解决"按名定位"这一最高频检索体验。
 
 ## What Changes
 

@@ -1,0 +1,5 @@
+15:16:39.891 [AWT-EventQueue-0] WARN  o.abitware.docfinder.ui.MainWindow - Index All Sources failed or partially completed: org.apache.lucene.store.AlreadyClosedException: this IndexWriter is closed
+15:16:42.761 [AWT-EventQueue-0] WARN  o.abitware.docfinder.ui.MainWindow - Index All Sources failed or partially completed: org.apache.lucene.store.AlreadyClosedException: this IndexWriter is closed
+15:16:45.813 [AWT-EventQueue-0] WARN  o.abitware.docfinder.ui.MainWindow - Index All Sources failed or partially completed: org.apache.lucene.store.AlreadyClosedException: this IndexWriter is closed
+15:16:48.513 [AWT-EventQueue-0] WARN  o.abitware.docfinder.ui.MainWindow - Index All Sources failed or partially completed: org.apache.lucene.store.AlreadyClosedException: this IndexWriter is closed
+15:16:51.104 [AWT-EventQueue-0] WARN  o.abitware.docfinder.ui.MainWindow - Index All Sources failed or partially completed: org.apache.lucene.store.AlreadyClosedException: this IndexWriter is closed

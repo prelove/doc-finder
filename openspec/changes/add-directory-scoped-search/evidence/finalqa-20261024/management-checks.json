@@ -1,0 +1,30 @@
+{
+  "head": "0e8de6dcefe155fb7d8e938df332ea3d14942ca4",
+  "progress": {
+    "A": {
+      "total": 56,
+      "checked": 52
+    },
+    "B": {
+      "total": 22,
+      "checked": 0
+    },
+    "D": {
+      "total": 6,
+      "checked": 4
+    }
+  },
+  "controls_unchanged": true,
+  "browser_current": 8,
+  "source_modification_scope": "MainWindow help HTML and launcher comments only; no B behavior or pom/test changes",
+  "main_source_equals_compiled_help_variant": true,
+  "local_links": "all resolve",
+  "strict_validate": {
+    "add-directory-scoped-search": "PASS exit0",
+    "modernize-java-dependencies": "PASS exit0",
+    "improve-name-search-experience": "PASS exit0"
+  },
+  "git_diff_check": "PASS exit0",
+  "historical_A_review_manifest_untouched": true,
+  "temporary_GUI_and_web_stopped": true
+}

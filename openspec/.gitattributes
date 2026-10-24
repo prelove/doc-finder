@@ -4,3 +4,10 @@
 changes/add-directory-scoped-search/README.md whitespace=cr-at-eol,-blank-at-eof
 changes/add-directory-scoped-search/planning-validation.md whitespace=cr-at-eol,-blank-at-eof
 changes/add-directory-scoped-search/reviews/claude-0.3.txt whitespace=cr-at-eol,-blank-at-eof
+# Unified-diff blank context lines are evidence, not source whitespace errors.
+changes/**/evidence/**/*.patch whitespace=cr-at-eol,-blank-at-eol
+changes/**/evidence/**/*.diff whitespace=cr-at-eol,-blank-at-eol
+# Archival preserves the reviewed files' original EOF bytes.
+changes/archive/*-add-directory-scoped-search/README.md whitespace=cr-at-eol,-blank-at-eof
+changes/archive/*-add-directory-scoped-search/planning-validation.md whitespace=cr-at-eol,-blank-at-eof
+changes/archive/*-add-directory-scoped-search/reviews/claude-0.3.txt whitespace=cr-at-eol,-blank-at-eof

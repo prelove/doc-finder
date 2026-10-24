@@ -2631,6 +2631,16 @@ public class MainWindow extends JFrame implements MenuBarPanel.MenuListener {
                 + "<li>Run <b>File → Index All Sources</b> to build/update the index, or <b>Rebuild Index (Full)</b> to recreate it from scratch.</li>"
                 + "<li>Type your query and press <b>Enter</b>.</li>" + "</ol>" +
 
+                "<h3>Directory Scope</h3>" + "<ul>"
+                + "<li>Select a configured source under <b>Search in</b>, or choose <b>Custom</b> and enter an absolute directory.</li>"
+                + "<li>The scope includes all subfolders and searches indexed content only. FOLDER mode can also match the selected directory itself.</li>"
+                + "<li>Path edits are a draft until Enter, source selection or Browse confirmation. Check <b>Applied</b> for the submitted scope; Clear returns to all sources.</li>"
+                + "<li>Right-click a result: <b>Search in this folder</b> or <b>Search in containing folder</b>.</li>"
+                + "<li>For old indexes, try <b>Index All Sources</b> first. Check offline sources and back up before a manual Full Rebuild if legacy records remain. Rebuild is non-atomic and search is unavailable during it.</li>"
+                + "<li>For a filename middle fragment, use <code>name:*report*</code>. Default literal substring search and typing debounce are proposed future work.</li>"
+                + "<li>EXACT includes analyzed phrase matching for the selected fields; it is not restricted to full filename equality.</li>"
+                + "</ul>" +
+
                 "<h3>Indexing Tips</h3>" + "<ul>"
                 + "<li>Use <b>File → Indexing Settings…</b> to adjust max size, timeout, and include/exclude patterns.</li>"
                 + "<li><b>Poll Network Sources Now</b> runs a one-time network sync without blocking the UI.</li>"

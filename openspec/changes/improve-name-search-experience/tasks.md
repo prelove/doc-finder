@@ -1,5 +1,8 @@
 # Tasks
 
+> 2026-10-24 Codex评审：CHANGES_REQUESTED。此为未批准的0.1草案，B-01～09见 [评审意见](review.md)；修订0.2并经Claude复核/用户批准前不得实施，当前0/22。
+
+
 名称定位体验 Implementation Plan，草案 0.1（待评审/批准）。唯一实施进度来源。Goal：字面中段命中、三档排序、防抖与上限提示、桌面/Web 一致。Tech：Java8/依赖不变；默认 name_raw 通配，基准未达标才评 n-gram。Spec/Design 见同目录；每包目标 RED→最小实现→GREEN→证据。
 
 ## Global Constraints

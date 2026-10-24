@@ -1,6 +1,6 @@
 # Tasks
 
-目录限定检索 Implementation Plan，批准版本0.4。唯一实施进度来源。最新独立复验（2026-10-24，4f56d0d）：完整构建/真实Java8各164总数、162通过、0失败、2平台跳过；原8探针全部通过，新增3检查中2失败，浏览器19项通过。QA24-04/06/08/10/11部分未闭环，A7需第13组补修，A8未通过。第13组六项已由Devin补修（2026-10-24，工作树待提交SHA后回写）：R24-01查询失效、R24-02/03测试路径与真实入口/部分失败、R24-04宿主路径、R24-05真实计数、R24-06文档措辞，待Codex再次独立复验。最新证据：evidence/Codex-Reverification-2026-10-24.md + evidence/Devin-R24-Remediation-2026-10-24.md；此前报告数字保留历史。
+目录限定检索Implementation Plan，批准版本0.4。2026-10-24用户明确“手动验收完全成功”，A实现/独立复核/用户手测与A8接受已闭环；当前55/56，10.2待本次授权提交推送及归档完成后关闭。记录见evidence/User-Acceptance-2026-10-24.md；历史状态保留对应版本范围。
 
 > **For agentic workers:** 获得当前版本最终实施批准后，Devin按Superpowers executing-plans/TDD或handoff等价流程执行。每包目标RED→最小实现→GREEN→证据→审查；环境失败不算RED。
 
@@ -128,9 +128,9 @@
 **Owner:** Devin自动集成；Codex真实主机验收与证据复核，用户可辅助；**Depends:** A5a/A5b/A6。
 **Files:** DirectoryScopeEndToEndTest.java；acceptance/review/evidence。
 
-- [ ] 9.1（2026-10-24重新打开：QA24-06及M记录；自动部分已完成；M-01～M-06 实机未完成，步骤见 evidence/M-Acceptance-Runbook.md，不据此宣称通过）真实indexer→service→HTTP测试正文/目录/来源变更/upsert、Index All迁移夹具（正常/陈旧/离线或拒绝访问/部分提交）、未就绪→恢复→重建不可用/恢复，运行自动GREEN；Codex执行M-01～06并记录环境与实际结果。→ `DirectoryScopeEndToEndTest` 8/8（真实 HttpServer+Indexer+Service+Handler）；**M-01～M-06 实机待 Codex**。
+- [x] 9.1（2026-10-24重新打开：QA24-06及M记录；自动部分已完成；M-01～M-06 实机未完成，步骤见 evidence/M-Acceptance-Runbook.md，不据此宣称通过）真实indexer→service→HTTP测试正文/目录/来源变更/upsert、Index All迁移夹具（正常/陈旧/离线或拒绝访问/部分提交）、未就绪→恢复→重建不可用/恢复，运行自动GREEN；Codex执行M-01～06并记录环境与实际结果。→ `DirectoryScopeEndToEndTest` 8/8（真实 HttpServer+Indexer+Service+Handler）；**M-01～M-06 实机待 Codex**。
 - [x] 9.2 执行P-01、mvn -B clean verify、本次diff空白、OpenSpec严格校验；实际目录不变、Java8编译、lint/static人工审查和平台skip记录；无GUI环境则状态WAITING_FOR_HOST_ACCEPTANCE，不降格验收。→ P-01 OK（scoped p95 15.5ms<unscoped 43.2ms）；clean verify SUCCESS（133 tests, target 1.8）；strict validate 通过；diff 空白仅 AGENTS.md 既有 EOF；`.docfinder` 14662 不变；人工静态审查记录于 A7 evidence。
-- [ ] 9.3（2026-10-24重新打开：独立复核未通过，待修复复验；交付物已交；独立实现 review 仅覆盖修复差异，完整功能 review 与验收候选待 Codex）交实际SHA/diff/逐DS证据/风险，独立实现review阻断闭环，Codex形成用户验收候选；旧Claude方案复核不替代实现review。→ 交付物：HEAD `9a1c26ad` + 工作树 diff（git status 全量清单见 A7 evidence 与提交说明）、evidence/A0–A7、逐 DS 索引；**review 阻断闭环与验收候选形成待 Codex**。
+- [x] 9.3（2026-10-24重新打开：独立复核未通过，待修复复验；交付物已交；独立实现 review 仅覆盖修复差异，完整功能 review 与验收候选待 Codex）交实际SHA/diff/逐DS证据/风险，独立实现review阻断闭环，Codex形成用户验收候选；旧Claude方案复核不替代实现review。→ 交付物：HEAD `9a1c26ad` + 工作树 diff（git status 全量清单见 A7 evidence 与提交说明）、evidence/A0–A7、逐 DS 索引；**review 阻断闭环与验收候选形成待 Codex**。
 
 **Verify:** `mvn -B "-Dtest=DirectoryScopeEndToEndTest" test`后完整`mvn -B clean verify`；`openspec validate add-directory-scoped-search --strict`；M/P真实记录齐备。
 
@@ -138,7 +138,7 @@
 
 **Owner:** 用户决定；Codex核对；按授权执行；**Depends:** A7。
 
-- [ ] 10.1 用户明确接受结果/限制并给交付目标，保存原始记录和实际代码版本；模型评审不代用户验收。
+- [x] 10.1 用户明确接受结果/限制并给交付目标，保存原始记录和实际代码版本；模型评审不代用户验收。
 - [ ] 10.2 只执行获授权的归档/同步/提交/PR/合并/推送，核对最终SHA/远端/文档证据，不force-push，不带无关AGENTS修改，未授权部分保持未做。
 
 ## 11. Codex 测试报告缺陷修复（用户已批准按顺序执行）
@@ -186,3 +186,13 @@
 - [x] 13.6 R24-06（P3）：modernize proposal/design/spec/tasks以具体版本及例外统一，不再无条件保证最高兼容线最新；同步两change当前SHA、证据/状态，历史报告不覆盖。→ 全部改为"版本表指定版本+显式例外（FlatLaf 3.6.2）"；tasks3.1勾选、delivery-status记录RESOLVED；SHA待本次提交后由下一轮回写。
 
 回交：最终产品SHA的必要定向/clean verify/带隔离探针/真实Java8/P-00/P-01及strict validate、diff结果。Codex再复验第13组并补M-01～06剩余流程；原生窗口截图本轮两次超时属验收工具限制，不能记M通过。第9组与A8继续未完成，直到实际证据和用户决定齐备。
+
+
+## 2026-10-24 最新管理结论（0e8de6d独立复验）
+
+第11～13组实现修复已独立闭环，保持勾选；不再让Devin重复修R24。当前主机8项实际Web流程通过，原生Swing截图再次超时，完整M记录尚缺。Codex继续负责A主机验收，用户决定A8；B提案可并行修订/评审，实施尚未授权。详见 [最终复验](evidence/Codex-Final-Review-2026-10-24.md) 与 [下一步交接](evidence/Next-Dispatch-2026-10-24.md)。本轮当前使用说明/内置帮助修订不改变查询行为，已单独回归。
+
+
+## 用户最终手测通过与收尾推进（2026-10-24）
+
+用户原文及版本/证据边界见 [验收确认](evidence/User-Acceptance-2026-10-24.md)。9.1/9.3/10.1按用户明确总体验收及独立验证关闭；M手测结论标PASS_USER_REPORTED，未补造截图/逐步日志。10.2由本次提交、推送、规格同步和归档实绩关闭。B仍仅方案修订。

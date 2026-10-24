@@ -3,26 +3,33 @@ change: modernize-java-dependencies
 package_version: "1.0"
 updated_at: 2026-10-24
 timezone: Asia/Tokyo
-phase: IMPLEMENTED_PENDING_DOCUMENTATION_CORRECTION_AND_ACCEPTANCE
+phase: USER_ACCEPTED_COMBINED_DELIVERY_IN_PROGRESS
 implementation_authorized: true
 roles:
   acceptance_authority: user
 gates:
   implementation:
-    status: completed
+    status: completed_and_user_accepted_with_A
     scope: java8_compatible_line_only
     combined_with: add-directory-scoped-search
   delivery_authorization:
-    status: not_granted
+    status: granted_combined_with_A
+    target_branch: main
+    evidence: ../add-directory-scoped-search/evidence/User-Acceptance-2026-10-24.md
   independent_verification:
     date: 2026-10-24
-    head: 4f56d0d500de72abdade2da21e1ca024d1e1bc11
-    jdk17_clean_verify: 164 total /162 passed /0 failures /2 platform skips; probe present
-    java8_test: real1.8.0_40 same counts
-    evidence: ../add-directory-scoped-search/evidence/Codex-Reverification-2026-10-24.md
-    documentation_issue: RESOLVED_2026-10-24 unconditional latest claim replaced with specified-version wording + explicit FlatLaf-3.6.2 exception_R24-06
-    product_acceptance: two new focused failures in combined product/test behavior; A7 remediation and remaining M before A8
+    head: 0e8de6dcefe155fb7d8e938df332ea3d14942ca4
+    jdk17_clean_verify: 169total/167pass/0fail/2skip
+    java8_test: actual1.8.0_40 same counts
+    evidence: ../add-directory-scoped-search/evidence/Codex-Final-Review-2026-10-24.md
+    documentation_issue: "R24-06 resolved: selected versions and explicit exceptions; EOL risks retained"
+    product_acceptance: A implementation review passed; remaining M and user A8 still pending
+  user_acceptance:
+    status: granted_combined_with_A
+    source: direct_user_message_2026-10-24
+    evidence: ../add-directory-scoped-search/evidence/User-Acceptance-2026-10-24.md
+    manual_report: PASS_USER_REPORTED
 next_action:
-  owner: Devin
-  action: reconcile_latest_claim_R24-06_and_close_combined_A7_findings_then_Codex_M_reverification_then_user_A8
-  status: DOCUMENTATION_AND_COMBINED_ACCEPTANCE_PENDING
+  owner: Codex
+  action: finish_authorized_delivery_and_archive_together_with_A
+  status: DELIVERY_IN_PROGRESS

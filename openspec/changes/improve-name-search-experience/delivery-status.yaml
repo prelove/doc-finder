@@ -1,0 +1,36 @@
+schema_version: 1
+change: improve-name-search-experience
+package_version: "0.1"
+updated_at: 2026-10-24
+timezone: Asia/Tokyo
+phase: PLAN_REVIEW_CHANGES_REQUESTED
+implementation_authorized: false
+planning_root_verified: true
+source_head_at_review: 0e8de6dcefe155fb7d8e938df332ea3d14942ca4
+roles:
+  product_project_quality: Codex
+  plan_author_implementer: Devin
+  external_reviewer: Claude
+  acceptance_authority: user
+review:
+  status: changes_requested
+  evidence: review.md
+  open_p1: 3
+  open_p2: 6
+  findings: B-01_to_B-09
+  scope: proposal_design_spec_tasks_and_current_query_code
+  product_recommendations_are_user_approval: false
+progress:
+  implementation_tasks_complete: 0
+  implementation_tasks_total: 22
+  current_a_host_acceptance_complete: true
+gates:
+  final_plan_approval: not_granted
+  implementation_approval: not_granted
+  ngram_schema_migration_approval: not_granted
+  user_acceptance: not_granted
+next_action:
+  owner: Devin
+  action: revise_plan_0_2_against_B_01_to_09_then_Claude_review_and_user_approval
+  input: review.md_and_acceptance.md
+  product_code_allowed: false

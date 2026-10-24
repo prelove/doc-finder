@@ -27,12 +27,13 @@ _Local file name & content search for Windows / macOS / Linux. Fast UI, read‑o
 ---
 
 ## Overview
-DocFinder is a desktop utility that lets you search **file names and file contents** with a responsive, Everything‑style UI. It uses **Lucene** for indexing/search, **Tika** for content extraction, and adds **SmartChinese** / **Kuromoji** analyzers to handle Chinese and Japanese text well. Indexing is **read‑only** (no touching timestamps or contents) and optimized with timeouts and heuristics.
+DocFinder is a desktop utility that lets you search **file names and file contents** with a responsive, Everything‑style UI. It uses **Lucene** for indexing/search, **Tika** for content extraction, and adds **SmartChinese** / **Kuromoji** analyzers to handle Chinese and Japanese text well. Source extraction opens files read-only and does not deliberately rewrite content or modification time; the OS/NAS may update access time when files are read. Extraction uses timeouts and size limits.
 
 ---
 
 ## Key Features
 - **Search**
+  - Recursive directory scopes inside configured sources, with source selection, absolute path entry, Browse/Clear and result shortcuts. Only indexed content is searched; FOLDER can match the selected directory itself.
   - Free text across **filename** and **content** (multi‑field query).
   - Fielded search: `name:` (filename‑only), `content:` (content‑only).
   - **Wildcard filename** queries: `name:*.xlsx`, `name:report-??.pdf`, `name:"チェックリスト_07.xlsx"`.
@@ -79,6 +80,7 @@ DocFinder is a desktop utility that lets you search **file names and file conten
 **Lucene fields (per file):**
 - `path` — `StringField`, **normalized**, stored. Primary key. All updates/deletes use the normalized value.
 - `name` — `TextField`, stored. For analyzed filename matching and boosting.
+- `path_scope` — indexed-only normalized directory boundary; original `path` remains the identity/display value.
 - `name_raw` — `StringField`, **lowercase & NOT analyzed**. Enables exact/wildcard filename search via `name:`.
 - `ext` — `StringField`, stored. Used for filtering and wildcard acceleration.
 - `mtime_l` — `LongPoint`. Range filter for modified time.
@@ -100,6 +102,10 @@ DocFinder is a desktop utility that lets you search **file names and file conten
 ---
 
 ## Search Semantics
+- Scopes: ALL searches file names and content; NAME searches file names; CONTENT searches content; FOLDER searches folder names. ALL and NAME exclude folders.
+- Ordinary filename input currently uses analyzed terms and prefix expansion. For a middle fragment, use `name:*report*`. Default literal substring search and typing debounce are roadmap B proposals, not implemented features.
+- EXACT combines a raw full-name term and analyzed phrase matching for the selected fields; it is not exclusively full-filename equality. Explicit field/wildcard syntax retains its own path.
+- Directory scopes include descendants and require a configured source. Search does not scan or add a source. A path draft takes effect on Enter/selection; Applied shows the submitted scope.
 - **Multi‑field parsing** with boosts: `name^2.0`, `content^1.2`, `content_zh^1.2`, `content_ja^1.2`.
 - **Leading wildcards allowed** in the parser.
 - **Filename wildcard** handling:
@@ -266,11 +272,13 @@ java -jar target/docfinder-1.0.0.jar
 ---
 
 ## Data Locations
-- **Index**: `~/.docfinder/index/`
-- **Sources**: `~/.docfinder/sources.txt` (`path|0/1` where `1 = Network`)
-- **History & settings**: `~/.docfinder/config.properties`
-- **Logs**: `~/.docfinder/logs/docfinder.log`
-- **Web shares**: `~/.docfinder/shares.properties` (when using web interface)
+
+Paths are relative to the JVM working directory (`user.dir`), which may differ from the JAR directory. `index.dir` can override the index location. Startup can copy legacy data from `~/.docfinder`; it is not the current default.
+- **Index**: `./.docfinder/index/`
+- **Sources**: `./.docfinder/sources.txt` (`path|0/1` where `1 = Network`)
+- **History**: `./.docfinder/history.txt`; **settings**: `./.docfinder/config.properties`
+- **Logs**: `./.docfinder/logs/docfinder.log`
+- **Web shares**: `./.docfinder/shares.properties` (when using web interface)
 
 ---
 
@@ -288,6 +296,8 @@ java -jar target/docfinder-1.0.0.jar
 ---
 
 ## Performance Notes
+- The launcher sets `-Xms256m -Xmx2048m`; use a suitable 64-bit JVM and lower the ceiling on constrained systems. A larger heap does not fix native mmap/system commit exhaustion; check commit/pagefile capacity.
+- Old scoped indexes: try Index All Sources first. Deleted/removed/offline-source legacy records can still require a backed-up manual Full Rebuild, which is non-atomic and unavailable for search while running.
 - Wildcard `*.ext` is accelerated with an `ext` MUST clause.
 - Prefix boosting improves relevance for short filename tokens.
 - Index writer uses a larger RAM buffer for bulk indexing; adjust in code if needed.
@@ -296,10 +306,11 @@ java -jar target/docfinder-1.0.0.jar
 ---
 
 ## Roadmap
-- Path wildcards (`path:`) and regex search.
-- Snippet highlighting in preview for content hits.
-- UI theme polish (e.g., BeautyEye or similar) as an optional module.
-- Export/import of settings and sources.
+- A: directory-scoped implementation and automated remediation verified; the user confirmed latest manual acceptance fully successful. Authorized delivery/archive is being finalized.
+- B: `improve-name-search-experience` proposal under review; implementation not approved.
+- C1/C2: index consistency, watcher recovery and staged content extraction remain future work.
+- D: selected Java8-compatible dependency upgrades implemented; supported newer-Java stacks and native validation remain separate.
+- [Product sequence](docs/roadmap.md) and [delivery status](openspec/changes/add-directory-scoped-search/delivery-status.yaml) define current gates.
 
 ---
 

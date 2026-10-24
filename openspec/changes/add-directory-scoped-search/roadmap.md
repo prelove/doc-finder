@@ -4,11 +4,11 @@
 
 ## A 当前：指定目录整树检索
 
-当前change的proposal/spec/design/tasks/acceptance定义全部范围。默认递归、根自身目录可匹配、仅配置来源、桌面/Web便利操作。Java8/依赖不变，JVM JAR交付；A可独立验收但不称已达到Everything全部体验。
+当前change的proposal/spec/design/tasks/acceptance定义全部范围。默认递归、根自身目录可匹配、仅配置来源、桌面/Web便利操作。Java8基线不变，独立modernize change已做指定依赖升级；JVM JAR交付；A可独立验收但不称已达到Everything全部体验。
 
 ## B 名称定位体验
 
-建议change：improve-name-search-experience（尚未创建）。
+当前change：[improve-name-search-experience](../improve-name-search-experience/proposal.md) 已创建0.1提案；Codex评审CHANGES_REQUESTED，待0.2修订/Claude复核及用户实施批准，当前0/22实施任务。
 
 目标：输入名称中段能稳定找到文件/目录；NAME与ALL的名称匹配一致；类型语义与名称/正文区分清楚。
 交付候选：普通字面名称子串、多词/大小写/单字符/符号规则、显式高级模式、输入防抖约250ms和取消队列、结果上限提示、完整名称/前缀排序优先。
@@ -41,3 +41,13 @@ Web来源授权、共享管理认证/同源内容隔离、真实LAN使用模型�
 ## Prioritization
 
 默认A→B，C1在需要持续同步承诺时提前；D因维护状态应尽早安排评估但不混入A。最终优先级由用户结合文件规模/更新频率/Java兼容要求决定。Codex用真实耗时、缺陷和证据调整批次，不用未经验证的工期/吞吐数字承诺。
+
+
+## 2026-10-24 执行快照
+
+A：R24独立复验已闭环，169套件/16追加检查通过，主机M全表与A8尚待。D过渡：modernize-java-dependencies指定Java8兼容版本已实施并随A验收，EOL风险仍明示。B：仅方案修订，核心ALL/多词/EXACT及排序/计数/防抖契约按review修正后再交Claude和用户。C1/C2与D大版本不因推进B自动启动。当前帮助只介绍已实现A；未将B默认子串、防抖或总量写成已交付。历史0.4批准指纹不因这份进度更新重写。
+
+
+## 用户验收通过（2026-10-24）
+
+用户已确认最新版手动验收完全成功，A及指定依赖过渡版接受，当前执行授权交付/归档。长期roadmap入口迁至docs/roadmap.md；B仍先修订0.2并经Claude及用户批准，不推导新功能实施授权。

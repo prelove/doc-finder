@@ -1,0 +1,19 @@
+{
+  "source_head": "0e8de6dcefe155fb7d8e938df332ea3d14942ca4",
+  "variant": "MainWindow help HTML updated; query, index and web behavior unchanged",
+  "url": "http://127.0.0.1:14972/",
+  "runner": "Codex CUA in-app browser with actual locator actions; no fetch or clipboard mocks",
+  "cases": [
+    {"name":"recursive scope includes direct and deep file", "passed":true, "observed_rows":2},
+    {"name":"real text preview", "passed":true, "observed_text":"alpha contract A"},
+    {"name":"clipboard readback exact full path", "passed":true, "observed_path":"C:\\Users\\Administrator\\AppData\\Local\\Temp\\docfinder-finalqa-20261024-5q25y5l9\\host\\source\\ProjectA\\alpha-A.txt"},
+    {"name":"invalid query clears results, selection and preview", "passed":true, "observed_message":"Error: Invalid search query. Check the search syntax and retry."},
+    {"name":"FOLDER includes selected directory itself", "passed":true, "observed_rows":1},
+    {"name":"unconfigured sibling directory rejected", "passed":true, "observed_message":"Error: This directory is outside configured sources. Add a source first."},
+    {"name":"Clear restores all sources while retaining query", "passed":true, "observed_rows":3},
+    {"name":"sorted parent shortcut selects correct directory and keeps query", "passed":true, "observed_rows":2}
+  ],
+  "native_desktop": "AX exposes only window chrome; FrameArrived screenshot timeout; no click-level acceptance inferred",
+  "temporary_browser_tab_closed": true,
+  "temporary_java_harness_stopped": true
+}
