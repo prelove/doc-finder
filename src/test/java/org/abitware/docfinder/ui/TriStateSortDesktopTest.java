@@ -150,6 +150,40 @@ class TriStateSortDesktopTest {
     }
 
     @Test
+    void shouldResetSortStateOnEmptyQuery() throws Exception {
+        populate(sampleResults());
+        TableRowSorter<?> sorter = sorter();
+        onEdt(() -> sorter.toggleSortOrder(0));
+        assertTrue(resetButton().isEnabled());
+        // Clearing the query goes through doSearch's empty branch.
+        Method doSearch = MainWindow.class.getDeclaredMethod("doSearch");
+        doSearch.setAccessible(true);
+        Method setQueryText = MainWindow.class.getDeclaredMethod("setQueryText", String.class);
+        setQueryText.setAccessible(true);
+        onEdt(() -> {
+            try {
+                setQueryText.invoke(win, "");
+                doSearch.invoke(win);
+            } catch (Exception e) { throw new RuntimeException(e); }
+        });
+        assertTrue(sorter.getSortKeys().isEmpty(),
+                "clearing the query must drop the manual sort state");
+        assertFalse(resetButton().isEnabled());
+    }
+
+    @Test
+    void shouldResetSortStateOnEmptyResults() throws Exception {
+        populate(sampleResults());
+        TableRowSorter<?> sorter = sorter();
+        onEdt(() -> sorter.toggleSortOrder(0));
+        assertTrue(resetButton().isEnabled());
+        populate(java.util.Collections.<SearchResult>emptyList());
+        assertTrue(sorter.getSortKeys().isEmpty(),
+                "an empty result set must drop the manual sort state");
+        assertFalse(resetButton().isEnabled());
+    }
+
+    @Test
     void shouldPreserveSelectedRowAcrossReorders() throws Exception {
         populate(sampleResults());
         TableRowSorter<?> sorter = sorter();

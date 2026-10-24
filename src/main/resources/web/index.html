@@ -1075,16 +1075,21 @@
 
   function renderResults() {
     resultsBody.innerHTML = '';
+    // Sync the restore button before any early return — an empty result set
+    // must still reset a stale manual-sort state.
+    restoreSortBtn.disabled = (sortColumn === null);
     if (currentResults.length === 0) {
       emptyState.style.display = '';
       resultsTable.style.display = 'none';
+      resultsTable.querySelectorAll('thead th[data-col]').forEach(function(th) {
+        th.classList.remove('sort-asc', 'sort-desc');
+      });
       return;
     }
     emptyState.style.display = 'none';
     resultsTable.style.display = '';
 
     // Update sort indicators and the restore button from the same state.
-    restoreSortBtn.disabled = (sortColumn === null);
     var headers = resultsTable.querySelectorAll('thead th[data-col]');
     headers.forEach(function(th) {
       th.classList.remove('sort-asc', 'sort-desc');

@@ -2073,11 +2073,9 @@ public class MainWindow extends JFrame implements MenuBarPanel.MenuListener {
 
 		if (q.isEmpty()) {
 
-			model.setRowCount(0);
-
-			resultTable.clearSelection();
-
-			updatePreviewInner("Enter a query to search.");
+			// Routes through clearPresentedResults so the manual sort state is
+			// reset together with the table (arrows + restore button).
+			clearPresentedResults("Enter a query to search.");
 
 			statusLabel.setText("Enter a query to search.");
 
