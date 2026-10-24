@@ -2790,6 +2790,7 @@ public class MainWindow extends JFrame implements MenuBarPanel.MenuListener {
                 + "<li><b>Ctrl+C</b> — copy full path; <b>Ctrl+Shift+C</b> — copy file name</li>"
                 + "<li><b>Alt+↓</b> — open query history dropdown</li>"
                 + "<li><b>Ctrl+Shift+Delete</b> — Clear Search History…</li>"
+                + "<li>Click a result column header to sort ascending → descending → default order; <b>Restore default sort</b> (above the preview, top-right) returns to the engine order without re-searching. A new search always resets to the default order.</li>"
                 + "<li>Right-click a result row: <i>Open / Reveal in Explorer / Copy</i></li>" + "</ul>" +
 
                 "<h3>Privacy & Safety</h3>" + "<ul>"
