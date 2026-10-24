@@ -6,15 +6,15 @@
 
 已验收行为见 [目录检索主规格](../openspec/specs/directory-scoped-search/spec.md)，历史方案与验证记录随change归档。默认递归、根自身目录可匹配、仅配置来源、桌面/Web便利操作。Java8基线不变，独立modernize change已做指定依赖升级；JVM JAR交付；A可独立验收但不称已达到Everything全部体验。
 
-## B 名称定位体验
+## B 已验收：名称定位体验
 
-当前change：[improve-name-search-experience](../openspec/changes/improve-name-search-experience/proposal.md)。用户已授权既定零迁移范围；实现及排序复位已提交，2026-10-25 Codex按 `932c62c` 独立复验：JDK17/真实Java8各198项、0失败、2个POSIX跳过，真实HTTP26场景通过。两处先前P2回归关闭。最后空态排序及帮助收尾已于2c47ab2完成，并经JDK17/真实Java8各32项定向复验及实际JAR桌面/Web验证；当前23/25，仅待用户B试用接受及交付归档。
+归档change：[improve-name-search-experience](../openspec/changes/archive/2026-10-25-improve-name-search-experience/proposal.md)。用户已授权既定零迁移范围；实现及排序复位已提交，2026-10-25 Codex按 `932c62c` 独立复验：JDK17/真实Java8各198项、0失败、2个POSIX跳过，真实HTTP26场景通过。两处先前P2回归关闭。最后空态排序及帮助收尾已于2c47ab2完成，并经JDK17/真实Java8各32项定向复验及实际JAR桌面/Web验证；用户于2026-10-25确认当前版本试用通过，25/25关闭，主规格同步和归档完成。
 
 已实现：字面名称中段/单字符/Unicode/符号、多词AND、名称优先于正文、250ms防抖与截断提示；桌面/Web列排序三态循环及恢复引擎原顺序。EXACT实际现状、CONTENT/高级语法、目录整树边界冻结。
 
 路线：沿用name_raw，无新字段/迁移；10万独立补测p95低于本机100ms优化目标。100万观察后置，n-gram或新迁移仍需另行批准。
 
-完成标准：交付候选、短试用及接受后归档；不以C1或更多方案文档作为B前提。当前证据见 [B复验记录](../openspec/changes/improve-name-search-experience/evidence/Codex-implementation-review.md)。
+已完成交付候选、短试用接受与归档，不以C1或更多方案文档作为B前提。证据见 [B复验记录](../openspec/changes/archive/2026-10-25-improve-name-search-experience/evidence/Codex-implementation-review.md)。
 
 ## C 索引一致性、可见性与生命周期
 
@@ -44,4 +44,4 @@ Web来源授权、共享管理认证/同源内容隔离、真实LAN使用模型�
 
 ## 当前执行快照（2026-10-25）
 
-A和Java8依赖过渡版已获用户接受并归档。B已实现，独立自动验证完成，全部收尾通过，待用户试用接受与交付归档；C1诊断保留且暂停，C2及D大版本未启动。后续以完成当前检索交付为先，不重新启动文档评审轮次。原A批准指纹保持不变。
+A和Java8依赖过渡版已获用户接受并归档。B已获用户接受并归档，25/25关闭；C1诊断保留且暂停，C2及D大版本未启动。后续以完成当前检索交付为先，不重新启动文档评审轮次。原A批准指纹保持不变。

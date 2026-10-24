@@ -307,7 +307,7 @@ Paths are relative to the JVM working directory (`user.dir`), which may differ f
 
 ## Roadmap
 - A: directory-scoped implementation and automated remediation verified; the user confirmed latest manual acceptance fully successful. Accepted specifications are synchronized and the completed change is archived.
-- B: `improve-name-search-experience` implemented on `codex/name-search` — literal name substring, multi-word AND, tier-ranked dual-list ALL, 250ms debounce and tri-state truncation; awaiting final acceptance.
+- B: `improve-name-search-experience` implemented on `codex/name-search` — literal name substring, multi-word AND, tier-ranked dual-list ALL, 250ms debounce and tri-state truncation; accepted by the user on 2026-10-25 and archived.
 - C1/C2: index consistency, watcher recovery and staged content extraction remain future work.
 - D: selected Java8-compatible dependency upgrades implemented; supported newer-Java stacks and native validation remain separate.
 - [Product sequence](docs/roadmap.md) and [delivery status](openspec/changes/archive/2026-10-24-add-directory-scoped-search/delivery-status.yaml) define current gates.

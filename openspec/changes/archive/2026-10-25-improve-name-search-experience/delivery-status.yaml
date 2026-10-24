@@ -3,7 +3,7 @@ change: improve-name-search-experience
 package_version: "0.3"
 updated_at: 2026-10-25
 timezone: Asia/Tokyo
-phase: VERIFIED_PENDING_USER_ACCEPTANCE
+phase: ACCEPTED_AND_ARCHIVED
 implementation_authorized: true
 planning_root_verified: true
 source_head_at_review: 2c47ab2490f87e4c7124c7979bf2fec645049943
@@ -23,7 +23,7 @@ review:
     independent_100k_768MB_p95_below_100ms
   open_p3: 0
 progress:
-  implementation_tasks_complete: 23
+  implementation_tasks_complete: 25
   implementation_tasks_total: 25
   current_a_host_acceptance_complete: true
   closed_by_process_waiver:
@@ -31,17 +31,18 @@ progress:
   alternative_verification:
     - 5.1_real_controls_executor_counts_existing_worker_regressions
   implementation_complete: true
+  current_b_host_acceptance_complete: true
 gates:
   final_plan_approval: user_directed_proceed_existing_B_scope_without_further_formal_rounds
   implementation_approval: granted_for_existing_zero_migration_B_scope
   ngram_schema_migration_approval: not_granted
-  user_acceptance: pending_for_2c47ab2_and_C5740ED4_JAR
+  user_acceptance: accepted_2026_10_25_for_2c47ab2_and_C5740ED4_JAR
 next_action:
-  owner: user_then_Codex
-  action: short_trial_then_record_acceptance_8_1_and_authorized_delivery_archive_8_2
-  input: ../../../docs/handoffs/2026-10-24-name-search-plan.md
+  owner: none
+  action: B_complete_C1_remains_paused
+  input: ../../../../docs/handoffs/2026-10-24-name-search-plan.md
   product_code_allowed: false
-  delivery: existing_verified_JAR_no_new_implementation_tasks
+  delivery: accepted_JAR_unchanged_records_pushed_on_origin_codex_name_search
 implementer_assessment:
   status: n02_findings_addressed_in_0_3
   evidence: reviews/codex-0.2.md
@@ -97,10 +98,33 @@ independent_implementation_review:
   open_fixes: []
   docs_followup: complete_including_builtin_help
   historical_RED_record: waived_do_not_fabricate
-  tasks_note: 23_of_25_closed; only_8.1_user_acceptance_and_8.2_delivery_remain
+  tasks_note: 25_of_25_closed_user_acceptance_and_archive_complete
   migration_required: false
   jar_sha256: c5740ed4af7df04fc77561461eaaedf645e8c4702c56774227b48cc07421cb82
   jar_bytes: 71937900
   current_targeted_jdk17: 32_total_32_pass_0_failure_0_skipped_clean_package
   current_targeted_java8_1_8_0_40: 32_total_32_pass_0_failure_0_skipped
   jar_path: E:/idea_projects/doc-finder/target/docfinder-1.0.0.jar
+acceptance_record:
+  date: 2026-10-25
+  timezone: Asia/Tokyo
+  authority: user
+  source: direct_user_message
+  quote: 当前版本试用通过，ok,，请更新并推送。
+  code_head: 2c47ab2490f87e4c7124c7979bf2fec645049943
+  jar_sha256: c5740ed4af7df04fc77561461eaaedf645e8c4702c56774227b48cc07421cb82
+  record: acceptance.md
+  scope: current_B_functionality_including_default_sort_restore
+archive:
+  date: 2026-10-25
+  path: openspec/changes/archive/2026-10-25-improve-name-search-experience
+  specs_synced: true
+  new_main_spec: name-search-experience
+  modified_main_spec: directory-scoped-search/DS-03
+  task_count: 25
+delivery:
+  branch: codex/name-search
+  remote: origin
+  transport: git_push
+  main_branch_merge: not_requested
+  product_binary_changed_this_closeout: false

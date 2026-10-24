@@ -300,7 +300,7 @@ java -jar target/docfinder-1.0.0.jar
 
 ## 开发路线图
 - A：目录检索实现/自动修复已核验，用户已确认最新版手工验收完全成功，主规格已同步并已归档。
-- B：improve-name-search-experience 已实现名称子串、多词AND、防抖、截断提示和排序复位；独立自动验证已完成，待用户试用接受。
+- B：improve-name-search-experience 已实现名称子串、多词AND、防抖、截断提示和排序复位；独立自动验证已完成，用户于2026-10-25试用接受并已归档。
 - C1/C2：索引一致性、监控恢复、异步正文解析属于后续change。
 - D：Java8约束下的指定依赖升级已实施，新Java栈/native另行评估。
 - 以 [产品路线图](docs/roadmap.md) 和 [当前状态](openspec/changes/archive/2026-10-24-add-directory-scoped-search/delivery-status.yaml) 为准。
