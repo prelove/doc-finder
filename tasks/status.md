@@ -1,4 +1,30 @@
-# Tasks Progress Snapshot (2026-02-28)
+# Tasks Progress Snapshot
+
+## Current Snapshot (2026-10-24)
+
+### Directory-Scoped Search change (openspec `add-directory-scoped-search`)
+
+- **Implementation**: A0–A7 all delivered; section 11 (F-findings) and section 12 (QA24) closed; section 13 R24-01..06 remediated and committed (`8f756dd`, report `da3db49` — both pushed to origin).
+- **Field verification on live data**: user's scoped search returned empty — root cause was the production index predating the `path_scope` field (8672 docs, 0 scope terms), plus a mid-indexing JVM OOM crash (`hs_err_pid9580.log`, native mmap failure at -Xmx1024m). Full rebuild on the current build resolved it; scoped search confirmed working end-to-end.
+- **Cleanup this round** (local commits, unpushed): `824fb4d` remove dead `ui.workers.SearchWorker`/`SearchExecutor` that silently dropped `directoryPath`; `748f297` remove dead `IndexingManager`; `a0b6caf` launcher heap `-Xmx2048m` headroom for index runs.
+- **Verification**: `mvn test` green on `a0b6caf` — 169 tests / 0 failures / 3 platform skips.
+
+### Open items / next step
+
+1. **Codex independent reverify** of R24 fixes on the new HEAD (`a0b6caf`, includes cleanup commits) — delivery-status `next_action` owner: Codex.
+2. **M-01~M-06 host acceptance** still open (runbook: `openspec/changes/add-directory-scoped-search/evidence/M-Acceptance-Runbook.md`); user's manual testing already exercised scoped search successfully but formal records are pending.
+3. **A8**: user acceptance + delivery authorization (push/PR/archive) — 3 local commits ahead of `origin/main`.
+4. `modernize-java-dependencies`: implemented, R24-06 wording resolved; pending combined acceptance with the scoped-search change.
+5. Housekeeping: `jerr4.txt` is untracked junk in repo root (decide delete vs ignore); `.playwright-mcp/` and `hs_err_pid*.log` already gitignored.
+
+### Roadmap candidates (per `openspec/.../roadmap.md`)
+
+- **B** improve-name-search-experience (substring name match, debounce, ranking) — next proposed change, not yet created.
+- **C1/C2** index consistency & watcher lifecycle; **D** Java/dependency modernization — separate changes, user picks priority.
+
+---
+
+## Historical Snapshot (2026-02-28)
 
 ## Completed
 - **Task 1 - Stabilize Query Switching**: Search runs asynchronously with token-based stale-result guarding (`SearchWorker` + `searchSequence`).
