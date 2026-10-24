@@ -40,8 +40,8 @@
 
 输入分类先行（D3）；仅"普通字面 + FUZZY"走本路径。
 
-- 每词构造三档名称子句：`BoostQuery(ConstantScoreQuery(TermQuery(name_raw,tok)),4)`、`BoostQuery(ConstantScoreQuery(PrefixQuery(name_raw,tok)),3)`、`BoostQuery(ConstantScoreQuery(WildcardQuery(name_raw,*tok*)),2)`，经 `DisjunctionMaxQuery(tieBreaker=0)` 输出该词最高档常量分 ∈ {4,3,2}。
-- 多词：各词的名称子句组间 **AND**（全部词子串命中同一名称才算名称命中）；文档名称分 = 各词档常量之和，故分值的整数部分精确编码档位构成。
+- 档位定义（逐词，与"完整查询匹配整名"不混用）：`name_raw` 为**含扩展名**的完整名称小写串。对每词 tok：整名档 = `tok == name_raw` 全串相等（`report` 对 `report.txt` 为前缀档而非整名档）；前缀档 = `name_raw` 以 tok 开头；子串档 = `name_raw` 含 tok。每词构造三档子句：`BoostQuery(ConstantScoreQuery(TermQuery(name_raw,tok)),4)`、`BoostQuery(ConstantScoreQuery(PrefixQuery(name_raw,tok)),3)`、`BoostQuery(ConstantScoreQuery(WildcardQuery(name_raw,*tok*)),2)`，经 `DisjunctionMaxQuery(tieBreaker=0)` 输出该词最高档常量分 ∈ {4,3,2}。
+- 多词：各词的名称子句组间 **AND**（全部词子串命中同一名称才算名称命中），词序无关、原输入空白仅作分隔；文档名称分 = 各词档常量之和（如 4+2=整名+子串），故分值精确编码档位构成；文档展示档位取各词最低档（最弱词决定档级）。
 - 范围映射（B-01/B-02）：
   - `NAME`/`FOLDER`：根查询 = 名称条件 MUST（+ `kind` FILTER）。**名称命中必须由名称条件满足全部词**；旧 parsed 的 name 多词 OR 路径不再进入名称命中（正文命中与名称命中分开解释；FOLDER 原本就只查名称）。
   - `CONTENT`：根查询 = 既有 parsed 正文路径，不变。
@@ -53,12 +53,12 @@
 
 | 输入类别 | 判定 | 行为 |
 | --- | --- | --- |
-| 高级语法标记 | 含 `:` 字段前缀、`*`、`?`、`"`、`(`、`)`、`AND`/`OR`/`NOT`（大小写敏感按现状 parser 行为） | 走既有 parser；非法语法 → INVALID_QUERY 固定文案 |
-| 空白/空串 | trim 后为空 | 现有空查询行为（清空结果，不发请求） |
+| 高级语法标记 | 含 `:` 字段前缀、`*`、`?`、`"`、`(`、`)`；或 `AND`/`OR`/`NOT` 作为**独立词法 token**（按 Unicode 空白切分后整词相等才认，大小写按现状 parser）——`band`/`SANDY` 等含子串的名称不误判 | 走既有 parser；非法语法 → INVALID_QUERY 固定文案 |
+| 空白/空串 | 按 Unicode 空白（`Character.isWhitespace`/isSpaceChar）trim 后为空 | 现有空查询行为（清空结果，不发请求） |
 | 字面词（含 `.` `-` `_` `+` `'`、CJK、补充平面码点） | 无高级标记 | 按 Unicode 码点逐字面子串比较（小写化 `Locale.ROOT`） |
-| 单字符字面词 | len=1（任意书写系统） | 默认保留子串能力；列入高命中性能样本；若用户选最小长度 2 方案则此类词不走子串档并给出 UI 明示 |
+| 单字符字面词 | 长度=1 码点（任意书写系统） | 默认保留子串能力；列入高命中性能样本；若用户选最小长度 2 方案则此类词不走子串档并给出 UI 明示 |
 
-约束：字面词按空白切分；词数上限 16、单词长度上限 64 字符，超限 → INVALID_QUERY 固定文案（可验收契约，非实现期再定）。
+约束：字面词按 Unicode 空白切分；词数上限 16、单词长度上限 64 **码点**（`String.codePointCount`，非 UTF-16 char——补充平面字符算 1），超限 → INVALID_QUERY 固定文案（可验收契约，非实现期再定）。UI 截断/错误提示跟随界面语言：英文 UI 用英文文案（如 "Showing first N results"），中文表述仅作语义说明。
 
 ### D4 命中分档：名称/正文双列表结构合并（可证明，不依赖分数上界）
 
@@ -67,22 +67,22 @@
 - **列表 1（名称命中）**：仅 `名称条件` + `kind`/`path_scope` FILTER，取 `limit+1`。该查询只含 `DisjunctionMax` 常量档（单词文档得分 ∈ {4,3,2}，多词为各词档常量之和）——**正文/解析分完全不参与此列表**，故"名称命中排在仅正文命中之前"由查询结构保证，无需任何分数上界假设。
 - **列表 2（仅正文命中）**：`parsed 正文分支 MUST + 名称条件 MUST_NOT`（+ 同套 FILTER），取 `limit+1`，保留自然 BM25 序。`MUST_NOT` 使两列表不相交，名称+正文双命中文档只进列表 1。
 - **合并**：列表 1 全量（截断至 limit+1）→ 列表 2 补齐余量；hasMore = (两列表实际取回数之和 > limit)。Top-N 分别作用于两列表内部：列表 1 内高档不可能被低档挤出（分值即档常量之和，天然单调）；列表 2 内纯 BM25。
-- **名称列表内呈现序**：分值降序（= 档常量之和降序，词数相同时即档序）→ 同分按存储字段 `name` 长度升序（短名优先，子串占比更大）→ 再按 `path` 字典序。仅依赖已物化的 `SearchResult` 名称/路径（`name`/`path` 均 `Store.YES`），不读取 `name_raw`。
+- **名称列表内呈现序**：分值降序（= 档常量之和降序）→ 同分按存储字段 `name` 长度升序（短名优先，子串占比更大）→ 再按 `path` 字典序。仅依赖已物化的 `SearchResult` 名称/路径（`name`/`path` 均 `Store.YES`），不读取 `name_raw`。**边界诚实声明**：同档常量分（同 tier-sum）文档在 Top-N 边界处的入选集合由 Lucene 内部序决定——按长度/path 的 tie-break 只对已取回切片排序，不构成全局同分入选承诺；跨档序（整名>前缀>子串>仅正文）才是结构性保证，被截断时由 hasMore 标记。
 - **NAME/FOLDER/CONTENT**：单查询即可（NAME/FOLDER 仅列表 1 结构 + `kind` FILTER；CONTENT 沿用旧路径），无合并成本。
 - **ALL 代价**：两次搜索/查询（名称 + 排他正文），成本进 B0 基准门槛口径；EXACT/高级语法路径不变仍为单次。
 - **Match 字段**：对最终返回的 ≤limit+1 文档按文档求 `explain`（名称条件 / 正文分支分别判定）得到 `name`/`content`/`name+content`，保证真实反映命中来源。
 
-### D5 截断提示：limit+1 可靠 hasMore，不提供精确总数
+### D5 截断提示：limit+1 可靠 hasMore（三态），不提供精确总数
 
-`SearchService` 新增默认 `searchDetailed(SearchRequest) → SearchOutcome{results, hasMore}`；默认实现包装 `search()` 返回 `hasMore=false`（兼容实现可声明 unknown）；`LuceneSearchService` 覆写为取 `limit+1` 条判定并截断。不使用 `TopDocs.totalHits` 作精确 M（默认计数到阈值即止，可能是下界）。桌面文案 `Results: N` → 截断时 `仅显示前 N 条`；Web JSON 增加可选 `hasMore`/`truncated` 字段（既有字段与必填结构不变）。
+`SearchService` 新增默认 `searchDetailed(SearchRequest) → SearchOutcome{results, hasMore}`，`hasMore` 为三态 `TriState{TRUE,FALSE,UNKNOWN}`：FALSE=已知无更多（非"不确定"），UNKNOWN=兼容实现信息不足，**UNKNOWN 不得伪装 FALSE**。默认实现包装 `search()` 返回 `UNKNOWN`（结果数 ≤ limit 不足以证明无更多）；`LuceneSearchService` 覆写为取 `limit+1` 判定：取回数 > limit → TRUE 并截断至 limit，否则 FALSE（含恰好=limit、0 结果、FILTER/删除位后命中）。不使用 `TopDocs.totalHits` 作精确 M（默认计数到阈值即止，可能是下界）。桌面文案 `Results: N` → TRUE 时 `Showing first N results`（英文 UI 文案）；UNKNOWN → 不显示截断提示也不声称完整。Web JSON 增加可选 `hasMore`/`truncated`：`UNKNOWN` 时**省略该字段**（或显式 null）；`hasMore` 与 `truncated` 若同时输出 MUST 一致；既有字段与必填结构不变。HTTP 上限：limit 参数超服务端最大值按现有 clamp/校验行为处理，hasMore 判定基于生效 limit。
 
-### D6 桌面防抖与失效
+### D6 桌面防抖与失效：三类输入事件分开定义
 
-- 键入事件：**立即** `searchSequence++` 并取消 `activeSearchWorker`（在途请求即刻失效，迟到结果不落表/预览/状态栏）；重启单一 `javax.swing.Timer`（250ms、非 coalesce），到点走 `doSearch()`。
-- 立即提交路径（Enter、历史下拉选择、scope/mode/目录限定变更、Clear、quick action、程序化 `setQueryText`/`setText`、Apply filters）**取消挂起 Timer** 并立即 `doSearch()`。
+- **类 A 用户键入**（DocumentListener 源于真实编辑）：**立即** `searchSequence++` 并取消 `activeSearchWorker`（在途即刻失效，迟到结果不落表/预览/状态栏）；重启单一 `javax.swing.Timer`（250ms、非 coalesce），到点走 `doSearch()`。
+- **类 B 明确提交动作**（Enter、历史下拉选择、scope/mode/目录限定变更、Clear、quick action、Apply filters）：取消挂起 Timer 后恰好一次 `doSearch()`。
+- **类 C 程序化写入**（初始化、`addToHistory` 的 `setQueryText` 回写、历史模型刷新、内部同步恢复）：**只更新控件不提交**——经显式 guard/非通知路径写文本，不触发 DocumentListener→搜索链路；历史回写保留用户当前草稿与光标位置，不得覆盖编辑期输入（验收实测回写缺陷按此修复）。
 - 清空输入、开始索引（isIndexing）、窗口 dispose：停 Timer + 取消 worker。
-- 约束新增：`done()`/历史回写不得覆盖编辑期输入文本（验收实测到的回滚行为须被防抖窗口隔离）。
-- 测试：确定性时序（注入可控 Timer/时钟）+ "每个动作恰好一次请求"断言，不靠放宽 sleep 放行。
+- 测试：确定性时序（注入可控 Timer/时钟）+ "每个动作恰好一次请求" + "类 C 写入零请求"断言，不靠放宽 sleep 放行。
 
 ### D7 遗留 `search.query.QueryBuilder`/`QueryExecutor`
 

@@ -41,13 +41,13 @@
 
 系统 SHALL 按下表归类输入，行为显式定义、不静默漏查：
 
-- 含高级语法标记（`:` 字段前缀、`*`、`?`、`"`、`(`、`)`、布尔算符）→ 走既有 parser，非法语法 → INVALID_QUERY 固定文案。
-- trim 后为空 → 现有空查询行为。
-- 字面词（含 `.` `-` `_` `+` `'`、CJK、补充平面码点）→ 字面子串比较。
-- 单字符字面词 → 默认保留子串能力（并入高命中性能样本实测）；若用户批准最小长度方案，则此类词不启用子串档且 UI 明示限制。
-- 字面词按空白切分；词数 >16 或单词长度 >64 字符 → INVALID_QUERY 固定文案。
+- 含高级语法标记（`:` 字段前缀、`*`、`?`、`"`、`(`、`)`）或 `AND`/`OR`/`NOT` 作为**独立词法 token**（Unicode 空白切分后整词相等才认）→ 走既有 parser，非法语法 → INVALID_QUERY 固定文案；`band`/`SANDY` 等含算符子串的名称不误判。
+- 按 Unicode 空白（isWhitespace/isSpaceChar）trim 后为空 → 现有空查询行为。
+- 字面词（含 `.` `-` `_` `+` `'`、CJK、补充平面码点）→ 按 Unicode 码点字面子串比较（`Locale.ROOT` 小写化）。
+- 单字符字面词（1 码点）→ 默认保留子串能力（并入高命中性能样本实测）；若用户批准最小长度方案，则此类词不启用子串档且 UI 明示限制。
+- 字面词按 Unicode 空白切分；词数 >16 或单词长度 >64 **码点**（`codePointCount`，补充平面字符算 1）→ INVALID_QUERY 固定文案。
 
-多字面词 SHALL 以 AND 语义组合：全部词均按子串命中同一名称，该名称才算名称命中。
+多字面词 SHALL 以 AND 语义组合：全部词均按子串命中同一名称，该名称才算名称命中；词序无关。UI 提示文案跟随界面语言（英文 UI 用英文，如 "Showing first N results"）。
 
 #### Scenario: 多词全部命中
 
@@ -73,9 +73,10 @@
 
 系统 SHALL 对命中结果施加确定性档位：完整名称 > 前缀 > 子串 > 仅正文命中，排序保证由**查询结构**提供而非分数上界假设：
 
-- ALL 范围以双列表求值——名称命中列表只含名称条件（DisjunctionMax 常量档，单词得分 ∈ {4,3,2}，多词为各词档常量之和），仅正文命中列表为"正文分支 MUST + 名称条件 MUST_NOT"；合并顺序为名称命中全部在前、仅正文命中补齐余量。
+- 档位定义（逐词）：`name_raw` 含扩展名；整名档 = 词与 `name_raw` 全串相等；前缀档 = 前缀相等；子串档 = 包含。文档名称分 = 各词档常量（4/3/2）之和；多词文档展示档位由最弱词决定。
+- ALL 范围以双列表求值——名称命中列表只含名称条件（DisjunctionMax 常量档），仅正文命中列表为"正文分支 MUST + 名称条件 MUST_NOT"；合并顺序为名称命中全部在前、仅正文命中补齐余量。
 - 名称命中 MUST NOT 与仅正文命中在同一排序键下竞争，故高正文评分文档在结构上不可能越过任何名称命中，高档结果也不可能被 Top-N 截出列表。
-- 名称列表内排序：分值降序 → 同分按名称长度升序 → 再按 path 字典序；仅依赖存储字段 `name`/`path`（`name_raw` 不存储、不作为排序输入）。
+- 名称列表内排序：分值降序 → 同分按名称长度升序 → 再按 path 字典序；仅依赖存储字段 `name`/`path`（`name_raw` 不存储、不作为排序输入）。同分值（同档位构成）文档在截断边界的入选集合由实现序决定——tie-break 只对已呈现切片生效，不构成全局同分入选承诺；跨档序为结构性保证。
 - 目录限定开/关不改变档位规则；两列表均叠加同套 FILTER。
 
 #### Scenario: 完整名称优先于子串
@@ -114,7 +115,12 @@ EXACT 模式与显式高级语法语义 SHALL 与现状一致；含高级语法�
 
 ### Requirement: 输入防抖与在途失效（桌面）
 
-桌面端键入 SHALL 立即使在途请求失效（代次递增 + worker 取消），并以 ~250ms 单一 Timer 延迟提交；Enter/历史选择/范围或过滤变更/Clear/quick action/程序化 setText 等立即提交路径 MUST 取消挂起 Timer；清空、开始索引、窗口 dispose MUST 停止 Timer 与 worker。编辑期间的迟到结果与历史回写 MUST NOT 覆盖编辑器文本、结果表、预览或状态栏。
+桌面端按三类输入事件分别处理：
+
+- 类 A 用户键入 SHALL 立即使在途请求失效（代次递增 + worker 取消），并以 ~250ms 单一 Timer 延迟提交。
+- 类 B 明确提交动作（Enter、历史选择、范围/过滤变更、Clear、quick action、Apply filters）MUST 取消挂起 Timer 后恰好提交一次。
+- 类 C 程序化写入（初始化、`addToHistory` 回写、历史模型刷新、内部同步）MUST 只更新控件、不产生任何提交；历史回写 MUST 保留当前草稿与光标，不得覆盖编辑期输入。
+- 清空输入、开始索引、窗口 dispose MUST 停止 Timer 与 worker。迟到结果与历史回写 MUST NOT 写入结果表、预览或状态栏。
 
 #### Scenario: 快速输入只保留最终状态
 
@@ -128,7 +134,7 @@ EXACT 模式与显式高级语法语义 SHALL 与现状一致；含高级语法�
 
 ### Requirement: 截断提示（hasMore）
 
-当命中数达到返回上限时，系统 SHALL 以 limit+1 探测返回可靠 `hasMore`（ALL 合并路径下为两列表实际取回数之和 > limit），桌面与 Web 一致显示"仅显示前 N 条"；MUST NOT 呈现精确总命中数（Lucene 默认计数可能是下界）。兼容实现可声明 hasMore unknown → UI 不显示截断提示也不虚构精确数。
+当命中数达到返回上限时，系统 SHALL 以 limit+1 探测返回三态 `hasMore`：`TRUE`（取回 > limit，截断至 limit 并提示"Showing first N results"或界面语言等价文案）/`FALSE`（取回 ≤ limit，含恰好=limit、0 结果、FILTER/删除位后命中，已知无更多）/`UNKNOWN`（兼容实现信息不足，MUST NOT 伪装为 FALSE——默认包装实现返回 UNKNOWN）。ALL 合并路径下判定为两列表实际取回数之和 > limit。MUST NOT 呈现精确总命中数。Web JSON 的 `hasMore`/`truncated` 为可选字段：UNKNOWN 时省略（或显式 null）；两字段同时输出 MUST 一致；判定基于生效 limit（超上限参数按现有 clamp/校验处理）。
 
 #### Scenario: 达到上限显示提示
 
@@ -147,4 +153,6 @@ Web 搜索接口 SHALL 复用同一名称匹配、分档与截断规则；`q`/`s
 #### Scenario: 截断标记透出
 
 - **WHEN** 命中数超过 limit
-- **THEN** JSON 含 `hasMore=true`（或等价 truncated 标记），既有字段不受影响
+- **THEN** JSON 含 `hasMore=true`（或等价 truncated 标记），既有字段不受影响；未知时省略该字段且不宣称完整
+
+> DS-03（directory-scoped-search）的 MODIFIED delta 见同目录 `../directory-scoped-search/spec.md`。

@@ -1,6 +1,6 @@
 # Proposal
 
-> 方案 0.2（2026-10-24）：按 Codex 评审 B-01～B-09 逐条修订（见 [review.md](review.md)）。**仍为未批准草案**：须交 Claude 复核与用户批准后方可实施；当前实施任务 0/22，不得从 artifacts 齐备推导实施授权。
+> 方案 0.3（2026-10-24）：按 Codex 独立复核 N02-01～N02-06 修订（见 [reviews/codex-0.2.md](reviews/codex-0.2.md)）；B-01/02/03 已被接受，B-04/05/08/09 在本版闭合。**仍为未批准草案**：须交 Claude 复核与用户批准后方可实施；当前实施任务 0/22，不得从 artifacts 齐备推导实施授权。
 
 ## Why
 
@@ -9,11 +9,11 @@
 ## What Changes
 
 - 普通字面查询（无高级语法标记）获得名称子串命中能力：**NAME/FOLDER 范围以"名称条件"为唯一命中条件；ALL 范围为"名称条件 OR 既有正文分支"至少其一成立；CONTENT 不加名称条件**（B-01）。名称条件内多个字面词全部命中同一名称才算名称命中，旧的 parsed OR 分支不得把只命中部分词的名称放回结果（B-02）。
-- 命中排序可证明分档：完整名称 > 前缀 > 子串 > 仅正文；同档内保持既有评分序；排序档位不得只对旧 Top-N 重排而漏掉高档候选（B-04）。
+- 命中排序可证明分档：完整名称 > 前缀 > 子串 > 仅正文；ALL 以"名称命中列表 + 仅正文命中列表（名称条件 MUST_NOT）"双列表结构合并——排序保证来自查询结构而非分数上界假设，高档结果在结构上不可能被 Top-N 截出（N02-01）。档位推导只依赖已存储的 `name`/`path`，不读取未存储的 `name_raw`（N02-02）。
 - EXACT 模式冻结真实现状并写清契约：现状 = `name_raw` 整名 term 与 `name` 分词短语并列，ALL 还叠加正文短语——不是"严格整名相等"；本 change 不改变该行为，新增特征测试钉住现状（B-03）。若要改严格整名，属另一个产品决定。
-- 桌面输入防抖 ~250ms：键入**立即使既有在途请求失效**（代次++），Timer 只延迟提交；Enter/历史选择/范围或过滤变更/Clear/quick action/程序化 setText 等立即提交路径取消挂起 Timer；清空、开始索引、窗口 dispose 停止 Timer 与 worker（B-08）。
-- 结果截断诚实提示：返回前 N 条 + 可靠 `hasMore`（实现取 limit+1 判定），桌面/Web 一致显示"仅显示前 N 条"；**不提供精确总命中 M**（B-05）。
-- 输入分类规则显式化：单字符、Unicode 码点（含补充平面）、空白、`.`/`-`/`_`/`+`/`'` 等符号、高级语法标记各自的归类与行为写进 spec，不静默漏查（B-06）。单 ASCII 字符默认保留字面子串能力，并作为高命中性能样本进基准；若用户选择最小长度 2 限制，则以明确提示与取舍另批。
+- 桌面输入防抖 ~250ms，按三类事件分开定义（N02-04）：用户键入立即使在途失效 + Timer 延迟提交；明确提交动作（Enter/历史选择/范围过滤变更/Clear/quick action）取消 Timer 后恰好提交一次；程序化写入（初始化、历史回写、内部同步）只更新控件不提交，且历史回写保留草稿与光标。清空、开始索引、dispose 停止 Timer 与 worker（B-08）。
+- 结果截断诚实提示：三态 `hasMore`（TRUE/FALSE/UNKNOWN；UNKNOWN 不伪装 FALSE，默认兼容实现返回 UNKNOWN；HTTP UNKNOWN 省略字段），实现取 limit+1 判定，桌面/Web 一致；**不提供精确总命中 M**（N02-03/B-05）。
+- 输入分类规则显式化：单字符（按码点计）、Unicode 码点（含补充平面）、Unicode 空白、`.`/`-`/`_`/`+`/`'` 等符号、高级语法标记（`AND`/`OR`/`NOT` 仅作独立词法 token 才认）各自归类写进 spec，不静默漏查（B-06/N02-06）。词数 ≤16、单词 ≤64 码点超限走 INVALID_QUERY 固定文案。单 ASCII 字符默认保留字面子串能力并作为高命中性能样本进基准；若用户选择最小长度 2 限制，则以明确提示与取舍另批。
 - 技术路线先实测后定论：默认 `name_raw` 通配（零索引变更）；完整定义性能门槛（固定硬件/JVM/heap/reader 状态/预热/样本量/端到端口径，10 万独立名称 + 长名/CJK/符号/高命中短词夹具，实测词项数；100ms 为本机拟定门槛非 SLA）。不达标 → 回设计评审；n-gram 仅作备选研究，启用须另交字段/覆盖检测/迁移/回退方案并经评审与用户批准，不自动开启（B-06/B-07）。
 
 ## Capabilities
@@ -24,11 +24,11 @@
 
 ### Modified Capabilities
 
-无。A 阶段 `directory-scoped-search` 规格已归档至 `openspec/specs/directory-scoped-search`，本 change 不改动其需求，仅复用已交付接口（SearchRequest/LuceneSearchService/SearchHandler）。
+- `directory-scoped-search`（DS-03 条件组合与数量）：B 有意改变 FUZZY 字面查询的名称命中规则与排序语义——对 DS-03"合法关键词保持评分语义"构成授权下的兼容例外。spec delta 提供完整 MODIFIED 段；保留 FILTER 先于 limit、目录不改相对排序规则、CONTENT/EXACT/高级语法评分语义不变、响应结构与错误码不变。**当前不改主规格文件**，同步发生在 B 验收归档时（N02-05）。
 
 ## Impact
 
-- 后台：`LuceneSearchService`（名称条件构造、`DisjunctionMax` 分档、limit+1 截断元数据）；`SearchService` 增加默认 `searchDetailed` 契约；`FakeSearchService` 跟随。`QueryBuilder`/`QueryExecutor` 遗留类仅在证明无生产引用后单独小步删除，不作功能前置。
+- 后台：`LuceneSearchService`（名称条件构造、ALL 双列表合并、limit+1 三态截断元数据）；`SearchService` 增加默认 `searchDetailed` 三态契约；`FakeSearchService` 跟随。`QueryBuilder`/`QueryExecutor` 遗留类仅在证明无生产引用后单独小步删除，不作功能前置。
 - 桌面：`MainWindow` 输入防抖/在途失效接线与截断提示文案；`DirectoryScopePanel` 不改动。需修复验收中实测到的"done() 历史回写覆盖正在编辑文本"交互（纳入防抖设计约束，非独立缺陷单）。
 - Web：`SearchHandler`/`index.html` 复用同一查询规则并增加可选 `hasMore`/`truncated` 输出，不新增端点、不新增必填字段。
 - 兼容：EXACT、显式 `name:`/通配符/高级语法、目录限定、错误码映射、history 不记失败查询等既有契约不变；仅扩展 FUZZY 下名称命中范围。
@@ -49,4 +49,4 @@
 
 ## Review boundary
 
-文档包 0.2 / 2026-10-24。本轮授权仅为修订方案；实施未批准。A 阶段验收与归档已完成（含 Devin 补充主机验收记录）；B 的 Claude 复核与用户批准完成后才允许勾选实施任务。
+文档包 0.3 / 2026-10-24。本轮授权仅为修订方案；实施未批准。A 阶段验收与归档已完成（含 Devin 补充主机验收记录）；B 的 Claude 复核与用户批准完成后才允许勾选实施任务。

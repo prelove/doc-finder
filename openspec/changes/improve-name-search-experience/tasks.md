@@ -1,8 +1,8 @@
 # Tasks
 
-> 方案 0.2（2026-10-24）：按 Codex 评审 B-01～B-09 修订（见 [review.md](review.md)）。未批准草案；实施须经 Claude 复核 + 用户批准。当前实施任务 0/22。
+> 方案 0.3（2026-10-24）：按 Codex 复核 N02-01～N02-06 修订（见 [reviews/codex-0.2.md](reviews/codex-0.2.md)）。未批准草案；实施须经 Claude 复核 + 用户批准。当前实施任务 0/22。
 
-名称定位体验 Implementation Plan，草案 0.2（待复核/批准）。唯一实施进度来源。Goal：字面中段命中（NAME/FOLDER 纯名称条件，ALL=名称 OR 正文）、常量分档+呈现重排、防抖+在途失效、limit+1 截断提示。Tech：Java8/依赖不变；默认 name_raw 通配，基准未达标回评审（n-gram 另批）。
+名称定位体验 Implementation Plan，草案 0.3（待复核/批准）。唯一实施进度来源。Goal：字面中段命中（NAME/FOLDER 纯名称条件，ALL=名称列表+仅正文列表合并）、结构保证分档、三类事件防抖、三态 hasMore。Tech：Java8/依赖不变；默认 name_raw 通配，基准未达标回评审（n-gram 另批）。
 
 ## Global Constraints
 
@@ -17,7 +17,7 @@
 
 - [ ] 1.1 建 10 万独立名称夹具（英文/中日文/符号/长名/高命中短词如单字符 `a` 与常见词 `report`/对抗性高词频正文文档），记录生成耗时、实际 `name_raw` 词项数与正文词项数；可重复生成、位于系统临时目录。
 - [ ] 1.2 特征基线测试：现状 `report` 不命中 `AnnualReport2026.PDF`；EXACT 现状特征（整名 term + 分词短语 + ALL 叠正文，`report` 命中 `final report draft.txt`）；旧 parsed OR 在 NAME 下缺词命中的现状断言。→ RED/基线记录。
-- [ ] 1.3 方案 A 通配原型于夹具（不改生产）：按 D1 完整门槛定义取样（固定硬件/JVM/-Xmx/reader 预热记录、预热后 ≥100 样本、冷首次单列、ALL/NAME × 有/无目录限定、端到端口径），输出 p50/p95/错误数/索引体积/内存；100 万文档观察记录（非门槛）。→ 对照拟定门槛 p95≤100ms 给路线结论；不达标 → 回设计评审（n-gram 方案另批）。
+- [ ] 1.3 方案 A 通配原型于夹具（不改生产）：按 D1 完整门槛定义取样（固定硬件/JVM/-Xmx/reader 预热记录、预热后 ≥100 样本、冷首次单列、ALL/NAME × 有/无目录限定、端到端口径，**ALL 含双查询合并全流程成本**），输出 p50/p95/错误数/索引体积/内存；100 万文档观察记录（非门槛）。→ 对照拟定门槛 p95≤100ms 给路线结论；不达标 → 回设计评审（n-gram 方案另批）。
 
 **Verify:** `mvn -B "-Dtest=<benchmark&baseline 测试>" test`；结论+原始数字写 evidence/B0.md。
 
@@ -26,7 +26,7 @@
 **Owner:** Devin；**Depends:** B0 路线已定。**Files:** `LuceneSearchService.java`；`NameSubstringSearchTest`。
 
 - [ ] 2.1 目标 RED：中段命中（`report`→`AnnualReport2026.PDF`、CJK `支付`、大小写、单字符、补充平面码点、多词 AND、`spring-core` 等符号）；ALL 正文命中不丢失；NAME 下"只命中部分词的名称"不出现；CONTENT 不因名称命中返回。→ 新增测试按预期失败。
-- [ ] 2.2 实现 D2/D3：输入分类→字面词三档子句（DisjunctionMax 常量化见 B2）；NAME/FOLDER=名称条件 MUST；ALL=`(名称条件 OR parsed 正文)` minShouldMatch=1；CONTENT 不变；词数>16/词长>64 → INVALID_QUERY 固定文案。→ 定向 GREEN。
+- [ ] 2.2 实现 D2/D3：输入分类→字面词三档子句（DisjunctionMax 常量 4/3/2）；NAME/FOLDER=名称条件 MUST；ALL=名称列表+(正文 MUST+名称 MUST_NOT)双列表合并；CONTENT 不变；词数>16/词长>64 码点 → INVALID_QUERY 固定文案；AND/OR/NOT 仅独立 token 识别、Unicode 空白切分。→ 定向 GREEN。
 - [ ] 2.3 高级语法（`name:`/通配/引号/括号/字段/布尔算符）与 EXACT 现状特征回归；INVALID_QUERY 全局/限定一致且不进入历史记录。→ 既有测试 GREEN + 新增不变性断言。
 - [ ] 2.4 `detectMatchType` 对子串命中仍标记 `name`；`name+content` 组合标记正确。→ 定向断言 GREEN。
 
@@ -36,8 +36,8 @@
 
 **Owner:** Devin；**Depends:** B1。**Files:** `LuceneSearchService.java`；排序断言并入 B1 测试类。
 
-- [ ] 3.1 目标 RED：同库含整名/前缀/子串/仅正文四档 + 高正文词频对抗样本；断言档序与目录限定开/关下一致；limit 很小时高档不被挤出。→ 新增断言失败。
-- [ ] 3.2 实现 D4：DisjunctionMax 常量档（4.0/3.0/2.0）+ 呈现层按存储 `name_raw` 实测档位 stable-sort + path tie-break；记录越档边界（若实测出现）。→ 定向 GREEN。
+- [ ] 3.1 目标 RED：同库含整名/前缀/子串/仅正文四档 + 高正文词频对抗样本；**limit=1/2 且高档名称结果数量超取样窗口**；断言档序与目录限定开/关下一致、名称命中列先于仅正文命中、名称+正文双命中只进名称列不重复。→ 新增断言失败。
+- [ ] 3.2 实现 D4 双列表合并：名称查询仅常量档、正文排他查询 MUST_NOT、合并截断；名称列表内（分值→name 长度→path）排序；`name_raw` 不存储不改存储（零索引变更约束）；Match 字段按返回文档 explain 名称/正文双分支判定。→ 定向 GREEN。
 
 **Verify:** 排序断言 GREEN；对抗样本结果归档。
 
@@ -45,8 +45,8 @@
 
 **Owner:** Devin；**Depends:** B1。**Files:** `SearchService.java`（默认 `searchDetailed`+`SearchOutcome{results,hasMore}`）、`LuceneSearchService`（limit+1 覆写）、`FakeSearchService`；测试同 `SearchServiceNotifyTest` 风格。
 
-- [ ] 4.1 目标 RED：`searchDetailed` 返回 hasMore（limit、limit+1、远大于 limit、删除位文档、scoped/unscoped 各路径）；默认实现回退 hasMore=false/unknown。→ 新增测试失败。
-- [ ] 4.2 实现 limit+1 判定；不暴露精确总数。→ 定向 GREEN。
+- [ ] 4.1 目标 RED：`searchDetailed` 三态 hasMore——FALSE=已知无更多（命中=limit、<limit、0、FILTER/删除位路径、scoped/unscoped），TRUE=limit+1 探测到，UNKNOWN=默认包装实现（UNKNOWN 不得当 FALSE）；HTTP UNKNOWN 省略字段、hasMore/truncated 一致性、最大 limit clamp。→ 新增测试失败。
+- [ ] 4.2 实现 limit+1 三态判定；不暴露精确总数。→ 定向 GREEN。
 
 **Verify:** `mvn -B "-Dtest=<新契约测试>,SearchServiceNotifyTest" test`。
 
@@ -54,7 +54,7 @@
 
 **Owner:** Devin 单一 UI 写入者；**Depends:** B3。**Files:** `MainWindow.java`、harness/EDT 测试、`DirectoryScopeDesktopHarness` 复用。
 
-- [ ] 5.1 目标 RED：注入可控 Timer/时钟——键入立即使在途请求失效（代次+取消）；250ms 到点才提交一次；Enter/历史/范围变更/Clear/quick action/程序化 setText 取消挂起 Timer 且各至多一次请求；清空/开始索引/dispose 停 Timer+worker；编辑期 done()/历史回写不覆盖输入文本（钉住验收实测缺陷）。→ latch/定时可控测试先败。
+- [ ] 5.1 目标 RED：注入可控 Timer/时钟——类 A 键入立即使在途失效+延迟一次提交；类 B（Enter/历史选择/范围变更/Clear/quick action）取消 Timer 恰好一次提交；类 C 程序化写入（初始化/addToHistory setQueryText/内部同步）零请求且保留草稿光标；清空/开始索引/dispose 停 Timer+worker；编辑期 done()/历史回写不覆盖输入文本（钉住验收实测缺陷）。→ latch/定时可控测试先败。
 - [ ] 5.2 实现 D6 接线；状态栏截断时 `仅显示前 N 条` 文案。→ 组件/harness GREEN。
 - [ ] 5.3 同步 UsageGuide 桌面交互段。
 
