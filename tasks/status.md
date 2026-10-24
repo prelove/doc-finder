@@ -1,5 +1,9 @@
 # Tasks Progress Snapshot
 
+## 当前执行重点（2026-10-24用户最新指示）
+
+A及依赖过渡已验收归档。当前直接推进B零迁移名称搜索实装：先子串/多词/排序可用核心，再防抖/截断与实际性能。C1诊断/实验暂停在已完成成果，不成为B阻塞。保留关键回归与实际验收，不再增加文档评审轮次。B产品实现已按该最新指示放行，实施完成与用户试用接受仍分别记录。
+
 ## Current Snapshot (2026-10-24)
 
 - **A directory scope**: accepted and archived;56/56 tasks. User explicitly confirmed latest manual acceptance fully successful (PASS_USER_REPORTED); independent verification and runtime provenance retained.

@@ -1,5 +1,8 @@
 # Spec Delta: directory-scoped-search（B 阶段受影响能力）
 
+> 执行状态更新：用户已要求直接推进既定功能实装、减少额外形式流程。当前零迁移B范围放行；此前“须再复核后方可实施”的文字为方案历史状态。新增索引字段/迁移仍需另行决定。
+
+
 > 方案 0.3（2026-10-24）：按 reviews/codex-0.2.md N02-05 提供 DS-03 完整 MODIFIED delta。未批准草案；仅在 B 验收归档时同步进主规格，当前不改 `openspec/specs/directory-scoped-search/spec.md`。
 
 ## MODIFIED Requirements
@@ -32,3 +35,9 @@
 
 - **WHEN** 使用 CONTENT 范围进行合法关键词查询
 - **THEN** 命中集合与评分语义与 A 阶段交付一致，不引入名称子串分支
+
+
+#### Scenario: ALL字面输入的正文解析边界
+
+- **WHEN** B普通FUZZY名称路径收到+、-、方括号等字面字符
+- **THEN** ALL正文分支先字面转义，保持正文分词与词间规则，分析无词项时正文无命中；这是该字面路径的输入解释边界，不改变CONTENT/EXACT/高级语法路径或其评分

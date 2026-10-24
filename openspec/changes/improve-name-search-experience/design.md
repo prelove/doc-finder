@@ -1,5 +1,8 @@
 # Design
 
+> 执行状态更新：用户已要求直接推进既定功能实装、减少额外形式流程。当前零迁移B范围放行；此前“须再复核后方可实施”的文字为方案历史状态。新增索引字段/迁移仍需另行决定。
+
+
 > 方案 0.3（2026-10-24）：0.2 按 B-01～B-09 修订后，Codex 第二轮复核指出排序方案存在阻断缺陷——正文 BM25 无上界可越过常量档、被 Top-N 截掉的高档结果无法靠呈现层重排找回、呈现层推导依赖未存储的 `name_raw`。0.3 将分档改为**名称/正文双列表结构合并**（见 D4），不依赖分数上界假设。五项既定方向不变：冻结真实 EXACT、ALL 不混目录、不做分页或精确总数、保留单字符子串、通配先行。未批准草案；实施须经 Claude 复核 + 用户批准。
 
 ## Context
@@ -34,14 +37,14 @@
 
 方案 B（备选研究，不在本 change 实施授权内）：`name_ngram`（NGramTokenizer 2..3 索引侧展开 + 查询侧逐 gram 分解后用原始 `name_raw` 做准确子串校验——Lucene 的 n-gram 只保证"候选"不含完整子串断言；多词/单字回退路径须另定义）。激活条件：方案 A 基准未达标 → 回到设计评审，提交字段定义/新旧索引覆盖检测/迁移与回退成本，经评审与用户批准，不自动开启重建。
 
-**门槛定义（B-06，须先于实施批准固定）：** 固定记录 CPU/RAM/磁盘类型/JVM 版本与 `-Xmx`/reader 预热状态；夹具=10 万独立名称（英文/中日文/符号/长名/高命中短词如单字符 `a`、常见词 `report`），记录实际 `name_raw` 词项数；预热后 ≥100 次取样计 p50/p95/错误数；冷启动首次单列；端到端口径含目录 FILTER 与 ALL/NAME 两 scope；同步测 100 万文档仅作观察记录。拟定本机门槛 p95≤100ms，不是面向所有用户硬件的 SLA。
+**性能测量定义（用户最新优先级：先核心实现，后实测优化）：** 固定记录 CPU/RAM/磁盘类型/JVM 版本与 `-Xmx`/reader 预热状态；夹具=10 万独立名称（英文/中日文/符号/长名/高命中短词如单字符 `a`、常见词 `report`），记录实际 `name_raw` 词项数；预热后 ≥100 次取样计 p50/p95/错误数；冷启动首次单列；端到端口径含目录 FILTER 与 ALL/NAME 两 scope；同步测 100 万文档仅作观察记录。本机优化目标p95≤100ms，不是所有硬件SLA；先交可用核心，再据实测优化。100万观察后置，不自动引入字段/迁移，也不因文档目标未达停止第一版试用。
 
 ### D2 查询构造：字面词 → 名称条件（词间 AND、词内三档）
 
 输入分类先行（D3）；仅"普通字面 + FUZZY"走本路径。
 
 - 档位定义（逐词，与"完整查询匹配整名"不混用）：`name_raw` 为**含扩展名**的完整名称小写串。对每词 tok：整名档 = `tok == name_raw` 全串相等（`report` 对 `report.txt` 为前缀档而非整名档）；前缀档 = `name_raw` 以 tok 开头；子串档 = `name_raw` 含 tok。每词构造三档子句：`BoostQuery(ConstantScoreQuery(TermQuery(name_raw,tok)),4)`、`BoostQuery(ConstantScoreQuery(PrefixQuery(name_raw,tok)),3)`、`BoostQuery(ConstantScoreQuery(WildcardQuery(name_raw,*tok*)),2)`，经 `DisjunctionMaxQuery(tieBreaker=0)` 输出该词最高档常量分 ∈ {4,3,2}。
-- 多词：各词的名称子句组间 **AND**（全部词子串命中同一名称才算名称命中），词序无关、原输入空白仅作分隔；文档名称分 = 各词档常量之和（如 4+2=整名+子串），故分值精确编码档位构成；文档展示档位取各词最低档（最弱词决定档级）。
+- 多词：各词的名称子句组间 **AND**（全部词子串命中同一名称才算名称命中），词序无关、原输入空白仅作分隔；文档名称分 = 各词档常量之和（如 4+2=整名+子串），该和仅作排序值，不唯一编码档位构成；文档展示档位取各词最低档（最弱词决定档级）。
 - 范围映射（B-01/B-02）：
   - `NAME`/`FOLDER`：根查询 = 名称条件 MUST（+ `kind` FILTER）。**名称命中必须由名称条件满足全部词**；旧 parsed 的 name 多词 OR 路径不再进入名称命中（正文命中与名称命中分开解释；FOLDER 原本就只查名称）。
   - `CONTENT`：根查询 = 既有 parsed 正文路径，不变。
@@ -56,7 +59,7 @@
 | 高级语法标记 | 含 `:` 字段前缀、`*`、`?`、`"`、`(`、`)`；或 `AND`/`OR`/`NOT` 作为**独立词法 token**（按 Unicode 空白切分后整词相等才认，大小写按现状 parser）——`band`/`SANDY` 等含子串的名称不误判 | 走既有 parser；非法语法 → INVALID_QUERY 固定文案 |
 | 空白/空串 | 按 Unicode 空白（`Character.isWhitespace`/isSpaceChar）trim 后为空 | 现有空查询行为（清空结果，不发请求） |
 | 字面词（含 `.` `-` `_` `+` `'`、CJK、补充平面码点） | 无高级标记 | 按 Unicode 码点逐字面子串比较（小写化 `Locale.ROOT`） |
-| 单字符字面词 | 长度=1 码点（任意书写系统） | 默认保留子串能力；列入高命中性能样本；若用户选最小长度 2 方案则此类词不走子串档并给出 UI 明示 |
+| 单字符字面词 | 长度=1 码点（任意书写系统） | 默认保留子串能力；列入高命中性能样本；本版本不启用最小长度2限制；改变该产品基线需后续单独批准 |
 
 约束：字面词按 Unicode 空白切分；词数上限 16、单词长度上限 64 **码点**（`String.codePointCount`，非 UTF-16 char——补充平面字符算 1），超限 → INVALID_QUERY 固定文案（可验收契约，非实现期再定）。UI 截断/错误提示跟随界面语言：英文 UI 用英文文案（如 "Showing first N results"），中文表述仅作语义说明。
 
@@ -67,14 +70,14 @@
 - **列表 1（名称命中）**：仅 `名称条件` + `kind`/`path_scope` FILTER，取 `limit+1`。该查询只含 `DisjunctionMax` 常量档（单词文档得分 ∈ {4,3,2}，多词为各词档常量之和）——**正文/解析分完全不参与此列表**，故"名称命中排在仅正文命中之前"由查询结构保证，无需任何分数上界假设。
 - **列表 2（仅正文命中）**：`parsed 正文分支 MUST + 名称条件 MUST_NOT`（+ 同套 FILTER），取 `limit+1`，保留自然 BM25 序。`MUST_NOT` 使两列表不相交，名称+正文双命中文档只进列表 1。
 - **合并**：列表 1 全量（截断至 limit+1）→ 列表 2 补齐余量；hasMore = (两列表实际取回数之和 > limit)。Top-N 分别作用于两列表内部：列表 1 内高档不可能被低档挤出（分值即档常量之和，天然单调）；列表 2 内纯 BM25。
-- **名称列表内呈现序**：分值降序（= 档常量之和降序）→ 同分按存储字段 `name` 长度升序（短名优先，子串占比更大）→ 再按 `path` 字典序。仅依赖已物化的 `SearchResult` 名称/路径（`name`/`path` 均 `Store.YES`），不读取 `name_raw`。**边界诚实声明**：同档常量分（同 tier-sum）文档在 Top-N 边界处的入选集合由 Lucene 内部序决定——按长度/path 的 tie-break 只对已取回切片排序，不构成全局同分入选承诺；跨档序（整名>前缀>子串>仅正文）才是结构性保证，被截断时由 hasMore 标记。
+- **名称列表内呈现序**：分值降序（= 档常量之和降序）→ 同分按存储字段 `name` 长度升序（短名优先，子串占比更大）→ 再按 `path` 字典序。仅依赖已物化的 `SearchResult` 名称/路径（`name`/`path` 均 `Store.YES`），不读取 `name_raw`。**边界诚实声明**：相同名称总分（tier-sum可由不同词档组合得到）文档在 Top-N 边界处的入选集合由 Lucene 内部序决定——按长度/path 的 tie-break 只对已取回切片排序，不构成全局同分入选承诺；跨档序（整名>前缀>子串>仅正文）才是结构性保证，被截断时由 hasMore 标记。
 - **NAME/FOLDER/CONTENT**：单查询即可（NAME/FOLDER 仅列表 1 结构 + `kind` FILTER；CONTENT 沿用旧路径），无合并成本。
 - **ALL 代价**：两次搜索/查询（名称 + 排他正文），成本进 B0 基准门槛口径；EXACT/高级语法路径不变仍为单次。
 - **Match 字段**：对最终返回的 ≤limit+1 文档按文档求 `explain`（名称条件 / 正文分支分别判定）得到 `name`/`content`/`name+content`，保证真实反映命中来源。
 
 ### D5 截断提示：limit+1 可靠 hasMore（三态），不提供精确总数
 
-`SearchService` 新增默认 `searchDetailed(SearchRequest) → SearchOutcome{results, hasMore}`，`hasMore` 为三态 `TriState{TRUE,FALSE,UNKNOWN}`：FALSE=已知无更多（非"不确定"），UNKNOWN=兼容实现信息不足，**UNKNOWN 不得伪装 FALSE**。默认实现包装 `search()` 返回 `UNKNOWN`（结果数 ≤ limit 不足以证明无更多）；`LuceneSearchService` 覆写为取 `limit+1` 判定：取回数 > limit → TRUE 并截断至 limit，否则 FALSE（含恰好=limit、0 结果、FILTER/删除位后命中）。不使用 `TopDocs.totalHits` 作精确 M（默认计数到阈值即止，可能是下界）。桌面文案 `Results: N` → TRUE 时 `Showing first N results`（英文 UI 文案）；UNKNOWN → 不显示截断提示也不声称完整。Web JSON 增加可选 `hasMore`/`truncated`：`UNKNOWN` 时**省略该字段**（或显式 null）；`hasMore` 与 `truncated` 若同时输出 MUST 一致；既有字段与必填结构不变。HTTP 上限：limit 参数超服务端最大值按现有 clamp/校验行为处理，hasMore 判定基于生效 limit。
+`SearchService` 新增默认 `searchDetailed(SearchRequest) → SearchOutcome{results, hasMore}`，`hasMore` 为三态 `TriState{TRUE,FALSE,UNKNOWN}`：FALSE=已知无更多（非"不确定"），UNKNOWN=兼容实现信息不足，**UNKNOWN 不得伪装 FALSE**。默认实现包装 `search()` 返回 `UNKNOWN`（结果数 ≤ limit 不足以证明无更多）；`LuceneSearchService` 覆写为取 `limit+1` 判定：取回数 > limit → TRUE 并截断至 limit，否则 FALSE（含恰好=limit、0 结果、FILTER/删除位后命中）。不使用 `TopDocs.totalHits` 作精确 M（默认计数到阈值即止，可能是下界）。桌面文案 `Results: N` → TRUE 时 `Showing first N results`（英文 UI 文案）；UNKNOWN → 不显示截断提示也不声称完整。Web JSON 增加可选 `hasMore`/`truncated`：`UNKNOWN` 时**省略该字段**；`hasMore` 与 `truncated` 若同时输出 MUST 一致；既有字段与必填结构不变。HTTP 上限：limit 参数超服务端最大值按现有 clamp/校验行为处理，hasMore 判定基于生效 limit。
 
 ### D6 桌面防抖与失效：三类输入事件分开定义
 
@@ -101,7 +104,7 @@
 - [前导 `*` 通配扫描词项集] → D1 完整门槛定义 + 高命中短词样本实测；不达标回评审，不自动迁移。
 - [ALL 双查询成本翻倍] → 列表 2 仅排他正文 + 各取 limit+1，开销进 B0 门槛实测；EXACT/高级路径不受影响。
 - [防抖少搜观感/回写冲突] → D6 立即失效 + Timer 只延迟提交 + 编辑期不回写约束。
-- [`searchDetailed` 兼容实现信息不足] → 默认 `hasMore=false`/unknown 声明，不伪装精确（B-05）。
+- [`searchDetailed` 兼容实现信息不足] → 默认 `UNKNOWN` 声明，不伪装精确（B-05）。
 - [n-gram 分支若批准将要求全量重建] → 覆盖检测复用 `path_scope` leaf 统计模式（泛化字段参数），方案另审。
 - [`detectMatchType` 解释] → 合并后按返回文档 `explain` 名称/正文分支判定，Match 字段如实反映来源；不按 `name_raw` 在场与否推断。
 
@@ -113,3 +116,19 @@
 
 - 100 万文档观察是否改变"10 万做门槛"——实施期记录，不改 spec。
 - n-gram gram 区间与索引体积——仅方案 B 激活时定。
+
+
+### D10 Codex R1执行约束（本包组成部分）
+
+R1充分性与排序证明见 [codex-0.3-r1](reviews/codex-0.3-r1.md)。名称分数和不唯一编码词档构成，但在单值完整名、全部词AND、固定4/3/2且无其他评分项时，最弱档的跨档序可证明成立。禁止在名称列表偷偷混入旧BM25分。
+
+ALL两列表、scope检查、取回与解释必须共享同一个acquire的searcher/reader、同一来源快照，finally一次release；第二查询失败按既有SEARCH_FAILED返回，不能给部分伪成功。空词优先原fast path。
+
+普通FUZZY字面ALL的正文输入先QueryParser.escape再沿用正文分词/词间规则；+、-、方括号等不能制造语法错误，分析无词项时正文分支无命中。名称WildcardQuery仅对字面反斜杠等通配元字符正确转义；显式高级输入不进入该路径。CONTENT/EXACT/高级语法路径不变。
+
+Match解释用nameKeyword/contentKeyword原始子查询，不用带MUST_NOT名称的正文-only检索query，不包含目录/类型FILTER。两次解释与取文档使用同一reader。
+
+兼容默认searchDetailed返回UNKNOWN；HTTP未知时省略字段，不发null或false。Lucene detailed为执行核心，旧search只取结果，禁止互相委托递归。limit+1基于生效limit，不改变旧HTTP最大值或空词结构。n-gram备选若做准确校验，应从stored name按相同规范取得值，不声称name_raw可stored读取。
+
+
+R1路由边界：EXACT、CONTENT及其既有高级检测/解析规则先委托原调用链；D3新增字面分类与长度限制只作用于普通FUZZY的NAME/FOLDER/ALL路径，不用新分类重定义已冻结模式。此边界包括既有保留字符的特征行为，不默默统一成新模式。

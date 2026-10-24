@@ -1,24 +1,14 @@
-# Devin Local：B0.3方案修订与C1只读并行
+# Devin当前任务：名称搜索最小可用实现
 
-工作区：`E:\idea_projects\doc-finder`。用户已明确最新版手动验收完全成功；A与指定Java8依赖升级接受，Codex完成其提交、主规格同步和归档。不要重新打开已关闭的R24项。
+用户最新指示以完成检索功能为目标、尽早实装，不再增加文档评审轮次。当前既定B0.3+Codex R1零迁移范围已放行；不等Claude再跑一轮才开发。
 
-## 当前任务仅为方案修订
+1. 暂停C1新增实验；已有场景按finally安全结束、保留结果。确认自己的QA进程退出后再构建，不kill任意Java进程。
+2. 从当前已提交基线新建 `codex/name-search` 分支。共享目录中Codex待提交的B R1/授权修订由Codex先提交；保留未跟踪C1材料，功能提交不要夹带它们。先看git status，不覆盖他人修改。
+3. 先实现可用核心：默认FUZZY字面名称子串（含单字符/Unicode/符号）、多词AND、NAME/ALL一致、名称优先排序；使用既有name_raw，无索引字段或迁移变化。保留EXACT/高级语法、CONTENT、目录整树过滤和错误契约。
+4. 再完成250ms防抖、编辑即失效、历史不覆盖新草稿、可靠hasMore截断提示及桌面/Web一致。按已定方案共享reader，Match解释用原始关键词子查询；不需要再写新一版设计。
+5. 用小夹具先钉住关键失败回归并修成绿，尽快产出可运行JAR；再用10万夹具测p50/p95及内存，100ms作为优化目标，报告真实影响，不自动改n-gram。100万观察可后置，不阻塞第一版试用。
+6. 跑必要回归和完整构建、真实Java8验证，更新实际使用说明/内置帮助；交提交SHA、JAR路径/hash、测试结果和剩余问题。核心可用时即报一次进度，继续把本包交完，不逐条等批准。
 
-读取 `openspec/changes/improve-name-search-experience/` 下 proposal/design/specs/tasks/review/acceptance/delivery-status。保持B产品实现授权为false、0/22实施任务未勾选；当前用户的“继续”覆盖A收尾与B方案推进，不代替B新方案实施批准。
+不新增依赖，不改业务索引，不实现分页/精确总数、不启动C1修复或D大版本。出现必须新增字段/迁移/改变既定语义的阻断，给具体案例和最小选择再反馈。
 
-1. B0.2已在91cc637提交；B-01/02/03主要修订已接受，不重复返工。先完成独立C1只读文档，再依reviews/codex-0.2.md修订0.3，逐条关闭N02-01～06，尤其解决全局Top-N排序保证。
-2. 明确单词/多词分档、名称与正文-only排序、Top-N前的优先级保障；不要靠任意boost声称严格三档成立。
-3. 本期建议只做可靠hasMore/truncated，不做分页/精确总数；处理limit、limit+1、计数下界和兼容实现未知信息。
-4. 定义单字/Unicode/符号/高级语法分类，超长/超词数行为；输入即失效旧代次，timer只延迟提交，立即提交/清空/索引/关闭取消timer；历史列表回写不得用旧词覆盖用户正在编辑的新草稿或造成重复timer（B-08补充）。
-5. 优先零迁移name_raw通配方案；固定10万高基数/高命中短词/各scope与目录组合的服务入口性能实验，100万作观察。100ms是拟定门槛，不能当所有硬件SLA。基准失败只触发n-gram备选评审，不自动批准字段迁移。
-6. A已进入主规格：读取 `openspec/specs/directory-scoped-search/spec.md` 和 `openspec/specs/build-modernization/spec.md`，不再声称主规格库为空。0.2需明确对DS-03名称匹配/评分兼容条款的有意变更，必要时提供完整MODIFIED delta；不修改已接受的主规格来提前符合未实施B。
-7. 同步proposal/design/spec/tasks/acceptance/delivery-status，形成问题响应表、可直接执行的验收例子、评审包指纹与给Claude的背景指令。未经批准不改B产品代码、不删除旧QueryBuilder、不升级依赖。
-
-## 回交
-
-提供0.3实际文件路径、相对0.1的变更摘要、B-01～09及N02-01～06闭环表、仍需用户决定的真实取舍和指纹。然后由Claude复核、用户批准最终设计与实施范围，再进入B0基准/原型和TDD实施。
-
-保持共享工作区已有修订，先看git status；不要带入.playwright-mcp或运行时数据。A归档证据和旧SHA是历史，不重写已审指纹。产品roadmap以 `docs/roadmap.md` 为长期入口。
-
-
-并行C1任务的唯一写入范围与禁止事项见 [C1只读交接](2026-10-24-c1-readonly-analysis.md)。不动B产品代码，不触归档收尾暂存内容。
+范围参考：`openspec/changes/improve-name-search-experience/` 的当前任务与D10；Codex只要求保留简短任务进度及验收结果，不再扩充流程文档。

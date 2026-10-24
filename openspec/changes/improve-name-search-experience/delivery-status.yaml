@@ -3,8 +3,8 @@ change: improve-name-search-experience
 package_version: "0.3"
 updated_at: 2026-10-24
 timezone: Asia/Tokyo
-phase: PLAN_REVISED_0_3_PENDING_REVIEW
-implementation_authorized: false
+phase: IMPLEMENTATION_AUTHORIZED_CORE_FIRST
+implementation_authorized: true
 planning_root_verified: true
 source_head_at_review: 0e8de6dcefe155fb7d8e938df332ea3d14942ca4
 roles:
@@ -13,33 +13,27 @@ roles:
   external_reviewer: Claude
   acceptance_authority: user
 review:
-  status: changes_requested_after_independent_0_2_review
-  evidence: reviews/codex-0.2.md
-  plan_commit_reviewed: 91cc63739535d30b5216f1185969df58a30f164d
-  open_p1: 1
-  open_p2: 4
-  suggestions_p3: 1
-  findings: N02-01_to_N02-06; B-01/02/03 accepted; B-04/05/08/09 partially unresolved
-  product_recommendations_are_user_approval: false
+  status: codex_plan_sufficiency_pass_with_R1; further plan rounds no longer block user-directed implementation
+  evidence: reviews/codex-0.3-r1.md
+  original_plan_commit: 2bd49991e83534f9207c09eba871cd51bb68a3df
+  open_p1: 0
+  open_p2: 0
+  performance_evidence: B implementation benchmark not yet run
 progress:
   implementation_tasks_complete: 0
   implementation_tasks_total: 22
   current_a_host_acceptance_complete: true
 gates:
-  final_plan_approval: not_granted
-  implementation_approval: not_granted
+  final_plan_approval: user_directed_proceed_existing_B_scope_without_further_formal_rounds
+  implementation_approval: granted_for_existing_zero_migration_B_scope
   ngram_schema_migration_approval: not_granted
-  user_acceptance: not_granted
+  user_acceptance: not_yet_implemented_or_accepted
 next_action:
-  owner: Claude_then_user
-  action: review_plan_0_3_N02_closure_then_user_approval_before_implementation
-  input:
-    - proposal.md
-    - design.md
-    - specs/name-search-experience/spec.md
-    - tasks.md
-    - acceptance.md
-  product_code_allowed: false
+  owner: Devin
+  action: implement_minimal_name_substring_multitoken_ranking_then_debounce_and_truncation
+  input: ../../../docs/handoffs/2026-10-24-name-search-plan.md
+  product_code_allowed: true
+  delivery: working_JAR_with_targeted_and_full_regression_results
 implementer_assessment:
   status: n02_findings_addressed_in_0_3
   evidence: reviews/codex-0.2.md
@@ -59,7 +53,16 @@ product_review_baseline:
   implementation_route: raw_wildcard_first_ngram_requires_new_review
 parallel_work:
   owner: Devin
-  scope: C1 readonly diagnosis only
-  allowed_write_path: docs/analysis/c1-index-consistency-2026-10-24.md
-  instruction: docs/handoffs/2026-10-24-c1-readonly-analysis.md
-  status: delivered_awaiting_review
+  scope: C1 research results retained
+  status: paused_after_user_priority_change; finish cleanup only; no new experiments
+package_revision: 0.3_with_Codex_R1
+latest_user_direction:
+  date: 2026-10-24
+  source: direct_user_message
+  quote: 尽早进入实装往后面推进完成目标。不要陷入过多的文档和繁文缛节中，让形式上的东西束缚了我们最终的目标的内容的实现。我们需要的是完成此功能而不是太多的文档和看不懂的技术细节。
+  interpretation: execute the existing zero-migration B scope now; reduce process overhead; do not infer index migration or unrelated implementation authority
+execution_priority:
+  - small_baseline_then_core_name_search
+  - interaction_and_hasMore
+  - real_performance_and_full_regression
+performance_policy: 100k measurement retained;100ms optimization target; million-scale observation deferred; no automatic schema migration

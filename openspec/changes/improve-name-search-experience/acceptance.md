@@ -15,3 +15,11 @@
 | 交付 | 最终SHA、隔离守卫、JDK17及真实Java8、strict validate、README/README_CN/UsageGuide/内置帮助一致；Codex复验及用户接受分别记录 |
 
 建议性能门槛100ms需在0.2给出完整测量定义并获批准，不能当所有用户硬件SLA。禁止把A的169项套件通过或P-00/P-01数据当B子串性能通过。
+
+
+## Codex R1矩阵补充（未执行B实现测试）
+
+- 同一请求两分支/解释共享reader，来源只读一次；中途refresh不混代、第二分支故障不返部分成功。
+- 字面+/-/a[b]在NAME/ALL不走错误语法；空正文分析不匹配，name+content解释不带排他条件。
+- UNKNOWN默认省略HTTP字段，FALSE只代表已知无更多，空词保持旧结构；search/detailed不递归。
+- 名称分数和并非唯一词档编码；验证跨档序的证明前提和多词边界，tie-break只承诺取回切片。

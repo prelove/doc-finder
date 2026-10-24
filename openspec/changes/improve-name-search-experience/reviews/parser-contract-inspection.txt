@@ -1,0 +1,10 @@
+RAW + => ParseException
+ESC + =>
+RAW - => ParseException
+ESC - =>
+RAW C++ => content:c
+ESC C++ => content:c
+RAW a[b] => ParseException
+ESC a[b] => (content:a) (content:b)
+RAW a+b => (content:a) (content:b)
+ESC a+b => (content:a) (content:b)

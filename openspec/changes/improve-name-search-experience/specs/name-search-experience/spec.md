@@ -1,5 +1,8 @@
 # Spec Delta
 
+> 执行状态更新：用户已要求直接推进既定功能实装、减少额外形式流程。当前零迁移B范围放行；此前“须再复核后方可实施”的文字为方案历史状态。新增索引字段/迁移仍需另行决定。
+
+
 > 方案 0.3（2026-10-24）：排序分档改为"名称/仅正文双列表结构合并"（见设计 D4），修复 0.2 的分数上界假设与未存储字段依赖。未批准草案；spec 落地实施须经 Claude 复核 + 用户批准。
 
 ## Purpose
@@ -44,7 +47,7 @@
 - 含高级语法标记（`:` 字段前缀、`*`、`?`、`"`、`(`、`)`）或 `AND`/`OR`/`NOT` 作为**独立词法 token**（Unicode 空白切分后整词相等才认）→ 走既有 parser，非法语法 → INVALID_QUERY 固定文案；`band`/`SANDY` 等含算符子串的名称不误判。
 - 按 Unicode 空白（isWhitespace/isSpaceChar）trim 后为空 → 现有空查询行为。
 - 字面词（含 `.` `-` `_` `+` `'`、CJK、补充平面码点）→ 按 Unicode 码点字面子串比较（`Locale.ROOT` 小写化）。
-- 单字符字面词（1 码点）→ 默认保留子串能力（并入高命中性能样本实测）；若用户批准最小长度方案，则此类词不启用子串档且 UI 明示限制。
+- 单字符字面词（1 码点）→ 默认保留子串能力（并入高命中性能样本实测）；本版本保留全部脚本的单码点子串，不静默使用最小长度2限制。
 - 字面词按 Unicode 空白切分；词数 >16 或单词长度 >64 **码点**（`codePointCount`，补充平面字符算 1）→ INVALID_QUERY 固定文案。
 
 多字面词 SHALL 以 AND 语义组合：全部词均按子串命中同一名称，该名称才算名称命中；词序无关。UI 提示文案跟随界面语言（英文 UI 用英文，如 "Showing first N results"）。
@@ -76,7 +79,7 @@
 - 档位定义（逐词）：`name_raw` 含扩展名；整名档 = 词与 `name_raw` 全串相等；前缀档 = 前缀相等；子串档 = 包含。文档名称分 = 各词档常量（4/3/2）之和；多词文档展示档位由最弱词决定。
 - ALL 范围以双列表求值——名称命中列表只含名称条件（DisjunctionMax 常量档），仅正文命中列表为"正文分支 MUST + 名称条件 MUST_NOT"；合并顺序为名称命中全部在前、仅正文命中补齐余量。
 - 名称命中 MUST NOT 与仅正文命中在同一排序键下竞争，故高正文评分文档在结构上不可能越过任何名称命中，高档结果也不可能被 Top-N 截出列表。
-- 名称列表内排序：分值降序 → 同分按名称长度升序 → 再按 path 字典序；仅依赖存储字段 `name`/`path`（`name_raw` 不存储、不作为排序输入）。同分值（同档位构成）文档在截断边界的入选集合由实现序决定——tie-break 只对已呈现切片生效，不构成全局同分入选承诺；跨档序为结构性保证。
+- 名称列表内排序：分值降序 → 同分按名称长度升序 → 再按 path 字典序；仅依赖存储字段 `name`/`path`（`name_raw` 不存储、不作为排序输入）。同分值（不同档位构成可同分）文档在截断边界的入选集合由实现序决定——tie-break 只对已呈现切片生效，不构成全局同分入选承诺；跨档序为结构性保证。
 - 目录限定开/关不改变档位规则；两列表均叠加同套 FILTER。
 
 #### Scenario: 完整名称优先于子串
@@ -134,7 +137,7 @@ EXACT 模式与显式高级语法语义 SHALL 与现状一致；含高级语法�
 
 ### Requirement: 截断提示（hasMore）
 
-当命中数达到返回上限时，系统 SHALL 以 limit+1 探测返回三态 `hasMore`：`TRUE`（取回 > limit，截断至 limit 并提示"Showing first N results"或界面语言等价文案）/`FALSE`（取回 ≤ limit，含恰好=limit、0 结果、FILTER/删除位后命中，已知无更多）/`UNKNOWN`（兼容实现信息不足，MUST NOT 伪装为 FALSE——默认包装实现返回 UNKNOWN）。ALL 合并路径下判定为两列表实际取回数之和 > limit。MUST NOT 呈现精确总命中数。Web JSON 的 `hasMore`/`truncated` 为可选字段：UNKNOWN 时省略（或显式 null）；两字段同时输出 MUST 一致；判定基于生效 limit（超上限参数按现有 clamp/校验处理）。
+当命中数达到返回上限时，系统 SHALL 以 limit+1 探测返回三态 `hasMore`：`TRUE`（取回 > limit，截断至 limit 并提示"Showing first N results"或界面语言等价文案）/`FALSE`（取回 ≤ limit，含恰好=limit、0 结果、FILTER/删除位后命中，已知无更多）/`UNKNOWN`（兼容实现信息不足，MUST NOT 伪装为 FALSE——默认包装实现返回 UNKNOWN）。ALL 合并路径下判定为两列表实际取回数之和 > limit。MUST NOT 呈现精确总命中数。Web JSON 的 `hasMore`/`truncated` 为可选字段：UNKNOWN 时省略；两字段同时输出 MUST 一致；判定基于生效 limit（超上限参数按现有 clamp/校验处理）。
 
 #### Scenario: 达到上限显示提示
 
@@ -156,3 +159,21 @@ Web 搜索接口 SHALL 复用同一名称匹配、分档与截断规则；`q`/`s
 - **THEN** JSON 含 `hasMore=true`（或等价 truncated 标记），既有字段不受影响；未知时省略该字段且不宣称完整
 
 > DS-03（directory-scoped-search）的 MODIFIED delta 见同目录 `../directory-scoped-search/spec.md`。
+
+
+### Requirement: R1 同一快照与字面解释一致
+
+一次ALL字面请求的名称与排他正文检索、范围检查、结果物化与Match解释 SHALL 共享同一reader/来源快照；任一执行失败 MUST NOT 返回另一分支的部分伪成功。字面符号 SHALL 在ALL正文解析前转义；无正文词项时不匹配正文，不以MatchAll兜底。CONTENT/EXACT/高级语法保持旧路径；Match解释 SHALL 使用不带排他条件和目录/类型FILTER的原始名称/正文关键词查询。
+
+#### Scenario: 字面符号与双命中解释
+
+- **WHEN** 普通FUZZY输入为+、-或a[b]，或者某文件同时满足名称与正文条件
+- **THEN** NAME/ALL不因将字面符号当正文语法而失败；双命中文档标name+content，排他检索条件不使其丢失content标记
+
+#### Scenario: 两分支期间有刷新或故障
+
+- **WHEN** ALL检索分支之间发生外部索引提交，或者第二分支发生I/O故障
+- **THEN** 同请求仍使用原reader快照；故障按既有错误码失败并释放资源，不混合两代结果或静默返回第一分支
+
+
+R1路由边界：EXACT、CONTENT及其既有高级检测/解析规则先委托原调用链；D3新增字面分类与长度限制只作用于普通FUZZY的NAME/FOLDER/ALL路径，不用新分类重定义已冻结模式。此边界包括既有保留字符的特征行为，不默默统一成新模式。
