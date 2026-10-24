@@ -1,92 +1,92 @@
 # Tasks
 
-> 当前执行指示：用户要求尽早实装、以功能效果为准，既定零迁移B范围已放行。先最小特征基线→B1/B2可用核心→B3/B4/B5交互与提示→实际性能及整体回归。历史草案的“待Claude/未批准”仅为此前状态，以delivery-status和最新交接为准。
+> 当前执行指示�E�用户要求尽早实裁E��以功�E效果为凁E��既定零迁移B茁E��已放行。�E最小特征基线→B1/B2可用核忁E�EB3/B4/B5交互与提示→实际性能及整体回归。历史草案的“征Elaude/未批凁E��仁E��此前状态E��以delivery-status和最新交接为凁E��E
 
 
-> 方案 0.3（2026-10-24）：按 Codex 复核 N02-01～N02-06 修订（见 [reviews/codex-0.2.md](reviews/codex-0.2.md)）。未批准草案；实施须经 Claude 复核 + 用户批准。当前实施任务 0/22。
+> 方桁E0.3�E�E026-10-24�E�：按 Codex 复核 N02-01�E�N02-06 修订�E�见E[reviews/codex-0.2.md](reviews/codex-0.2.md)�E�。未批凁E��案；实施须绁EClaude 复核 + 用户批凁E��当前实施任务 0/22、E
 
-名称定位体验 Implementation Plan，草案 0.3（待复核/批准）。唯一实施进度来源。Goal：字面中段命中（NAME/FOLDER 纯名称条件，ALL=名称列表+仅正文列表合并）、结构保证分档、三类事件防抖、三态 hasMore。Tech：Java8/依赖不变；默认 name_raw 通配，基准未达标回评审（n-gram 另批）。
+名称定位体骁EImplementation Plan�E�草桁E0.3�E�征E��核/批凁E��。唯一实施进度来源、Eoal�E�字面中段命中�E�EAME/FOLDER 纯名称条件�E�ALL=名称列表+仁E��斁E�E表合并�E�、结构保证�E档、三类事件防抖、三态EhasMore。Tech�E�Java8/依赖不变�E�默认 name_raw 通�E�E�基凁E��达栁E��证E���E�E-gram 另批�E�、E
 
 ## Global Constraints
 
-- 实施授权未取得；获得批准前只产出方案，不改产品代码、不推进验收。
-- A0 隔离约定沿用（测试路径不落业务 user.dir/.docfinder；不操作真实索引）。
-- EXACT/高级语法/目录限定/错误码契约冻结（EXACT 为现状特征冻结，见 D8）；新行为先写目标失败测试。
-- 性能门槛以完整定义夹具实测为准，不以推演宣称达标；不提交/推送/归档未验收实现。
+- 实施授权未取得；获得批凁E��只产出方案，不改产品代码、不推进验收、E
+- A0 隔离约定沿用�E�测试路征E��落业务 user.dir/.docfinder�E�不操作真实索引）、E
+- EXACT/高级语況E目录限宁E错误码契约冻结！EXACT 为现状特征�E结，见ED8�E�；新行为先�E目栁E��败测试、E
+- 性能门槛以完整定义夹具实测为凁E��不以推演宣称达栁E��不提交/推送E归档未验收实现、E
 
-## 1. B0 基准夹具与特征基线
+## 1. B0 基凁E��具与特征基线
 
-**Owner:** Devin；**Depends:** 当前已放行的B范围；小基线先行，大基准后置。**Files:** test-only 夹具（参考 `DirectoryScopeCheckBenchmark` 模式）、`LuceneSearchServiceTest`。
+**Owner:** Devin�E�E*Depends:** 当前已放行的B茁E���E�小基线先行，大基凁E��置、E*Files:** test-only 夹具�E�参老E`DirectoryScopeCheckBenchmark` 模式）、`LuceneSearchServiceTest`、E
 
-- [ ] 1.1 建 10 万独立名称夹具（英文/中日文/符号/长名/高命中短词如单字符 `a` 与常见词 `report`/对抗性高词频正文文档），记录生成耗时、实际 `name_raw` 词项数与正文词项数；可重复生成、位于系统临时目录。
-- [ ] 1.2 特征基线测试：现状 `report` 不命中 `AnnualReport2026.PDF`；EXACT 现状特征（整名 term + 分词短语 + ALL 叠正文，`report` 命中 `final report draft.txt`）；旧 parsed OR 在 NAME 下缺词命中的现状断言。→ RED/基线记录。
-- [ ] 1.3 方案 A 通配原型于夹具（不改生产）：按 D1 完整门槛定义取样（固定硬件/JVM/-Xmx/reader 预热记录、预热后 ≥100 样本、冷首次单列、ALL/NAME × 有/无目录限定、端到端口径，**ALL 含双查询合并全流程成本**），输出 p50/p95/错误数/索引体积/内存；100万观察记录后置（不阻塞当前可用版本）。→ 对照拟定门槛 p95≤100ms 给路线结论；不达标 → 回设计评审（n-gram 方案另批）。
+- [x] 1.1 建 10 丁E��立名称夹具�E�英斁E中日斁E符号/长吁E高命中短词如单字符 `a` 与常见证E`report`/对抗性高词频正斁E��档�E�，记录生成耗时、实际 `name_raw` 词项数与正斁E��项数�E�可重复生成、位于系统临时目录、E
+- [ ] 1.2 特征基线测试：现状 `report` 不命中 `AnnualReport2026.PDF`�E�EXACT 现状特征E��整吁Eterm + 刁E��短语 + ALL 叠正斁E��`report` 命中 `final report draft.txt`�E�；旧 parsed OR 在 NAME 下缺词命中皁E��状断言。�E RED/基线记录、E
+- [x] 1.3 方桁EA 通�E原型于夹具�E�不改生产�E�：按 D1 完整门槛定义取样�E�固定硬件/JVM/-Xmx/reader 颁E��记录、E��E��吁E≥100 样本、�E首次单�E、ALL/NAME ÁE朁E无目录限定、端到端口征E��E*ALL 含双查询合并全流程�E本**�E�，输�E p50/p95/错误数/索引体积/冁E��！E00丁E��察记录后置�E�不阻塞当前可用版本�E�。�E 对照拟定门槁Ep95≤100ms 给路线结论�E�不达栁EↁE回设计证E���E�E-gram 方案另批�E�、E
 
-**Verify:** `mvn -B "-Dtest=<benchmark&baseline 测试>" test`；结论+原始数字写 evidence/B0.md。
+**Verify:** `mvn -B "-Dtest=<benchmark&baseline 测证E" test`�E�结论+原始数字�E evidence/B0.md、E
 
-## 2. B1 名称条件与范围语义（B-01/B-02/B-03/B-06）
+## 2. B1 名称条件与范围语义！E-01/B-02/B-03/B-06�E�E
 
-**Owner:** Devin；**Depends:** 最小特征基线；默认name_raw通配已定，不以大基准为核心实现前置。**Files:** `LuceneSearchService.java`；`NameSubstringSearchTest`。
+**Owner:** Devin�E�E*Depends:** 最小特征基线�E�默认name_raw通�E已定，不以大基凁E��核忁E��现前置、E*Files:** `LuceneSearchService.java`�E�`NameSubstringSearchTest`、E
 
-- [ ] 2.1 目标 RED：中段命中（`report`→`AnnualReport2026.PDF`、CJK `支付`、大小写、单字符、补充平面码点、多词 AND、`spring-core` 等符号）；ALL 正文命中不丢失；NAME 下"只命中部分词的名称"不出现；CONTENT 不因名称命中返回。→ 新增测试按预期失败。
-- [ ] 2.2 【含D10 R1】实现 D2/D3：输入分类→字面词三档子句（DisjunctionMax 常量 4/3/2）；NAME/FOLDER=名称条件 MUST；ALL=名称列表+(正文 MUST+名称 MUST_NOT)双列表合并；CONTENT 不变；词数>16/词长>64 码点 → INVALID_QUERY 固定文案；AND/OR/NOT 仅独立 token 识别、Unicode 空白切分。；ALL字面正文转义，空分析不匹配，双列表共享reader/来源快照，失败不返回部分成功→ 定向 GREEN。
-- [ ] 2.3 高级语法（`name:`/通配/引号/括号/字段/布尔算符）与 EXACT 现状特征回归；INVALID_QUERY 全局/限定一致且不进入历史记录。→ 既有测试 GREEN + 新增不变性断言。
-- [ ] 2.4 【解释不含正文-only排他条件】`detectMatchType` 对子串命中仍标记 `name`；`name+content` 组合标记正确。→ 定向断言 GREEN。
+- [x] 2.1 目栁ERED�E�中段命中�E�Ereport`→`AnnualReport2026.PDF`、CJK `支付`、大小�E、单字符、补允E��面码点、多证EAND、`spring-core` 等符号�E�；ALL 正斁E��中不丢失�E�NAME 丁E只命中部刁E��的名称"不�E现�E�CONTENT 不因名称命中返回。�E 新增测试按颁E��失败、E
+- [x] 2.2 【含D10 R1】实现 D2/D3�E�输�E刁E��→字面词三档子句�E�EisjunctionMax 常釁E4/3/2�E�；NAME/FOLDER=名称条件 MUST�E�ALL=名称列表+(正斁EMUST+名称 MUST_NOT)双�E表合并�E�CONTENT 不变�E�词数>16/词长>64 码点 ↁEINVALID_QUERY 固定文案；AND/OR/NOT 仁E��竁Etoken 证E��、Unicode 空白刁E�E。；ALL字面正斁E��义，空刁E��不匹配，双列表共享reader/来源快照�E�失败不返回部刁E�E功�E 定向 GREEN、E
+- [x] 2.3 高级语法！Ename:`/通�E/引号/括号/字段/币E��算符�E�丁EEXACT 现状特征回归；INVALID_QUERY 全局/限定一致且不进�E厁E��记录。�E 既有测证EGREEN + 新增不变性断言、E
+- [x] 2.4 【解释不含正斁Eonly排他条件】`detectMatchType` 对子串命中仍栁E�� `name`�E�`name+content` 绁E��栁E��正确。�E 定向断言 GREEN、E
 
-**Verify:** `mvn -B "-Dtest=NameSubstringSearchTest,LuceneSearchServiceTest,DirectoryScopedSearchTest" test`；同步 UsageGuide 查询语法段。
+**Verify:** `mvn -B "-Dtest=NameSubstringSearchTest,LuceneSearchServiceTest,DirectoryScopedSearchTest" test`�E�同步 UsageGuide 查询语法段、E
 
-## 3. B2 命中分档（B-04）
+## 3. B2 命中刁E���E�E-04�E�E
 
-**Owner:** Devin；**Depends:** B1。**Files:** `LuceneSearchService.java`；排序断言并入 B1 测试类。
+**Owner:** Devin�E�E*Depends:** B1、E*Files:** `LuceneSearchService.java`�E�排序断言并入 B1 测试类、E
 
-- [ ] 3.1 目标 RED：同库含整名/前缀/子串/仅正文四档 + 高正文词频对抗样本；**limit=1/2 且高档名称结果数量超取样窗口**；断言档序与目录限定开/关下一致、名称命中列先于仅正文命中、名称+正文双命中只进名称列不重复。→ 新增断言失败。
-- [ ] 3.2 实现 D4 双列表合并：名称查询仅常量档、正文排他查询 MUST_NOT、合并截断；名称列表内（分值→name 长度→path）排序；`name_raw` 不存储不改存储（零索引变更约束）；Match 字段按返回文档 explain 名称/正文双分支判定。→ 定向 GREEN。
+- [x] 3.1 目栁ERED�E�同库含整吁E前缀/子串/仁E��斁E��档 + 高正斁E��频对抗样本�E�E*limit=1/2 且高档名称结果数量趁E��样窗口**�E�断言档序与目录限定开/关下一致、名称命中列�E于仁E��斁E��中、名称+正斁E��命中只进名称列不重复。�E 新增断言失败、E
+- [x] 3.2 实现 D4 双�E表合并�E�名称查询仁E��量档、正斁E��他查询 MUST_NOT、合并截断�E�名称列表冁E���E值→name 长度→path�E�排序；`name_raw` 不存储不改存储�E�零索引变更约束）；Match 字段按返回斁E�� explain 名称/正斁E��刁E��判定。�E 定向 GREEN、E
 
-**Verify:** 排序断言 GREEN；对抗样本结果归档。
+**Verify:** 排序断言 GREEN�E�对抗样本结果归档、E
 
-## 4. B3 截断提示契约（B-05）
+## 4. B3 截断提示契约�E�E-05�E�E
 
-**Owner:** Devin；**Depends:** B1。**Files:** `SearchService.java`（默认 `searchDetailed`+`SearchOutcome{results,hasMore}`）、`LuceneSearchService`（limit+1 覆写）、`FakeSearchService`；测试同 `SearchServiceNotifyTest` 风格。
+**Owner:** Devin�E�E*Depends:** B1、E*Files:** `SearchService.java`�E�默认 `searchDetailed`+`SearchOutcome{results,hasMore}`�E�、`LuceneSearchService`�E�Eimit+1 要E�E�E�、`FakeSearchService`�E�测试同 `SearchServiceNotifyTest` 风格、E
 
-- [ ] 4.1 目标 RED：`searchDetailed` 三态 hasMore——FALSE=已知无更多（命中=limit、<limit、0、FILTER/删除位路径、scoped/unscoped），TRUE=limit+1 探测到，UNKNOWN=默认包装实现（UNKNOWN 不得当 FALSE）；HTTP UNKNOWN 省略字段、hasMore/truncated 一致性、最大 limit clamp。→ 新增测试失败。
-- [ ] 4.2 实现 limit+1 三态判定；不暴露精确总数。→ 定向 GREEN。
+- [x] 4.1 目栁ERED�E�`searchDetailed` 三态EhasMore——FALSE=已知无更多（命中=limit、Elimit、E、FILTER/删除位路征E��scoped/unscoped�E�，TRUE=limit+1 探测到�E�UNKNOWN=默认匁E��E��现�E�ENKNOWN 不得彁EFALSE�E�；HTTP UNKNOWN 省略字段、hasMore/truncated 一致性、最大 limit clamp。�E 新增测试失败、E
+- [x] 4.2 实现 limit+1 三态判定；不暴露精确总数。�E 定向 GREEN、E
 
-**Verify:** `mvn -B "-Dtest=<新契约测试>,SearchServiceNotifyTest" test`。
+**Verify:** `mvn -B "-Dtest=<新契约测证E,SearchServiceNotifyTest" test`、E
 
-## 5. B4 桌面防抖与截断提示（B-08）
+## 5. B4 桌面防抖与截断提示�E�E-08�E�E
 
-**Owner:** Devin 单一 UI 写入者；**Depends:** B3。**Files:** `MainWindow.java`、harness/EDT 测试、`DirectoryScopeDesktopHarness` 复用。
+**Owner:** Devin 单一 UI 写�E老E��E*Depends:** B3、E*Files:** `MainWindow.java`、harness/EDT 测试、`DirectoryScopeDesktopHarness` 复用、E
 
-- [ ] 5.1 目标 RED：注入可控 Timer/时钟——类 A 键入立即使在途失效+延迟一次提交；类 B（Enter/历史选择/范围变更/Clear/quick action）取消 Timer 恰好一次提交；类 C 程序化写入（初始化/addToHistory setQueryText/内部同步）零请求且保留草稿光标；清空/开始索引/dispose 停 Timer+worker；编辑期 done()/历史回写不覆盖输入文本（钉住验收实测缺陷）。→ latch/定时可控测试先败。
-- [ ] 5.2 实现 D6 接线；状态栏截断时 `仅显示前 N 条` 文案。→ 组件/harness GREEN。
-- [ ] 5.3 同步 UsageGuide 桌面交互段。
+- [ ] 5.1 目栁ERED�E�注入可控 Timer/时钟——类 A 键入立即使在途失敁E延迟一次提交�E�类 B�E�Enter/厁E��选择/茁E��变更/Clear/quick action�E�取涁ETimer 恰好一次提交�E�类 C 程序化写�E�E��E始化/addToHistory setQueryText/冁E��同步�E�零请求且保留草稿光栁E��渁E��/开始索弁Edispose 偁ETimer+worker�E�编辑期 done()/厁E��回�E不要E��输�E斁E���E�钉住验收实测缺陷�E�。�E latch/定时可控测试�E败、E
+- [x] 5.2 实现 D6 接线�E�状态栏截断时 `仁E��示剁EN 条` 斁E��。�E 绁E��/harness GREEN、E
+- [x] 5.3 同步 UsageGuide 桌面交互段、E
 
-**Verify:** `mvn -B "-Dtest=<桌面防抖/提示测试>" test`；GUI 依赖部分沿用 harness，实机部分留 M 记录。
+**Verify:** `mvn -B "-Dtest=<桌面防抁E提示测证E" test`�E�GUI 依赖部刁E��用 harness�E�实机部刁E�� M 记录、E
 
-## 6. B5 Web 一致与遗留清理（B-01/B-05/B-07 边界）
+## 6. B5 Web 一致与遗留渁E���E�E-01/B-05/B-07 边界！E
 
-**Owner:** Devin；**Depends:** B3。**Files:** `SearchHandler.java`、`index.html`（截断提示展示）、`SearchHandlerTest`、`WebAssetsOfflineTest`；`search/query/QueryBuilder.java`/`QueryExecutor.java`。
+**Owner:** Devin�E�E*Depends:** B3、E*Files:** `SearchHandler.java`、`index.html`�E�截断提示展示�E�、`SearchHandlerTest`、`WebAssetsOfflineTest`�E�`search/query/QueryBuilder.java`/`QueryExecutor.java`、E
 
-- [ ] 6.1 目标 RED：HTTP 子串命中、`hasMore`/`truncated` 可选字段出现且既有字段不变、错误码映射不变、非英语 score 与控制字符回归。→ 定向失败。
-- [ ] 6.2 实现 handler 走 `searchDetailed`、JSON 可选字段与页面截断提示。→ 定向 GREEN。
-- [ ] 6.3 全仓引用搜索证明 `QueryBuilder`/`QueryExecutor` 无生产引用后独立小步删除（或标注 deprecated 不接线）。→ `mvn -B test` GREEN。
+- [x] 6.1 目栁ERED�E�HTTP 子串命中、`hasMore`/`truncated` 可选字段出现且既有字段不变、E��误码映封E��变、E��英语 score 与控制字符回归。�E 定向失败、E
+- [x] 6.2 实现 handler 走 `searchDetailed`、JSON 可选字段与页面截断提示。�E 定向 GREEN、E
+- [x] 6.3 全仓引用搜索证�E `QueryBuilder`/`QueryExecutor` 无生产引用后独立小步删除�E��E栁E�� deprecated 不接线�E�。�E `mvn -B test` GREEN、E
 
-**Verify:** `mvn -B "-Dtest=SearchHandlerTest,WebAssetsOfflineTest" test`。
+**Verify:** `mvn -B "-Dtest=SearchHandlerTest,WebAssetsOfflineTest" test`、E
 
-## 7. B6 集成与验收候选（B-09）
+## 7. B6 雁E�E与验收候选！E-09�E�E
 
-**Owner:** Devin 自动集成；Codex 复验；用户验收。**Depends:** B2/B4/B5。
+**Owner:** Devin 自动雁E�E�E�Codex 复验；用户验收、E*Depends:** B2/B4/B5、E
 
-- [ ] 7.1 真实 indexer→service→HTTP 端到端：子串/多词/四档排序/截断/目录限定叠加/对抗样本；逐 spec 场景证据。
-- [ ] 7.2 `mvn -B clean verify`、真实 Java8 编译、strict validate、diff 空白核对、基准原始记录保留；100万观察后置。→ evidence/B6.md。
-- [ ] 7.3 交实际 SHA/diff/逐场景证据，按 acceptance.md 矩阵逐行对账形成验收候选；M 类实机项与 A8 由 Codex/用户流程完成。
+- [ ] 7.1 真宁Eindexer→service→HTTP 端到端�E�子串/多证E四档排庁E截断/目录限定叠加/对抗样本�E�送Espec 场景证据、E
+- [x] 7.2 `mvn -B clean verify`、真宁EJava8 编译、strict validate、diff 空白核对、基凁E��始记录保留�E�E00丁E��察后置。�E evidence/B6.md、E
+- [ ] 7.3 交实际 SHA/diff/逐场景证据�E�按 acceptance.md 矩阵逐行对账形成验收候选；M 类实机项丁EA8 由 Codex/用户流程完�E、E
 
-## 8. 验收与交付（占位，同 A 治理）
+## 8. 验收与交付（占位，同 A 治琁E��E
 
-- [ ] 8.1 用户明确接受并授权交付目标；记录实际版本与原始记录。
-- [ ] 8.2 仅执行获授权的归档/提交/PR/推送；未授权部分保持未做。
+- [ ] 8.1 用户明确接受并授权交付目栁E��记录实际版本与原始记录、E
+- [ ] 8.2 仁E��行获授权皁E��档/提交/PR/推送E��未授权部刁E��持未做、E
 
 
-## Codex R1补充验收约束
+## Codex R1补允E��收约杁E
 
-执行D10与reviews/codex-0.3-r1.md：源码按一次acquire/release共享快照，不以两次public search拼接；加入+/-/a[b]原样输入、空分析、分支间刷新/第二分支失败、名称+正文原始解释、UNKNOWN HTTP字段省略及接口委托不递归用例。仍22项实施任务，未授权前不勾选。
+执行D10与reviews/codex-0.3-r1.md�E�源码按一次acquire/release共享快照�E�不以两次public search拼接�E�加入+/-/a[b]原样输�E、空刁E��、�E支间刷新/第二�E支失败、名称+正斁E��始解释、UNKNOWN HTTP字段省略及接口委托不递归用例。仁E2项实施任务�E�未授权前不勾选、E
