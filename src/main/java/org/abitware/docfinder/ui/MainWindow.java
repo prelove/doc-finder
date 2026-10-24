@@ -119,6 +119,8 @@ public class MainWindow extends JFrame implements MenuBarPanel.MenuListener {
 	};
 
 	private final JTable resultTable = new JTable(model);
+	private javax.swing.table.TableRowSorter<javax.swing.table.TableModel> resultSorter;
+	private JButton resetSortBtn;
 	private final JEditorPane preview = new JEditorPane("text/html", "");
 	private String lastPreviewInner = null;
 	private final PropertyChangeListener lafListener;
@@ -436,7 +438,22 @@ public class MainWindow extends JFrame implements MenuBarPanel.MenuListener {
 		// Results table basic settings and column widths
 		resultTable.setFillsViewportHeight(true);
 		resultTable.setRowHeight(22);
-		resultTable.setAutoCreateRowSorter(true);
+		// Tri-state sorting: a column click cycles asc → desc → default order.
+		// "Default" means the engine-returned order (model order), which is not
+		// score-descending; clearing the sort keys removes the header arrow.
+		resultSorter = new javax.swing.table.TableRowSorter<javax.swing.table.TableModel>(model) {
+			@Override
+			public void toggleSortOrder(int column) {
+				java.util.List<? extends javax.swing.RowSorter.SortKey> keys = getSortKeys();
+				if (!keys.isEmpty() && keys.get(0).getColumn() == column
+						&& keys.get(0).getSortOrder() == javax.swing.SortOrder.DESCENDING) {
+					setSortKeys(null);
+					return;
+				}
+				super.toggleSortOrder(column);
+			}
+		};
+		resultTable.setRowSorter(resultSorter);
 
 		resultTable.getColumnModel().getColumn(0).setPreferredWidth(240); // Name
 		resultTable.getColumnModel().getColumn(1).setPreferredWidth(480); // Path
@@ -475,12 +492,27 @@ public class MainWindow extends JFrame implements MenuBarPanel.MenuListener {
 
 		JScrollPane center = new JScrollPane(resultTable);
 
+		// Header strip: a visible way back to the engine order. Restoring only
+		// reorders the current view — no re-search, and JTable remaps the
+		// selected row (and its preview) across sort changes.
+		resetSortBtn = new JButton("Restore default sort");
+		resetSortBtn.setMargin(new java.awt.Insets(1, 8, 1, 8));
+		resetSortBtn.setEnabled(false);
+		resetSortBtn.addActionListener(e -> resultSorter.setSortKeys(null));
+		resultSorter.addRowSorterListener(e ->
+				resetSortBtn.setEnabled(!resultSorter.getSortKeys().isEmpty()));
+		JPanel tableHead = new JPanel(new FlowLayout(FlowLayout.LEFT, 4, 1));
+		tableHead.add(resetSortBtn);
+		JPanel tableWrap = new JPanel(new BorderLayout());
+		tableWrap.add(tableHead, BorderLayout.NORTH);
+		tableWrap.add(center, BorderLayout.CENTER);
+
 		// Preview pane: HTML, non-editable
 		preview.setEditable(false);
 		JScrollPane right = new JScrollPane(preview);
 		right.setPreferredSize(new Dimension(360, 560));
 
-		split = new JSplitPane(JSplitPane.HORIZONTAL_SPLIT, center, right);
+		split = new JSplitPane(JSplitPane.HORIZONTAL_SPLIT, tableWrap, right);
 		split.setResizeWeight(0.75); // Left 75% / Right 25%
 		split.setOneTouchExpandable(true);
 		javax.swing.SwingUtilities.invokeLater(() -> split.setDividerLocation(0.75));
@@ -2083,7 +2115,11 @@ public class MainWindow extends JFrame implements MenuBarPanel.MenuListener {
 
 		}
 
-
+		// New results arrive in engine order; clear any manual sort so the
+		// header arrows match the displayed order.
+		if (resultSorter != null) {
+			resultSorter.setSortKeys(null);
+		}
 
 		currentResults = new java.util.ArrayList<>(list);
 		model.setRowCount(0);
@@ -2308,6 +2344,9 @@ public class MainWindow extends JFrame implements MenuBarPanel.MenuListener {
 	}
 
 	private void clearPresentedResults(String previewText) {
+		if (resultSorter != null) {
+			resultSorter.setSortKeys(null);
+		}
 		model.setRowCount(0);
 		resultTable.clearSelection();
 		currentResults = java.util.Collections.emptyList();

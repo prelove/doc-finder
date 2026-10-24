@@ -92,6 +92,10 @@
     table { width: 100%; border-collapse: collapse; font-size: 0.82rem; }
     thead th { position: sticky; top: 0; background: var(--bg2); padding: 8px 12px; text-align: left; font-weight: 600; color: var(--text2); border-bottom: 1px solid var(--border); white-space: nowrap; cursor: pointer; user-select: none; }
     thead th:hover { color: var(--text); background: var(--hover); }
+    .results-toolbar { display: flex; justify-content: flex-end; padding: 2px 4px; }
+    .results-toolbar button { padding: 3px 10px; border-radius: 4px; border: none; background: var(--btn-sec); color: var(--text); font-size: 0.76rem; cursor: pointer; }
+    .results-toolbar button:hover:not(:disabled) { background: var(--btn-sec2); }
+    .results-toolbar button:disabled { opacity: 0.45; cursor: default; }
     thead th.sortable::after { content: ' ⇅'; opacity: 0.3; }
     thead th.sort-asc::after { content: ' ↑'; opacity: 1; }
     thead th.sort-desc::after { content: ' ↓'; opacity: 1; }
@@ -250,6 +254,7 @@
 <!-- Main area: results + resizer + preview -->
 <div class="main" id="mainArea">
   <div class="results-pane" id="resultsPane">
+    <div class="results-toolbar"><button id="restoreSortBtn" disabled title="Return to the order returned by the search">Restore default sort</button></div>
     <div id="emptyState" class="empty-state">
       <div class="icon">🗂</div>
       <p>Your search results will appear here.</p>
@@ -530,6 +535,7 @@
   var statusBar         = document.getElementById('statusBar');
   var emptyState        = document.getElementById('emptyState');
   var resultsTable      = document.getElementById('resultsTable');
+  var restoreSortBtn    = document.getElementById('restoreSortBtn');
   var resultsBody       = document.getElementById('resultsBody');
   var previewHeaderText = document.getElementById('previewHeaderText');
   var openTabBtn        = document.getElementById('openTabBtn');
@@ -542,6 +548,7 @@
   var previewCancelBtn  = document.getElementById('previewCancelBtn');
 
   var currentResults = [];
+  var originalResults = [];  // engine-returned order ("default sort")
   var selectedIndex  = -1;
   var searchToken    = 0;
   var currentFilePath= null;
@@ -1036,6 +1043,10 @@
         }
         addToHistory(q);
         currentResults = data.results || [];
+        originalResults = currentResults.slice();
+        // New search → engine order; clear the stale sort arrow state too.
+        sortColumn = null;
+        sortDirection = 'asc';
         selectedIndex = -1;
         renderResults();
         var scopeNote = dir ? ' — scope: ' + dir + ' (includes all subfolders)' : ' — scope: all sources';
@@ -1055,7 +1066,9 @@
 
   function clearCurrentResults() {
     currentResults = [];
+    originalResults = [];
     selectedIndex = -1;
+    sortColumn = null;
     destroyPreview();
     renderResults();
   }
@@ -1070,7 +1083,8 @@
     emptyState.style.display = 'none';
     resultsTable.style.display = '';
 
-    // Update sort indicators
+    // Update sort indicators and the restore button from the same state.
+    restoreSortBtn.disabled = (sortColumn === null);
     var headers = resultsTable.querySelectorAll('thead th[data-col]');
     headers.forEach(function(th) {
       th.classList.remove('sort-asc', 'sort-desc');
@@ -1081,6 +1095,7 @@
 
     currentResults.forEach(function(r, idx) {
       var tr = document.createElement('tr');
+      if (idx === selectedIndex) tr.classList.add('selected');
       var scopeBtn = r.directory
         ? '<button class="btn-icon dirscope-btn" title="Search in this folder" data-dir="' + esc(r.path) + '" data-idx="' + idx + '">📂</button>'
         : '<button class="btn-icon dirscope-btn" title="Search in containing folder" data-dir="' + esc(r.parentDirectory || '') + '" data-idx="' + idx + '"' + (r.parentDirectory ? '' : ' disabled') + '>' +
@@ -1134,10 +1149,17 @@
     });
   }
 
+  // Column clicks cycle asc → desc → default (engine-returned) order. The
+  // selected row is tracked by object identity so selection and preview
+  // survive every reorder without a re-search.
   function sortResults(column) {
+    if (sortColumn === column && sortDirection === 'desc') {
+      restoreDefaultSort();
+      return;
+    }
+    var selObj = selectedIndex >= 0 ? currentResults[selectedIndex] : null;
     if (sortColumn === column) {
-      // Toggle direction
-      sortDirection = sortDirection === 'asc' ? 'desc' : 'asc';
+      sortDirection = 'desc';
     } else {
       sortColumn = column;
       sortDirection = 'asc';
@@ -1180,7 +1202,16 @@
       return sortDirection === 'asc' ? cmp : -cmp;
     });
 
-    selectedIndex = -1; // Reset selection after sorting
+    selectedIndex = selObj ? currentResults.indexOf(selObj) : -1;
+    renderResults();
+  }
+
+  function restoreDefaultSort() {
+    var selObj = selectedIndex >= 0 ? currentResults[selectedIndex] : null;
+    sortColumn = null;
+    sortDirection = 'asc';
+    currentResults = originalResults.slice();
+    selectedIndex = selObj ? currentResults.indexOf(selObj) : -1;
     renderResults();
   }
 
@@ -1190,6 +1221,7 @@
       sortResults(th.dataset.col);
     });
   });
+  restoreSortBtn.addEventListener('click', restoreDefaultSort);
 
   function selectRow(idx) {
     var rows = resultsBody.querySelectorAll('tr');
