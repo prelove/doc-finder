@@ -1,13 +1,21 @@
 package org.abitware.docfinder.search;
 
 import java.io.IOException;
+import java.nio.file.Files;
 import java.nio.file.Path;
+import java.nio.file.Paths;
 import java.util.ArrayList;
 import java.util.Collections;
 import java.util.HashMap;
+import java.util.HashSet;
 import java.util.List;
 import java.util.Locale;
 import java.util.Map;
+import java.util.Set;
+import java.util.concurrent.ExecutorService;
+import java.util.concurrent.Executors;
+import java.util.concurrent.ThreadFactory;
+import java.util.concurrent.TimeUnit;
 import java.util.regex.Matcher;
 import java.util.regex.Pattern;
 
@@ -48,6 +56,8 @@ import org.apache.lucene.store.Directory;
 import org.apache.lucene.store.NRTCachingDirectory;
 
 import org.abitware.docfinder.index.IndexSettings;
+import org.abitware.docfinder.index.IndexWriteCoordinator;
+import org.abitware.docfinder.index.LuceneIndexer;
 import org.abitware.docfinder.index.SourceManager;
 import org.abitware.docfinder.util.PathScope;
 import org.slf4j.Logger;
@@ -99,6 +109,40 @@ public class LuceneSearchService implements SearchService {
     // SearcherManager based on Directory (read-only) to avoid write.lock ownership in search service
     private volatile SearcherManager searcherManager;
     private volatile Directory directory;
+    private final IndexSettings indexSettings;
+
+    /**
+     * Upper bound of filesystem existence checks performed per search while
+     * filtering ghost hits. Ghost cleanup is a best-effort safety net — a
+     * pathological index (e.g. an entire deleted source) must not turn a
+     * search into an unbounded stat walk.
+     */
+    private static final int MAX_VERIFY_STATS = 512;
+
+    /** Per-search ghost-filter state: dedup, stat budget, observed ghosts. */
+    private static final class RefillState {
+        final Set<String> seen = new HashSet<>();
+        final Set<String> ghosts = new HashSet<>();
+        int budget = MAX_VERIFY_STATS;
+        boolean budgetExhausted;
+    }
+
+    private final ExecutorService ghostCleaner = Executors.newSingleThreadExecutor(new ThreadFactory() {
+        @Override
+        public Thread newThread(Runnable r) {
+            Thread t = new Thread(r, "docfinder-ghost-purge");
+            t.setDaemon(true);
+            return t;
+        }
+    });
+
+    /**
+     * Paths already queued for purge — repeated searches must not pile up
+     * redundant batches while a purge is in flight. Entries are removed when
+     * their batch finishes so a failed purge can be re-detected later.
+     */
+    private final Set<String> pendingGhostPaths =
+            Collections.synchronizedSet(new HashSet<>());
 
     public LuceneSearchService(Path indexDir) throws IOException {
         this(indexDir, new IndexSettings());
@@ -111,6 +155,7 @@ public class LuceneSearchService implements SearchService {
     public LuceneSearchService(Path indexDir, IndexSettings settings,
                                SourceRootProvider sourceRootProvider) throws IOException {
         this.indexDir = indexDir;
+        this.indexSettings = (settings == null) ? new IndexSettings() : settings;
         this.sourceRootProvider =
                 (sourceRootProvider == null) ? defaultProvider() : sourceRootProvider;
 
@@ -400,6 +445,7 @@ public class LuceneSearchService implements SearchService {
 
             int limit = Math.max(1, Math.min(request.limit, 200));
             int fetchLimit = limit + 1; // limit+1 probing (D5)
+            RefillState st = new RefillState();
 
             TriState hasMore;
             if (literalTokens != null && scope == SearchScope.ALL) {
@@ -407,7 +453,7 @@ public class LuceneSearchService implements SearchService {
                 // branches, doc fetches and explanations; second-branch
                 // failure propagates as SEARCH_FAILED, no partial success).
                 hasMore = searchAllLiteral(searcher, out, np, literalTokens,
-                        scope, filter, scopedDir, limit, fetchLimit);
+                        scope, filter, scopedDir, limit, fetchLimit, st);
             } else {
                 Query userQuery;
                 if (literalTokens != null) {
@@ -432,14 +478,15 @@ public class LuceneSearchService implements SearchService {
                     addDirectoryFilter(root, scopedDir);
                 }
 
-                TopDocs top = searcher.search(root.build(), fetchLimit);
                 boolean tierSort = literalTokens != null;
-                appendResults(searcher, out, top, userQuery, nameClauses, null, null, tierSort);
-                hasMore = (out.size() > limit) ? TriState.TRUE : TriState.FALSE;
+                boolean exhausted = collectValid(searcher, out, root.build(), fetchLimit,
+                        userQuery, nameClauses, null, null, tierSort, st);
+                hasMore = resolveHasMore(out.size(), limit, exhausted, st);
                 if (out.size() > limit) {
                     out.subList(limit, out.size()).clear();
                 }
             }
+            enqueueGhostPurge(st.ghosts);
             return new SearchOutcome(out, hasMore);
         } catch (SearchException ex) {
             throw ex;
@@ -477,7 +524,8 @@ public class LuceneSearchService implements SearchService {
     private TriState searchAllLiteral(IndexSearcher searcher, List<SearchResult> out,
                                       NamePreprocess np, List<String> literalTokens,
                                       SearchScope scope, FilterState filter, String scopedDir,
-                                      int limit, int fetchLimit) throws IOException, ParseException {
+                                      int limit, int fetchLimit,
+                                      RefillState st) throws IOException, ParseException {
         Query nameCond = buildNameCondition(literalTokens);
         Query contentQ = buildLiteralContentQuery(np.qRest); // null when analysis yields no terms
 
@@ -491,12 +539,12 @@ public class LuceneSearchService implements SearchService {
         if (scopedDir != null) {
             addDirectoryFilter(nameRoot, scopedDir);
         }
-        TopDocs nameTop = searcher.search(nameRoot.build(), fetchLimit);
-        appendResults(searcher, out, nameTop, null, null, nameCond, contentQ, true);
+        boolean exhausted = collectValid(searcher, out, nameRoot.build(), fetchLimit,
+                null, null, nameCond, contentQ, true, st);
 
         // List 2: content-only hits fill the remaining quota; MUST_NOT keeps
         // the lists disjoint so name+content docs live only in list 1.
-        if (out.size() < fetchLimit && contentQ != null) {
+        if (out.size() < fetchLimit && contentQ != null && !st.budgetExhausted) {
             BooleanQuery.Builder contentRoot = new BooleanQuery.Builder();
             contentRoot.add(contentQ, BooleanClause.Occur.MUST);
             contentRoot.add(nameCond, BooleanClause.Occur.MUST_NOT);
@@ -506,15 +554,130 @@ public class LuceneSearchService implements SearchService {
             if (scopedDir != null) {
                 addDirectoryFilter(contentRoot, scopedDir);
             }
-            TopDocs contentTop = searcher.search(contentRoot.build(), fetchLimit - out.size());
-            appendResults(searcher, out, contentTop, null, null, nameCond, contentQ, false);
+            exhausted = collectValid(searcher, out, contentRoot.build(), fetchLimit,
+                    null, null, nameCond, contentQ, false, st) && exhausted;
         }
 
-        TriState hasMore = (out.size() > limit) ? TriState.TRUE : TriState.FALSE;
+        TriState hasMore = resolveHasMore(out.size(), limit, exhausted, st);
         if (out.size() > limit) {
             out.subList(limit, out.size()).clear();
         }
         return hasMore;
+    }
+
+    /**
+     * Fetches hits for one query branch in escalating windows until `out`
+     * reaches targetSize verified results, the index tail is observed (a
+     * fetch came back short), or the stat budget is spent. Returns true only
+     * when the tail was observed — the caller's hasMore verdict depends on it.
+     */
+    private boolean collectValid(IndexSearcher searcher, List<SearchResult> out, Query query,
+                                 int targetSize, Query userQuery, List<Query> nameClauses,
+                                 Query nameQ, Query contentQ, boolean tierSort,
+                                 RefillState st) throws IOException {
+        int window = Math.max(targetSize - out.size(), 1);
+        while (out.size() < targetSize && !st.budgetExhausted) {
+            TopDocs top = searcher.search(query, window);
+            appendResults(searcher, out, top, userQuery, nameClauses, nameQ, contentQ,
+                    tierSort, st);
+            if (top.scoreDocs.length < window) {
+                return true; // fetch came back short: the whole branch was examined
+            }
+            window = Math.min(window * 2, MAX_VERIFY_STATS);
+        }
+        return false;
+    }
+
+    /**
+     * hasMore verdict after ghost-filtered refill: more verified hits than the
+     * page or unexamined hits remaining → TRUE; every branch fully examined →
+     * FALSE; the stat budget stopped us before a conclusion → UNKNOWN.
+     */
+    private static TriState resolveHasMore(int resultCount, int limit,
+                                           boolean allBranchesExhausted, RefillState st) {
+        if (resultCount > limit) {
+            return TriState.TRUE;
+        }
+        if (st.budgetExhausted) {
+            return TriState.UNKNOWN;
+        }
+        return allBranchesExhausted ? TriState.FALSE : TriState.TRUE;
+    }
+
+    /**
+     * True only when the path is confirmed gone AND a surviving ancestor
+     * proves the location is still reachable. An unreachable root or an
+     * indeterminate stat (offline share, permissions) keeps the document —
+     * ghost cleanup must never purge an index just because a source went dark.
+     */
+    static boolean isDefinitelyDeleted(String pathStr) {
+        try {
+            Path p = Paths.get(pathStr);
+            if (Files.exists(p) || !Files.notExists(p)) {
+                return false; // alive, or indeterminate (permission/IO) → keep
+            }
+            for (Path a = p.getParent(); a != null; a = a.getParent()) {
+                if (Files.exists(a)) {
+                    return true; // ancestor reachable → real deletion
+                }
+                if (!Files.notExists(a)) {
+                    return false; // indeterminate ancestor → keep
+                }
+            }
+            return false; // no reachable ancestor (offline source) → keep
+        } catch (RuntimeException e) {
+            return false;
+        }
+    }
+
+    /**
+     * Batch-deletes confirmed ghosts off the search path through the shared
+     * write lock, then refreshes the reader. Best-effort: lock contention or
+     * write failures only postpone the cleanup until the next search.
+     */
+    private void enqueueGhostPurge(Set<String> ghosts) {
+        if (ghosts == null || ghosts.isEmpty() || closed) {
+            return;
+        }
+        final List<Path> batch = new ArrayList<>(ghosts.size());
+        for (String g : ghosts) {
+            try {
+                if (pendingGhostPaths.add(g)) {
+                    batch.add(Paths.get(g));
+                }
+            } catch (RuntimeException ignore) {
+                pendingGhostPaths.remove(g);
+            }
+        }
+        if (batch.isEmpty()) {
+            return;
+        }
+        try {
+            ghostCleaner.submit(() -> {
+                try {
+                    IndexWriteCoordinator.run(() -> {
+                        try (LuceneIndexer idx = new LuceneIndexer(indexDir, indexSettings)) {
+                            for (Path p : batch) {
+                                idx.deletePath(p);
+                            }
+                            idx.commit();
+                        } catch (IOException | RuntimeException e) {
+                            log.debug("ghost purge write failed: {}", e.toString());
+                        }
+                    });
+                    try {
+                        searcherManager.maybeRefresh();
+                    } catch (IOException | RuntimeException e) {
+                        log.debug("post-purge refresh failed: {}", e.toString());
+                    }
+                } finally {
+                    pendingGhostPaths.removeAll(ghosts);
+                }
+            });
+        } catch (RuntimeException rejected) {
+            pendingGhostPaths.removeAll(ghosts);
+            // Service is closing; ghosts get re-detected by the next search.
+        }
     }
 
     /**
@@ -523,10 +686,14 @@ public class LuceneSearchService implements SearchService {
      * applies only within the fetched window (D4). Match source is explained
      * against the original name/content sub-queries (R1-03), or via the
      * legacy single-query explanation path when nameQ/contentQ are null.
+     * With a non-null RefillState each document's path is stat-checked once:
+     * confirmed-deleted paths are skipped and recorded for async purge, and
+     * re-fetched hits are deduplicated across refill rounds.
      */
     private void appendResults(IndexSearcher searcher, List<SearchResult> out, TopDocs top,
                                Query userQuery, List<Query> nameClauses,
-                               Query nameQ, Query contentQ, boolean tierSort) throws IOException {
+                               Query nameQ, Query contentQ, boolean tierSort,
+                               RefillState st) throws IOException {
         List<SearchResult> slice = new ArrayList<>(top.scoreDocs.length);
         Query explainQuery = (userQuery != null || (nameClauses != null && !nameClauses.isEmpty()))
                 ? buildExplainQuery(userQuery, nameClauses) : null;
@@ -535,6 +702,20 @@ public class LuceneSearchService implements SearchService {
             boolean isFolder = KIND_FOLDER.equalsIgnoreCase(d.get(FIELD_KIND));
             String name = d.get(FIELD_NAME);
             String path = d.get(FIELD_PATH);
+            if (st != null && path != null) {
+                if (!st.seen.add(path)) {
+                    continue; // already appended or already classified ghost
+                }
+                if (st.budget <= 0) {
+                    st.budgetExhausted = true;
+                    break;
+                }
+                st.budget--;
+                if (isDefinitelyDeleted(path)) {
+                    st.ghosts.add(path);
+                    continue;
+                }
+            }
             long ctime = getStoredLong(d, FIELD_CTIME_DISPLAY);
             long atime = getStoredLong(d, FIELD_ATIME_DISPLAY);
             long size = getStoredLong(d, FIELD_SIZE);
@@ -732,6 +913,18 @@ public class LuceneSearchService implements SearchService {
             closed = true;
             scopeSupportCache.clear();
             scopeListenerKeys.clear();
+        }
+        // Wait briefly for a purge already in flight so no Lucene writer or
+        // directory handle outlives the service (temp-index tests on Windows
+        // cannot delete a directory still held open).
+        ghostCleaner.shutdown();
+        try {
+            if (!ghostCleaner.awaitTermination(2, TimeUnit.SECONDS)) {
+                ghostCleaner.shutdownNow();
+            }
+        } catch (InterruptedException e) {
+            Thread.currentThread().interrupt();
+            ghostCleaner.shutdownNow();
         }
         try {
             if (searcherManager != null) {

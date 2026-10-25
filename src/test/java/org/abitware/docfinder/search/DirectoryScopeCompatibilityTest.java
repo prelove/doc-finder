@@ -84,6 +84,14 @@ class DirectoryScopeCompatibilityTest {
         return src;
     }
 
+    /**
+     * Fixture docs must point at real files — the ghost filter drops index
+     * hits whose paths are confirmed deleted (live parent, missing file).
+     */
+    private static void write(Path p) throws Exception {
+        Files.write(p, "lorem".getBytes("UTF-8"));
+    }
+
     private List<SearchResult> scopedSearch(String dir) {
         return service.search(new SearchRequest("alpha", 10, null,
                 SearchScope.ALL, MatchMode.FUZZY, dir));
@@ -106,6 +114,7 @@ class DirectoryScopeCompatibilityTest {
     void shouldKeepUnscopedSearchWorkingOnOldIndex() throws Exception {
         Path index = fixtureRoot.resolve("idx-old2");
         Path src = sourceDir();
+        write(src.resolve("a.txt"));
         try (IndexWriter w = openWriter(index)) {
             w.addDocument(oldDoc(src.resolve("a.txt").toString(), "alpha-old.txt"));
             w.commit();
@@ -138,6 +147,7 @@ class DirectoryScopeCompatibilityTest {
     void shouldAllowScopedSearchWhenOnlyDeletedDocsLackField() throws Exception {
         Path index = fixtureRoot.resolve("idx-del");
         Path src = sourceDir();
+        write(src.resolve("a.txt"));
         try (IndexWriter w = openWriter(index)) {
             w.addDocument(oldDoc(src.resolve("gone.txt").toString(), "alpha-gone.txt"));
             w.addDocument(newDoc(src.resolve("a.txt").toString(), "alpha-new.txt"));
@@ -159,6 +169,7 @@ class DirectoryScopeCompatibilityTest {
         // exact check which passes because the only live doc has the field.
         Path index = fixtureRoot.resolve("idx-del2");
         Path src = sourceDir();
+        write(src.resolve("a.txt"));
         try (IndexWriter w = openWriter(index)) {
             w.addDocument(newDoc(src.resolve("gone.txt").toString(), "alpha-gone.txt"));
             w.addDocument(newDoc(src.resolve("a.txt").toString(), "alpha-new.txt"));
@@ -179,6 +190,7 @@ class DirectoryScopeCompatibilityTest {
         // reader, not reuse the stale cached verdict.
         Path index = fixtureRoot.resolve("idx-refresh");
         Path src = sourceDir();
+        write(src.resolve("a.txt"));
         try (IndexWriter w = openWriter(index)) {
             w.addDocument(newDoc(src.resolve("a.txt").toString(), "alpha-new.txt"));
             w.commit();
@@ -392,6 +404,9 @@ class DirectoryScopeCompatibilityTest {
         // NEW doc leaves a live legacy doc and stays 409. Asserting the
         // stats proves the fast path cannot shortcut the exact check.
         Path src = sourceDir();
+        write(src.resolve("n1.txt"));
+        write(src.resolve("n2.txt"));
+        write(src.resolve("live-old.txt"));
 
         // Case A: legacy doc deleted → same stats, verdict supported.
         Path indexA = fixtureRoot.resolve("idx-stats-a");

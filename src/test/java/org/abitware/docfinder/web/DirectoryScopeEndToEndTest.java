@@ -182,15 +182,17 @@ class DirectoryScopeEndToEndTest {
         assertTrue(after.body.contains("\"path_scope\"") == false, "path_scope must not leak into JSON");
     }
 
-    // ── 9.1: stale doc for deleted file still resolves under scope ──────────
+    // ── 9.1: stale doc for a deleted file is filtered at search time ───────
 
     @Test
-    void shouldKeepStaleDocSearchableUntilReindex() throws Exception {
+    void shouldFilterStaleDocForDeletedFile() throws Exception {
         Files.delete(sourceA.resolve("alpha-a.txt")); // disk gone, index doc remains
         Resp r = get("q=alpha&directory=" + enc(sourceA.toString()));
         assertEquals(200, r.status, r.body);
-        assertTrue(r.body.contains("alpha-a.txt"),
-                "stale index entry remains searchable until Index All/rebuild");
+        assertFalse(r.body.contains("alpha-a.txt"),
+                "confirmed-deleted file must be filtered from results: " + r.body);
+        assertTrue(r.body.contains("alpha-deep.txt"),
+                "live file in the same scope must still be returned: " + r.body);
     }
 
     // ── 9.1: offline/unreachable configured source degrades gracefully ──────
