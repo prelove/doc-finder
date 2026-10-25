@@ -179,3 +179,40 @@ R3-01没有执行文件索引，只调用该JAR实际使用的私有维护入口
 三个诊断源码已保存至 [CapacityProbe.java](probe-restoration-2026-10-25/CapacityProbe.java)、[ClassificationRaceProbe.java](probe-restoration-2026-10-25/ClassificationRaceProbe.java)、[SourceRetryProbe.java](probe-restoration-2026-10-25/SourceRetryProbe.java)。它们是当前结构的诊断探针，重构删除私有结构后可用等效行为/资源回归替代，不要求保留私有接口供探针调用。编译使用JDK17 `--release 8`、交付JAR作classpath；运行使用Java8，独立user.dir/user.home，场景树置于user.dir之外。ClassificationRaceProbe主类含包名org.abitware.docfinder.search。
 
 原始证据根：`C:\Users\Administrator\AppData\Local\Temp\docfinder-sweep-qa-20261025-qiq36mvp\`：完整失败报告full-suite-reports、clean-verify.log；单方法重跑targeted-reports/idle-test-rerun.log；probes下ui/cold/race/http/capacity/overlap/source日志，独立源码及场景。持久化的ClassificationRaceProbe自包含版本再次执行也复现1→0。测试服务已停止，正常退出，真实配置/来源/分享/历史哈希保持不变。
+
+---
+
+## 实现者R3修复与直接JAR证据（R3-01～03 + 测试稳定性）
+
+交付JAR `target/docfinder-1.0.0.jar` SHA256 `7CC44F3FC5BE69DA35733F2236E6EE0DE775E77EC12D898106F805A237E31697`。`mvn clean verify`：236总数、0失败/错误、3跳过，BUILD SUCCESS（含不稳定用例修复，首次全套即绿）。
+
+### 逐条修复
+
+| 评审项 | 修复 |
+| --- | --- |
+| R3-01 容量未生效 | `RECENT_UPSERTS` 改为 access-order LinkedHashMap（synchronized 包装）：`removeEldestEntry` 硬驱逐，`size()` 永不超过 4096；put/get O(1)，撤销 TTL 全表扫描语义——旧条目时间戳恒小于新判定基线，滞留在结构上无害 |
+| R3-02 校验途中误删 | `classifiedAt` 基线从 `isDefinitelyDeleted` **调用前**捕获（原在返回后），"校验期间+等锁期间"发生的任何 upsert 时间戳均大于基线→锁内跳过；`upsertedAt` 入参兼容原始/规范化两种路径形式 |
+| R3-03 来源故障不自愈 | `rootsFor` 失败不再把空表发布进 `lastRootsSnapshot`（保留 last-good/null）；新增 `rootsStale` 标记：任何一次加载失败使后台每趟 sweep（1.5s）重试 provider；`rootsLoadedAt`+30s TTL 使来源增删懒惰传播；`drainResurrections` 重载成功才覆盖快照 |
+
+### 评审探针在最终JAR上的结果（Java8 实跑）
+
+```
+PROBE recent_upsert_capacity configuredCap=4096 actualSize=4096 firstHalfMs=13 secondHalfMs=11   → R3-01
+PROBE classification_overlap restoredFileExists=true indexedBeforePurge=1 indexedAfterPurge=1   → R3-02
+PROBE source_config_retry fileExists=true indexedAfterRecovery=1 loadsBeforeIdle=3 loadsAfterIdle=4 → R3-03
+```
+
+实现者 RestorationProbe 同 JAR 复跑 8/8 PASS，五项原场景无回归。首次诊断曾误诊一次：探针 args[0] 传 `../qa-trees` 使 `src` 含未归一化 `..`，闸门 equals 不命中——用规范化绝对路径重跑即通过，非产品缺陷。
+
+### 测试稳定性修复
+
+`shouldResurrectWhileIdleWithoutAnySearch` 等"删除前置条件"由固定 `waitForPurge(700ms)` 改为 `waitForDocGone`：对 `indexHasDoc==false` 做上限 10s 的状态轮询——区分"未核实而隐藏"与"已真实 purge"，消除慢 fork 下的时序敏感。
+
+### 新增回归（GhostResultFilterTest 15→17）
+
+- `shouldBoundRecentUpsertsRegistry`：反射插入 5000 条，`size()<=4096`。
+- `shouldReloadRootsAfterProviderFailureAndResurrect`：首次加载抛 IOException→sweep 重试成功→墓碑文件复活。
+
+### 仍未闭合（维持如实声明）
+
+写锁内 ≤64 条 recheck 直接 stat、自动刷新重置排序/选择/预览、全未知空态、墓碑 >4096 容量/30 天 TTL 兜底、`resurrectBatch` 中 upsert 吞错后仍 remove 墓碑、大快照双 map 内存与真实慢网络句柄峰值实测——以上维持上一轮记录，未在本轮范围。

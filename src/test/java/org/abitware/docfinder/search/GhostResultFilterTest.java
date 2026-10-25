@@ -345,6 +345,18 @@ class GhostResultFilterTest {
         }
     }
 
+    /** Bounded state-wait: the async purge must actually commit — a fixed
+     *  sleep is not deterministic on slower forks. */
+    private void waitForDocGone(String fileName) throws Exception {
+        long deadline = System.nanoTime()
+                + java.util.concurrent.TimeUnit.SECONDS.toNanos(10);
+        while (indexHasDoc(fileName) && System.nanoTime() < deadline) {
+            Thread.sleep(150);
+        }
+        assertFalse(indexHasDoc(fileName),
+                "purge must commit the delete within bounded time");
+    }
+
     @Test
     void shouldResurrectWhileIdleWithoutAnySearch() throws Exception {
         // The periodic sweep must re-index a restored file even when the
@@ -355,8 +367,7 @@ class GhostResultFilterTest {
         Files.delete(source.resolve("idle-back.txt"));
 
         assertTrue(detailed("idle-back", 50).results.isEmpty());
-        waitForPurge();
-        assertFalse(indexHasDoc("idle-back.txt"), "doc is really purged first");
+        waitForDocGone("idle-back.txt");
 
         // restore, then NO searches at all — just wait
         write(source.resolve("idle-back.txt"), "lorem");
@@ -378,8 +389,7 @@ class GhostResultFilterTest {
         Files.delete(source.resolve("back-after-restart.txt"));
 
         assertTrue(detailed("back-after", 50).results.isEmpty());
-        waitForPurge();
-        assertFalse(indexHasDoc("back-after-restart.txt"));
+        waitForDocGone("back-after-restart.txt");
 
         service.close();
         service = null;
@@ -458,6 +468,63 @@ class GhostResultFilterTest {
         SearchOutcome after = detailed("reup", 50);
         assertEquals(1, after.results.size(),
                 "a doc re-indexed after the purge verdict must not be deleted");
+    }
+
+    @Test
+    void shouldBoundRecentUpsertsRegistry() throws Exception {
+        // R3-01: the protection table must be TRULY bounded — inserting
+        // far more than the cap must leave size() <= cap, with O(1) puts
+        // (no full-table scans on every upsert).
+        java.lang.reflect.Method m = LuceneIndexer.class.getDeclaredMethod(
+                "recordUpsert", String.class);
+        m.setAccessible(true);
+        for (int i = 0; i < 5000; i++) {
+            m.invoke(null, "cap-probe-" + i);
+        }
+        java.lang.reflect.Field f = LuceneIndexer.class
+                .getDeclaredField("RECENT_UPSERTS");
+        f.setAccessible(true);
+        int size = ((java.util.Map<?, ?>) f.get(null)).size();
+        assertTrue(size <= 4096,
+                "RECENT_UPSERTS must be hard-bounded, got " + size);
+    }
+
+    @Test
+    void shouldReloadRootsAfterProviderFailureAndResurrect() throws Exception {
+        // R3-03: a transient provider IOException must not freeze the
+        // roots snapshot — once the provider recovers, the sweeper
+        // re-loads roots and resurrection proceeds without any search.
+        write(source.resolve("src-retry.txt"), "lorem");
+        indexAndOpen();
+        Files.delete(source.resolve("src-retry.txt"));
+        assertTrue(detailed("src-retry", 50).results.isEmpty());
+        waitForDocGone("src-retry.txt"); // purged → tombstone persists
+
+        service.close();
+        service = null;
+
+        write(source.resolve("src-retry.txt"), "lorem"); // restored while down
+
+        java.util.concurrent.atomic.AtomicInteger calls =
+                new java.util.concurrent.atomic.AtomicInteger();
+        SourceRootProvider flaky = () -> {
+            if (calls.incrementAndGet() <= 1) {
+                throw new java.io.IOException("simulated config read failure");
+            }
+            return Collections.singletonList(source);
+        };
+        // ctor seeding hits the failure; the sweeper must retry until the
+        // provider recovers and then resurrect the tombstoned file.
+        service = new LuceneSearchService(index, settings, flaky);
+
+        boolean found = false;
+        for (int i = 0; i < 16 && !found; i++) {
+            Thread.sleep(500);
+            found = indexHasDoc("src-retry.txt");
+        }
+        assertTrue(found,
+                "sweeper must recover from a transient provider failure");
+        assertTrue(calls.get() >= 2, "provider was retried after failure");
     }
 
     private static void deleteRecursively(Path p) throws Exception {

@@ -292,6 +292,17 @@ public class LuceneSearchService implements SearchService {
      * ever read this cache; a null cache defers them to a later search.
      */
     private volatile List<Path> lastRootsSnapshot;
+    /** nanoTime of the last SUCCESSFUL provider load; 0 when never loaded. */
+    private volatile long rootsLoadedAt;
+    /**
+     * The last provider load failed: the sweep retries on every pass (the
+     * snapshot must never freeze on a transient IOException), and request
+     * paths stay conservative via RefillState.rootsFailed.
+     */
+    private volatile boolean rootsStale;
+    /** Background snapshot freshness bound — source add/remove are picked
+     *  up within this window instead of requiring a request. */
+    private static final long ROOTS_SNAPSHOT_TTL_MS = 30_000;
 
     public void setIndexChangeListener(Runnable listener) {
         this.indexChangeListener = listener;
@@ -356,6 +367,11 @@ public class LuceneSearchService implements SearchService {
         // with zero candidates never loads roots, which would otherwise
         // leave tombstones unexaminable forever.
         lastRootsSnapshot = safeLoadRoots();
+        if (lastRootsSnapshot == null) {
+            rootsStale = true; // retry on the first sweep pass
+        } else {
+            rootsLoadedAt = System.nanoTime();
+        }
         // Periodic sweep + one immediate pass: tombstoned files that came
         // back while the app was down — or while it idles — are re-indexed
         // without waiting for the next search.
@@ -562,6 +578,8 @@ public class LuceneSearchService implements SearchService {
                     "search sources could not be loaded: " + e.getMessage(), e);
         }
         lastRootsSnapshot = roots;
+        rootsLoadedAt = System.nanoTime();
+        rootsStale = false;
         if (st != null) {
             st.roots = roots;
             st.rootsLoaded = true;
@@ -970,12 +988,18 @@ public class LuceneSearchService implements SearchService {
             st.rootsLoaded = true;
             try {
                 st.roots = sourceRootProvider.loadRoots();
+                lastRootsSnapshot = st.roots;
+                rootsLoadedAt = System.nanoTime();
+                rootsStale = false;
             } catch (Exception e) {
                 st.roots = Collections.emptyList();
                 st.rootsFailed = true; // unreadable config ≠ empty config —
                                        // no bound → preserve everything
+                rootsStale = true;     // sweep retries instead of freezing
+                // Never publish the failure-empty list as the snapshot:
+                // the last-good roots (or null) must survive a transient
+                // provider error.
             }
-            lastRootsSnapshot = st.roots;
         }
         return st.roots == null ? Collections.<Path>emptyList() : st.roots;
     }
@@ -1098,9 +1122,13 @@ public class LuceneSearchService implements SearchService {
                 return;
             }
             verdictCache.remove(s);
+            // Capture the generation baseline BEFORE the verdict I/O: any
+            // upsert that lands during classification — not only after it —
+            // is newer than the verdict and must survive the queued delete.
+            long checkStart = System.nanoTime();
             if (isDefinitelyDeleted(s, containingRoot(s, roots))) {
                 confirmed.add(s);
-                classifiedAt.put(s, System.nanoTime());
+                classifiedAt.put(s, checkStart);
             }
         }
         if (confirmed.isEmpty() || closed) {
@@ -1125,9 +1153,9 @@ public class LuceneSearchService implements SearchService {
                         return;
                     }
                     // Generation check (no I/O): the path was re-indexed
-                    // AFTER our classification — the verdict is stale and
-                    // the newer record must survive. This holds regardless
-                    // of how long the lock wait was.
+                    // since classification BEGAN — the verdict is stale and
+                    // the newer record must survive, whether the upsert
+                    // landed mid-classification or during the lock wait.
                     Long ct = classifiedAt.get(s);
                     if (ct != null && LuceneIndexer.upsertedAt(s) > ct) {
                         continue;
@@ -1201,12 +1229,25 @@ public class LuceneSearchService implements SearchService {
     private void drainResurrections() {
         try {
             List<Path> roots = lastRootsSnapshot;
-            if (roots == null) {
-                roots = safeLoadRoots(); // ctor-time load may have failed
-                if (roots == null) {
-                    return;
+            // Refresh when never loaded, when the last load failed (a
+            // transient provider error must not freeze the snapshot
+            // forever), or past TTL (source add/remove propagate lazily).
+            boolean expired = System.nanoTime() - rootsLoadedAt
+                    > TimeUnit.MILLISECONDS.toNanos(ROOTS_SNAPSHOT_TTL_MS);
+            if (roots == null || rootsStale || expired) {
+                List<Path> fresh = safeLoadRoots();
+                if (fresh != null) {
+                    lastRootsSnapshot = fresh;
+                    rootsLoadedAt = System.nanoTime();
+                    rootsStale = false;
+                    roots = fresh;
+                } else {
+                    rootsStale = true; // keep retrying on the next pass
+                    if (roots == null) {
+                        return; // never loaded — nothing can be scoped
+                    }
+                    // else keep the last-good snapshot for this pass
                 }
-                lastRootsSnapshot = roots;
             }
             List<String> snap = org.abitware.docfinder.index.Tombstones.snapshot();
             int n = snap.size();

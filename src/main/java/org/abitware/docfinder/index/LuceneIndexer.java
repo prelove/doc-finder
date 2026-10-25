@@ -78,27 +78,39 @@ public class LuceneIndexer implements AutoCloseable {
      * the verdict was formed. Read without holding the write lock.
      */
     private static final int RECENT_UPSERT_CAP = 4096;
-    /** Verdict-vs-upsert races resolve within seconds; older entries are dead weight. */
-    private static final long RECENT_UPSERT_TTL_NS = java.util.concurrent.TimeUnit
-            .MINUTES.toNanos(2);
-    private static final Map<String, Long> RECENT_UPSERTS = new ConcurrentHashMap<>();
+    /**
+     * Hard-bounded access-order LRU: size() can NEVER exceed the cap, and
+     * put/get are O(1) — no per-upsert table scans. Eviction drops the
+     * least-recently-touched generation, which is the least likely to still
+     * be inside a purge race window; a stale entry can only cause a skip
+     * when its timestamp is genuinely newer than the verdict baseline, so
+     * no TTL is needed.
+     */
+    private static final Map<String, Long> RECENT_UPSERTS =
+            java.util.Collections.synchronizedMap(
+                    new java.util.LinkedHashMap<String, Long>(1024, 0.75f, true) {
+                        @Override
+                        protected boolean removeEldestEntry(
+                                Map.Entry<String, Long> eldest) {
+                            return size() > RECENT_UPSERT_CAP;
+                        }
+                    });
 
     private static void recordUpsert(String normalizedPath) {
-        if (RECENT_UPSERTS.size() >= RECENT_UPSERT_CAP) {
-            long cutoff = System.nanoTime() - RECENT_UPSERT_TTL_NS;
-            RECENT_UPSERTS.values().removeIf(t -> t < cutoff);
-            // If the cap is still exceeded the put proceeds anyway — a
-            // slight transient overshoot beats discarding live generations.
-        }
         RECENT_UPSERTS.put(normalizedPath, System.nanoTime());
     }
 
     /**
-     * nanoTime of the last successful upsert for {@code normalizedPath}
-     * (same form as stored in the index / tombstones), or -1 when unknown.
+     * nanoTime of the last successful upsert for {@code pathStr}, or -1
+     * when unknown. Accepts either stored (index-normalized) or raw OS
+     * form — callers hold whichever form their queue carried.
      */
-    public static long upsertedAt(String normalizedPath) {
-        Long t = RECENT_UPSERTS.get(normalizedPath);
+    public static long upsertedAt(String pathStr) {
+        if (pathStr == null) {
+            return -1L;
+        }
+        String key = Utils.normalizeForIndex(java.nio.file.Paths.get(pathStr));
+        Long t = RECENT_UPSERTS.get(key);
         return t == null ? -1L : t;
     }
 
