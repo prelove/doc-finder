@@ -79,6 +79,14 @@ public class LuceneIndexer implements AutoCloseable {
      */
     private static final int RECENT_UPSERT_CAP = 4096;
     /**
+     * Highest generation timestamp ever evicted from {@link #RECENT_UPSERTS}.
+     * Purge uses it to tell "no upsert was ever registered" (watermark at or
+     * below the classification baseline) from "the in-flight protection was
+     * evicted" (watermark above the baseline → the verdict is unverifiable
+     * and must be re-checked or deferred, never deleted on sight).
+     */
+    private static volatile long maxEvictedUpsertNs;
+    /**
      * Hard-bounded access-order LRU: size() can NEVER exceed the cap, and
      * put/get are O(1) — no per-upsert table scans. Eviction drops the
      * least-recently-touched generation, which is the least likely to still
@@ -92,7 +100,13 @@ public class LuceneIndexer implements AutoCloseable {
                         @Override
                         protected boolean removeEldestEntry(
                                 Map.Entry<String, Long> eldest) {
-                            return size() > RECENT_UPSERT_CAP;
+                            if (size() > RECENT_UPSERT_CAP) {
+                                if (eldest.getValue() > maxEvictedUpsertNs) {
+                                    maxEvictedUpsertNs = eldest.getValue();
+                                }
+                                return true;
+                            }
+                            return false;
                         }
                     });
 
@@ -112,6 +126,16 @@ public class LuceneIndexer implements AutoCloseable {
         String key = Utils.normalizeForIndex(java.nio.file.Paths.get(pathStr));
         Long t = RECENT_UPSERTS.get(key);
         return t == null ? -1L : t;
+    }
+
+    /**
+     * Highest upsert generation ever evicted from the bounded registry.
+     * A value above a purge classification baseline means evidence for a
+     * post-baseline upsert may have been lost — the caller must not treat
+     * a {@link #upsertedAt} miss as "no newer write" in that window.
+     */
+    public static long maxEvictedUpsertNs() {
+        return maxEvictedUpsertNs;
     }
 
     /**

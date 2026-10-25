@@ -557,4 +557,119 @@ class GhostResultFilterTest {
         assertTrue(o.results.isEmpty(),
                 "deleted directory's own doc must be filtered in FOLDER scope");
     }
+
+    @Test
+    void shouldNotPurgeDocWhoseUpsertEvidenceWasEvicted() throws Exception {
+        // R4-01: 65 confirmed ghosts; the last one is restored and
+        // re-indexed while the purge waits on the write lock, then 4096
+        // real directory upserts evict its generation entry. The stale
+        // verdict must not delete the newer record — a missing entry with
+        // an eviction watermark newer than the classification baseline is
+        // "unverifiable", not "safe to delete".
+        Path other = fixtureRoot.resolve("other-source");
+        Files.createDirectories(other);
+        java.util.List<String> ghosts = new java.util.ArrayList<>();
+        for (int i = 0; i < 64; i++) {
+            ghosts.add(source.resolve(String.format("evgone-%02d.txt", i))
+                    .toString());
+        }
+        Path target = source.resolve("evgone-64.txt");
+        ghosts.add(target.toString()); // #65 — beyond PURGE_RECHECK_CAP
+        // Index the ghosts directly: the files never exist on disk, so a
+        // plain indexFolder/upsertFile would skip them — write the docs
+        // the same way the standalone probe does.
+        Files.createDirectories(index);
+        try (org.apache.lucene.store.Directory d =
+                     org.apache.lucene.store.FSDirectory.open(index);
+             org.apache.lucene.analysis.standard.StandardAnalyzer a =
+                     new org.apache.lucene.analysis.standard.StandardAnalyzer();
+             org.apache.lucene.index.IndexWriter w = new org.apache.lucene.index.IndexWriter(
+                     d, new org.apache.lucene.index.IndexWriterConfig(a))) {
+            for (String g : ghosts) {
+                Path p = java.nio.file.Paths.get(g);
+                org.apache.lucene.document.Document doc =
+                        new org.apache.lucene.document.Document();
+                String n = p.getFileName().toString();
+                doc.add(new org.apache.lucene.document.StringField("path",
+                        org.abitware.docfinder.util.Utils.normalizeForIndex(p),
+                        org.apache.lucene.document.Field.Store.YES));
+                doc.add(new org.apache.lucene.document.StringField("path_scope",
+                        org.abitware.docfinder.util.PathScope.normalizeIndexedPath(p),
+                        org.apache.lucene.document.Field.Store.NO));
+                doc.add(new org.apache.lucene.document.TextField("name", n,
+                        org.apache.lucene.document.Field.Store.YES));
+                doc.add(new org.apache.lucene.document.StringField("name_raw",
+                        n.toLowerCase(java.util.Locale.ROOT),
+                        org.apache.lucene.document.Field.Store.NO));
+                doc.add(new org.apache.lucene.document.StringField("kind", "file",
+                        org.apache.lucene.document.Field.Store.YES));
+                w.addDocument(doc);
+            }
+            w.commit();
+        }
+        service = new LuceneSearchService(index, settings,
+                () -> java.util.Arrays.asList(source, other));
+
+        // Isolate the deletion protocol: the sweeper would mask a wrong
+        // delete by resurrecting the target afterwards.
+        java.lang.reflect.Field tf = LuceneSearchService.class
+                .getDeclaredField("resurrectTimer");
+        tf.setAccessible(true);
+        ((java.util.concurrent.ScheduledExecutorService) tf.get(service))
+                .shutdownNow();
+
+        java.lang.reflect.Method purge = LuceneSearchService.class
+                .getDeclaredMethod("purgeGhostBatch", java.util.List.class);
+        purge.setAccessible(true);
+        java.util.concurrent.ExecutorService ex =
+                java.util.concurrent.Executors.newSingleThreadExecutor();
+        java.util.concurrent.atomic.AtomicReference<java.util.concurrent.Future<?>> task =
+                new java.util.concurrent.atomic.AtomicReference<>();
+        try {
+            org.abitware.docfinder.index.IndexWriteCoordinator.run(() -> {
+                try {
+                    task.set(ex.submit(() -> {
+                        try {
+                            purge.invoke(service, ghosts);
+                        } catch (Exception e) {
+                            throw new RuntimeException(e);
+                        }
+                    }));
+                    long end = System.currentTimeMillis() + 5000;
+                    java.lang.reflect.Field lf =
+                            org.abitware.docfinder.index.IndexWriteCoordinator.class
+                                    .getDeclaredField("WRITE_LOCK");
+                    lf.setAccessible(true);
+                    java.util.concurrent.locks.ReentrantLock lock =
+                            (java.util.concurrent.locks.ReentrantLock) lf.get(null);
+                    while (!lock.hasQueuedThreads()
+                            && System.currentTimeMillis() < end) {
+                        Thread.sleep(10);
+                    }
+                    if (!lock.hasQueuedThreads()) {
+                        throw new AssertionError("purge not waiting for lock");
+                    }
+                    // Target returns + is re-indexed, then real upserts
+                    // evict its generation evidence before the purge runs.
+                    write(target, "lorem");
+                    try (LuceneIndexer w = new LuceneIndexer(index, settings)) {
+                        w.upsertFile(target);
+                        for (int i = 0; i < 4096; i++) {
+                            Path d = other.resolve("dir-" + i);
+                            Files.createDirectory(d);
+                            w.upsertFile(d);
+                        }
+                        w.commit();
+                    }
+                } catch (Exception e) {
+                    throw new RuntimeException(e);
+                }
+            });
+            task.get().get(15, java.util.concurrent.TimeUnit.SECONDS);
+        } finally {
+            ex.shutdownNow();
+        }
+        assertTrue(indexHasDoc("evgone-64.txt"),
+                "old cleanup must not delete a doc whose upsert evidence was evicted");
+    }
 }

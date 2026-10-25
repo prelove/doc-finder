@@ -293,3 +293,35 @@ PROBE evicted_active_guard otherRealDirectoryUpserts=4096 fileExists=true guardA
 ### 遗留说明
 
 `stopLiveWatch` 关服务仍在后台 SwingWorker 中执行（EDT 不阻塞）；onExit 走同步直连关闭。watchStatusLabel 仅反映最后一次状态迁移，不持久化。
+
+---
+
+## 实现者R4-01修复与直接JAR证据（淘汰水印 + 有界重验）
+
+交付JAR `target/docfinder-1.0.0.jar` SHA256 `1B5A9918DF544D69809A5C3E55081092314ABF03C1C8DAF858741BBCB45E3317`。`mvn clean verify`：240总数、0失败/错误、3跳过，BUILD SUCCESS（首次全套即绿）。
+
+### 修复机制
+
+`RECENT_UPSERTS` 淘汰时记录被淘汰条目的最大代次 `maxEvictedUpsertNs`（单 volatile long，O(1) 维护，容量上限不变）。purge 锁内对 `upsertedAt=-1` 的候选按水印区分两种语义：
+
+- `watermark <= classifiedAt` →"本来没有登记"或淘汰物均早于基线 → 证据未丢，走原有 ≤64 有界复核后正常删除（重启空表场景不受影响，真缺失文件仍可清理）。
+- `watermark > classifiedAt` → 晚于基线的 upsert 证据**可能**被淘汰 → 该候选获得独立有界重 stat（`PURGE_EVIDENCE_RECHECK_CAP=64`）：文件在→保留；文件不在→删除；预算耗尽→本轮跳过。下一轮 pass 的新基线自然晚于既往淘汰时刻，跳过收敛而非忙循环——无需重试计时器。
+
+### 评审探针在最终JAR上的结果（Java8 实跑）
+
+```text
+PROBE evicted_active_guard otherRealDirectoryUpserts=4096 fileExists=true guardAfterUpserts=-1 indexedBeforeOldPurge=1 indexedAfterOldPurge=1  → R4-01
+PROBE recent_upsert_capacity configuredCap=4096 actualSize=4096 firstHalfMs=62 secondHalfMs=12                                             → R3-01 无回归
+PROBE classification_overlap restoredFileExists=true indexedBeforePurge=1 indexedAfterPurge=1                                             → R3-02 无回归
+PROBE source_config_retry fileExists=true indexedAfterRecovery=1 loadsBeforeIdle=3 loadsAfterIdle=4                                       → R3-03 无回归
+```
+
+实现者 RestorationProbe 复跑：首轮 7/8（`P1 pre: doc really purged` 一次未在探针等待窗口内完成异步提交——前置时序抖动，非被测机制失败）；同 JAR 立即复跑 **8/8 PASS**。如实记录两轮结果。
+
+### 新增回归（GhostResultFilterTest 17→18）
+
+- `shouldNotPurgeDocWhoseUpsertEvidenceWasEvicted`：复刻探针形状——65 条确认幽灵、目标第 65 条（超 PURGE_RECHECK_CAP 窗口）、锁内恢复+真实 4096 次目录 upsert 淘汰其代次 → 断言 `indexHasDoc` 仍为真；测试停用 resurrectTimer 隔离删除协议，复活兜底不掩盖误删。
+
+### 仍未闭合（维持如实声明）
+
+写锁内 ≤64+64 条 recheck 直接 stat（网络路径在写锁内 I/O 的结构性问题依旧）、自动刷新重置排序/选择/预览、全未知空态、墓碑 >4096/30 天兜底、`resurrectBatch` upsert 吞错仍 remove 墓碑、大快照双 map 内存与真实慢网络句柄峰值实测——以上未在本轮范围。

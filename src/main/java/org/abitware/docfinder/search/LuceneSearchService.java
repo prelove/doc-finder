@@ -1107,6 +1107,10 @@ public class LuceneSearchService implements SearchService {
      *  park the write lock on thousands of slow stats. */
     private static final long PURGE_RECHECK_AFTER_MS = 300;
     private static final int PURGE_RECHECK_CAP = 64;
+    /** Extra bounded stats for candidates whose upsert-generation evidence
+     *  was evicted after classification. Over-budget candidates are skipped
+     *  this pass — never deleted on an unverifiable verdict. */
+    private static final int PURGE_EVIDENCE_RECHECK_CAP = 64;
 
     private void purgeGhostBatch(List<String> batch) {
         List<Path> roots = lastRootsSnapshot;
@@ -1146,6 +1150,7 @@ public class LuceneSearchService implements SearchService {
             boolean recheck = TimeUnit.NANOSECONDS.toMillis(
                     System.nanoTime() - queuedAt) > PURGE_RECHECK_AFTER_MS;
             int rechecked = 0;
+            int evidenceRechecked = 0;
             try (LuceneIndexer idx = new LuceneIndexer(indexDir, indexSettings)) {
                 boolean deletedAny = false;
                 for (String s : confirmed) {
@@ -1157,10 +1162,26 @@ public class LuceneSearchService implements SearchService {
                     // the newer record must survive, whether the upsert
                     // landed mid-classification or during the lock wait.
                     Long ct = classifiedAt.get(s);
-                    if (ct != null && LuceneIndexer.upsertedAt(s) > ct) {
+                    long upsertedAt = LuceneIndexer.upsertedAt(s);
+                    if (ct != null && upsertedAt > ct) {
                         continue;
                     }
-                    if (recheck && rechecked < PURGE_RECHECK_CAP) {
+                    // "Never registered" (watermark at/below baseline) may
+                    // still delete after the ordinary recheck. "Protection
+                    // evicted" (watermark above baseline) cannot — that
+                    // path gets its own bounded re-stat: file present →
+                    // keep the record, budget spent → defer to a later
+                    // pass whose baseline postdates the evictions.
+                    if (ct != null && upsertedAt < 0
+                            && LuceneIndexer.maxEvictedUpsertNs() > ct) {
+                        if (evidenceRechecked >= PURGE_EVIDENCE_RECHECK_CAP) {
+                            continue;
+                        }
+                        evidenceRechecked++;
+                        if (!isDefinitelyDeleted(s, containingRoot(s, roots))) {
+                            continue;
+                        }
+                    } else if (recheck && rechecked < PURGE_RECHECK_CAP) {
                         rechecked++;
                         if (!isDefinitelyDeleted(s, containingRoot(s, roots))) {
                             continue;
