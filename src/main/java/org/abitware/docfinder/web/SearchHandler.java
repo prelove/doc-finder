@@ -78,7 +78,7 @@ class SearchHandler implements HttpHandler {
             filter = new FilterState();
             filter.exts.clear();
             for (String e : extParam.split(",")) {
-                String ext = e.trim().toLowerCase();
+                String ext = e.trim().toLowerCase(Locale.ROOT);
                 if (!ext.isEmpty()) filter.exts.add(ext);
             }
         }

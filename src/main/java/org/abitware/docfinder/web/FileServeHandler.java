@@ -7,6 +7,7 @@ import java.io.*;
 import java.net.URI;
 import java.nio.charset.Charset;
 import java.nio.file.*;
+import java.util.Locale;
 import java.util.Map;
 
 /**
@@ -80,7 +81,7 @@ class FileServeHandler implements HttpHandler {
                 }
                 if (read > 0) {
                     Charset detected = TextServeHandler.detectCharset(sample, read);
-                    mime = mime + "; charset=" + detected.name().toLowerCase();
+                    mime = mime + "; charset=" + detected.name().toLowerCase(Locale.ROOT);
                 }
             } catch (Exception e) {
                 // detection failed; serve without charset (browser will guess)
@@ -105,7 +106,7 @@ class FileServeHandler implements HttpHandler {
     /** Very small MIME-type table; covers the formats jit-viewer supports. */
     static String guessMime(String filename) {
         if (filename == null) return "application/octet-stream";
-        String lower = filename.toLowerCase();
+        String lower = filename.toLowerCase(Locale.ROOT);
         if (lower.endsWith(".pdf"))  return "application/pdf";
         if (lower.endsWith(".docx")) return "application/vnd.openxmlformats-officedocument.wordprocessingml.document";
         if (lower.endsWith(".doc"))  return "application/msword";

@@ -15,6 +15,7 @@ import java.util.Collections;
 import java.util.concurrent.ExecutorService;
 import java.util.concurrent.Executors;
 import java.util.List;
+import java.util.Locale;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
@@ -1546,10 +1547,10 @@ public class MainWindow extends JFrame implements MenuBarPanel.MenuListener {
 	private String makeSnippet(String text, String[] terms, int window) {
 		if (terms.length == 0)
 			return text.substring(0, Math.min(window, text.length()));
-		String lower = text.toLowerCase();
+		String lower = text.toLowerCase(Locale.ROOT);
 		int pos = -1;
 		for (String t : terms) {
-			int p = lower.indexOf(t.toLowerCase());
+			int p = lower.indexOf(t.toLowerCase(Locale.ROOT));
 			if (p >= 0 && (pos == -1 || p < pos))
 				pos = p;
 		}
@@ -2914,7 +2915,7 @@ public class MainWindow extends JFrame implements MenuBarPanel.MenuListener {
 
 	private static String getExtFromName(String name) {
 		int i = name.lastIndexOf('.');
-		return (i > 0) ? name.substring(i + 1).toLowerCase() : "";
+		return (i > 0) ? name.substring(i + 1).toLowerCase(Locale.ROOT) : "";
 	}
 
     // --- Open With 映射（openwith.<ext> -> program absolute path） ---
@@ -3486,11 +3487,11 @@ public class MainWindow extends JFrame implements MenuBarPanel.MenuListener {
 	}
 
 	private static boolean isWindows() {
-		return System.getProperty("os.name").toLowerCase().contains("win");
+		return System.getProperty("os.name").toLowerCase(Locale.ROOT).contains("win");
 	}
 
 	private static boolean isMac() {
-		return System.getProperty("os.name").toLowerCase().contains("mac");
+		return System.getProperty("os.name").toLowerCase(Locale.ROOT).contains("mac");
 	}
 
 	public JTextField getSearchField() {

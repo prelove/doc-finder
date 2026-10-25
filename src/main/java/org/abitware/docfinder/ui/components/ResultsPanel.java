@@ -9,6 +9,7 @@ import java.awt.event.MouseAdapter;
 import java.awt.event.MouseEvent;
 import java.io.File;
 import java.util.List;
+import java.util.Locale;
 import javax.swing.*;
 import javax.swing.table.DefaultTableModel;
 import org.abitware.docfinder.search.SearchResult;
@@ -260,15 +261,15 @@ public class ResultsPanel extends JPanel {
     
     private static String getExtFromName(String name) {
         int i = name.lastIndexOf('.');
-        return (i > 0) ? name.substring(i + 1).toLowerCase() : "";
+        return (i > 0) ? name.substring(i + 1).toLowerCase(Locale.ROOT) : "";
     }
     
     private static boolean isWindows() {
-        return System.getProperty("os.name").toLowerCase().contains("win");
+        return System.getProperty("os.name").toLowerCase(Locale.ROOT).contains("win");
     }
 
     private static boolean isMac() {
-        return System.getProperty("os.name").toLowerCase().contains("mac");
+        return System.getProperty("os.name").toLowerCase(Locale.ROOT).contains("mac");
     }
     
     private RowSel getSelectedRow() {

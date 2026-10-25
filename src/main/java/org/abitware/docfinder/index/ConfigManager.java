@@ -63,14 +63,14 @@ public class ConfigManager {
 	// --- Open With 映射（openwith.<ext> -> program absolute path） ---
 	public String getOpenWithProgram(String ext) {
 	    java.util.Properties p = loadAll();
-	    return p.getProperty("openwith." + ext.toLowerCase(), null);
+	    return p.getProperty("openwith." + ext.toLowerCase(Locale.ROOT), null);
 	}
 	public void setOpenWithProgram(String ext, String programAbsPath) {
 	    java.util.Properties p = loadAll();
 	    if (programAbsPath == null || programAbsPath.trim().isEmpty()) {
-	        p.remove("openwith." + ext.toLowerCase());
+	        p.remove("openwith." + ext.toLowerCase(Locale.ROOT));
 	    } else {
-	        p.setProperty("openwith." + ext.toLowerCase(), programAbsPath);
+	        p.setProperty("openwith." + ext.toLowerCase(Locale.ROOT), programAbsPath);
 	    }
 	    saveAll(p);
 	}

@@ -11,7 +11,7 @@ public final class Utils {
     private Utils() {}
 
     public static boolean isWindows() {
-        String os = System.getProperty("os.name","").toLowerCase();
+        String os = System.getProperty("os.name","").toLowerCase(Locale.ROOT);
         return os.contains("win");
     }
     public static String canonicalizeWinPathString(String s) {

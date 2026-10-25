@@ -7,6 +7,7 @@ import java.io.InputStream;
 import java.util.ArrayList;
 import java.util.Arrays;
 import java.util.List;
+import java.util.Locale;
 
 /** 图标加载&适配（支持多尺寸、托盘、macOS Dock）。 */
 public final class IconUtil {
