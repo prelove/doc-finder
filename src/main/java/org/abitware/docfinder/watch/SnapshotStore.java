@@ -7,7 +7,14 @@ import java.nio.charset.StandardCharsets;
 import java.nio.file.*;
 import java.util.*;
 
-/** 每个根目录保存一份快照：path|size|mtime */
+/**
+ * 每个根目录保存一份快照：path|size|mtime。
+ * Reads and writes are streamed — no full-line copies — and saves go through
+ * a tmp file + atomic move so a partial write can never clobber the last
+ * good baseline. {@link #load} returns null on I/O failure so the caller can
+ * distinguish "no baseline yet" (empty map) from "baseline unreadable"
+ * (null → skip the diff, never delete against a broken baseline).
+ */
 public class SnapshotStore {
     private final Path dir;
 
@@ -24,35 +31,65 @@ public class SnapshotStore {
         return k.isEmpty() ? "root" : k;
     }
 
+    /**
+     * Loads the stored baseline for {@code root}. Returns an empty map when
+     * no baseline exists yet, or {@code null} when one exists but cannot be
+     * read — callers must not diff against an unreadable baseline.
+     */
     public Map<String, Entry> load(Path root) {
         Map<String, Entry> map = new HashMap<>();
         try {
             Files.createDirectories(dir);
             Path f = dir.resolve(keyForRoot(root) + ".txt");
             if (!Files.exists(f)) return map;
-            for (String line : Files.readAllLines(f, StandardCharsets.UTF_8)) {
-                if (line.isEmpty() || line.startsWith("#")) continue;
-                String[] sp = line.split("\\|", -1);
-                if (sp.length < 3) continue;
-                String path = sp[0];
-                long size = parseLong(sp[1]);
-                long mtime = parseLong(sp[2]);
-                map.put(path, new Entry(size, mtime));
+            try (BufferedReader r = Files.newBufferedReader(f, StandardCharsets.UTF_8)) {
+                String line;
+                while ((line = r.readLine()) != null) {
+                    if (line.isEmpty() || line.startsWith("#")) continue;
+                    String[] sp = line.split("\\|", -1);
+                    if (sp.length < 3) continue;
+                    map.put(sp[0], new Entry(parseLong(sp[1]), parseLong(sp[2])));
+                }
             }
-        } catch (IOException ignore) {}
+        } catch (IOException e) {
+            return null; // unreadable baseline — NOT the same as an empty one
+        }
         return map;
     }
 
-    public void save(Path root, Map<String, Entry> map) {
+    /**
+     * Persists {@code map} as the new baseline for {@code root} via a tmp
+     * file + atomic move, so an incomplete write never replaces the last
+     * good snapshot. Returns false when the baseline could not be stored —
+     * the old baseline stays in place and the next poll re-diffs it.
+     */
+    public boolean save(Path root, Map<String, Entry> map) {
         try {
             Files.createDirectories(dir);
-            Path f = dir.resolve(keyForRoot(root) + ".txt");
-            List<String> lines = new ArrayList<>();
-            for (Map.Entry<String, Entry> e : map.entrySet()) {
-                lines.add(e.getKey() + "|" + e.getValue().size + "|" + e.getValue().mtime);
+            String key = keyForRoot(root);
+            Path f = dir.resolve(key + ".txt");
+            Path tmp = dir.resolve(key + ".tmp");
+            try (BufferedWriter w = Files.newBufferedWriter(tmp, StandardCharsets.UTF_8,
+                    StandardOpenOption.CREATE, StandardOpenOption.TRUNCATE_EXISTING)) {
+                for (Map.Entry<String, Entry> e : map.entrySet()) {
+                    w.write(e.getKey());
+                    w.write('|');
+                    w.write(Long.toString(e.getValue().size));
+                    w.write('|');
+                    w.write(Long.toString(e.getValue().mtime));
+                    w.newLine();
+                }
             }
-            Files.write(f, lines, StandardCharsets.UTF_8, StandardOpenOption.CREATE, StandardOpenOption.TRUNCATE_EXISTING);
-        } catch (IOException ignore) {}
+            try {
+                Files.move(tmp, f, StandardCopyOption.ATOMIC_MOVE,
+                        StandardCopyOption.REPLACE_EXISTING);
+            } catch (AtomicMoveNotSupportedException am) {
+                Files.move(tmp, f, StandardCopyOption.REPLACE_EXISTING);
+            }
+            return true;
+        } catch (IOException e) {
+            return false;
+        }
     }
 
     private static long parseLong(String s) {

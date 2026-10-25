@@ -112,58 +112,61 @@ public class LuceneSearchService implements SearchService {
     private final IndexSettings indexSettings;
 
     /**
-     * Ghost-filter budgets. MAX_GHOST_CANDIDATES caps how many hits one
-     * search may existence-check, VERIFY_BUDGET_MS caps the wall-clock time
-     * spent waiting on those checks — a mass-deleted index or a slow NAS
-     * must never stall the search path. REFILL_PAGE_MAX bounds one
-     * searchAfter page. Tuning starting point, adjust after measurement.
+     * Ghost-filter bounds. Checks run sequentially per search on a bounded
+     * pool: at most one in-flight stat per search and a small queue overall.
+     * PER_CHECK_TIMEOUT_MS bounds each individual wait only — it is NOT a
+     * completion budget: refill continues until the page is full or the
+     * candidate tail is reached, and an uncertain path is kept and reported
+     * rather than treated as proof either way.
      */
-    private static final int MAX_GHOST_CANDIDATES = 500;
-    private static final long VERIFY_BUDGET_MS = 200L;
-    private static final int REFILL_PAGE_MAX = 256;
+    private static final int PER_CHECK_TIMEOUT_MS = 250;
+    /** Candidates fetched per searchAfter page — scheduling granule only. */
+    private static final int REFILL_PAGE = 64;
+    /** Ghost paths held for cleanup per search and globally, bounded. */
+    private static final int GHOST_BUFFER_CAP = 4096;
+    private static final int GHOST_PURGE_BATCH = 512;
 
-    /** Short-TTL existence verdicts so repeat searches don't re-stat. */
+    /** Short-TTL verdicts for confirmed ghosts so repeat searches don't re-stat. */
     private static final long VERDICT_TTL_MS = 20_000L;
     private static final int VERDICT_CACHE_MAX = 4096;
     /** After a source root times out or is unreachable, its paths are kept
      * unchecked for this window instead of re-probing a dead share. */
     private static final long ROOT_BACKOFF_MS = 30_000L;
-    /** A leftover-time budget below this is not a root outage — don't back off. */
-    private static final long BACKOFF_MIN_REMAINING_MS = 5L;
 
-    /** Per-search ghost-filter state: dedup, candidate/time budget, ghosts. */
+    /** Per-search refill state. Holds only bounded data — no full candidate history. */
     private static final class RefillState {
-        final Set<String> seen = new HashSet<>();
         final Set<String> ghosts = new HashSet<>();
-        int candidatesLeft = MAX_GHOST_CANDIDATES;
-        /** Set on the FIRST existence check — the budget bounds the check
-         *  phase, not query construction/execution before it. */
-        long deadlineNanos = -1L;
-        boolean budgetExhausted;
+        long generation = -1L;
+        boolean hadUncertain;
         /** Lazily-loaded source roots for source-bounded reachability. */
         List<Path> roots;
         boolean rootsLoaded;
 
-        boolean canCheckMore() {
-            if (budgetExhausted || candidatesLeft <= 0) {
-                return false;
+        void addGhost(String p) {
+            if (ghosts.size() < GHOST_BUFFER_CAP) {
+                ghosts.add(p);
             }
-            if (deadlineNanos < 0) {
-                deadlineNanos = System.nanoTime() + VERIFY_BUDGET_MS * 1_000_000L;
-            }
-            return System.nanoTime() < deadlineNanos;
-        }
-
-        long remainingNanos() {
-            return deadlineNanos < 0 ? 0 : deadlineNanos - System.nanoTime();
         }
     }
 
     /** Verdict of a filesystem existence check. UNCERTAIN keeps the document. */
     enum PathVerdict { ALIVE, GHOST, UNCERTAIN, ROOT_UNREACHABLE }
 
-    /** Low-concurrency bounded pool: existence stats never run on callers. */
-    private final ExecutorService existencePool = Executors.newFixedThreadPool(2,
+    /** Every new search invalidates in-flight refills/checks of older ones. */
+    private final java.util.concurrent.atomic.AtomicLong searchGeneration =
+            new java.util.concurrent.atomic.AtomicLong();
+
+    private boolean isStale(long generation) {
+        return generation != searchGeneration.get();
+    }
+
+    /**
+     * Bounded pool for existence stats: 2 workers, small queue, abort on
+     * overflow — never an unbounded backlog of blocked network checks.
+     */
+    private final ExecutorService existencePool = new java.util.concurrent.ThreadPoolExecutor(
+            2, 2, 0L, TimeUnit.MILLISECONDS,
+            new java.util.concurrent.ArrayBlockingQueue<Runnable>(64),
             new ThreadFactory() {
                 @Override
                 public Thread newThread(Runnable r) {
@@ -174,14 +177,13 @@ public class LuceneSearchService implements SearchService {
             });
 
     private static final class CachedVerdict {
-        final boolean ghost;
         final long expiryMillis;
-        CachedVerdict(boolean ghost, long expiryMillis) {
-            this.ghost = ghost;
+        CachedVerdict(long expiryMillis) {
             this.expiryMillis = expiryMillis;
         }
     }
 
+    /** Only confirmed ghosts are cached — aliveness is always re-checked. */
     private final Map<String, CachedVerdict> verdictCache =
             new java.util.concurrent.ConcurrentHashMap<>();
     /** Normalized source-root scope → wall time when probing may resume. */
@@ -198,12 +200,14 @@ public class LuceneSearchService implements SearchService {
     });
 
     /**
-     * Paths already queued for purge — repeated searches must not pile up
-     * redundant batches while a purge is in flight. Entries are removed when
-     * their batch finishes so a failed purge can be re-detected later.
+     * Bounded merge-set of paths awaiting purge plus a single-flight drain
+     * flag: repeated searches coalesce into the same backlog, and at most
+     * one drain task is ever queued/running — no unbounded task pile-up.
      */
-    private final Set<String> pendingGhostPaths =
-            Collections.synchronizedSet(new HashSet<>());
+    private final Set<String> ghostDrainSet =
+            Collections.synchronizedSet(new java.util.LinkedHashSet<String>());
+    private final java.util.concurrent.atomic.AtomicBoolean ghostDrainActive =
+            new java.util.concurrent.atomic.AtomicBoolean();
 
     public LuceneSearchService(Path indexDir) throws IOException {
         this(indexDir, new IndexSettings());
@@ -473,6 +477,10 @@ public class LuceneSearchService implements SearchService {
     @Override
     public SearchOutcome searchDetailed(SearchRequest request) {
         List<SearchResult> out = new ArrayList<>();
+        // Bumping the generation at entry invalidates every in-flight refill
+        // and existence check of older searches — including blank/cleared
+        // queries, which is exactly what "input changed" must signal.
+        long generation = searchGeneration.incrementAndGet();
         if (request == null) return new SearchOutcome(out, TriState.FALSE);
 
         String rawQuery = request.query == null ? "" : request.query.trim();
@@ -484,6 +492,7 @@ public class LuceneSearchService implements SearchService {
         MatchMode matchMode = request.matchMode == null ? MatchMode.FUZZY : request.matchMode;
 
         RefillState st = new RefillState();
+        st.generation = generation;
         String scopedDir;
         try {
             scopedDir = resolveScopedDirectory(request.directoryPath, st);
@@ -554,7 +563,7 @@ public class LuceneSearchService implements SearchService {
                 }
             }
             enqueueGhostPurge(st.ghosts);
-            return new SearchOutcome(out, hasMore);
+            return new SearchOutcome(out, hasMore, st.hadUncertain);
         } catch (SearchException ex) {
             throw ex;
         } catch (ParseException ex) {
@@ -611,7 +620,7 @@ public class LuceneSearchService implements SearchService {
 
         // List 2: content-only hits fill the remaining quota; MUST_NOT keeps
         // the lists disjoint so name+content docs live only in list 1.
-        if (out.size() < fetchLimit && contentQ != null && !st.budgetExhausted) {
+        if (out.size() < fetchLimit && contentQ != null && !isStale(st.generation)) {
             BooleanQuery.Builder contentRoot = new BooleanQuery.Builder();
             contentRoot.add(contentQ, BooleanClause.Occur.MUST);
             contentRoot.add(nameCond, BooleanClause.Occur.MUST_NOT);
@@ -635,25 +644,27 @@ public class LuceneSearchService implements SearchService {
     /**
      * Reads candidates for one query branch via `searchAfter` cursor on the
      * caller's snapshot, materializing verified results into `out` until it
-     * reaches targetSize, the branch tail is observed (a page came back
-     * short), or the check budget is spent. Returns true only when the tail
-     * was observed — the caller's hasMore verdict depends on it.
+     * reaches targetSize or the branch tail is observed (a page came back
+     * short). The cursor always advances to the last RAW hit of each page —
+     * filtered ghosts still move it forward, so progress is guaranteed.
+     * Returns true only when the tail was observed; a stale (superseded)
+     * search returns false and its caller reports UNKNOWN rather than a
+     * fabricated verdict.
      */
     private boolean collectValid(IndexSearcher searcher, List<SearchResult> out, Query query,
                                  int targetSize, Query userQuery, List<Query> nameClauses,
                                  Query nameQ, Query contentQ, boolean tierSort,
                                  RefillState st) throws IOException {
         ScoreDoc after = null;
-        while (out.size() < targetSize && !st.budgetExhausted) {
-            int page = Math.min(Math.max(targetSize - out.size(), 1), REFILL_PAGE_MAX);
-            TopDocs top = searcher.searchAfter(after, query, page);
+        while (out.size() < targetSize && !isStale(st.generation)) {
+            TopDocs top = searcher.searchAfter(after, query, REFILL_PAGE);
             if (top.scoreDocs.length == 0) {
                 return true; // no hits left — the whole branch was examined
             }
             appendResults(searcher, out, top, userQuery, nameClauses, nameQ, contentQ,
                     tierSort, st);
             after = top.scoreDocs[top.scoreDocs.length - 1];
-            if (top.scoreDocs.length < page) {
+            if (top.scoreDocs.length < REFILL_PAGE) {
                 return true; // short page — tail reached
             }
         }
@@ -662,8 +673,8 @@ public class LuceneSearchService implements SearchService {
 
     /**
      * hasMore verdict after ghost-filtered refill: more verified hits than the
-     * page → TRUE; every branch fully examined → FALSE; the budget stopped us
-     * before a conclusion → UNKNOWN; otherwise unexamined hits remain → TRUE.
+     * page → TRUE; every branch fully examined → FALSE; anything else (the
+     * search was superseded before a conclusion could be proven) → UNKNOWN.
      */
     private static TriState resolveHasMore(int resultCount, int limit,
                                            boolean allBranchesExhausted, RefillState st) {
@@ -673,10 +684,7 @@ public class LuceneSearchService implements SearchService {
         if (allBranchesExhausted) {
             return TriState.FALSE;
         }
-        if (st.budgetExhausted) {
-            return TriState.UNKNOWN;
-        }
-        return TriState.TRUE;
+        return TriState.UNKNOWN;
     }
 
     /**
@@ -725,35 +733,41 @@ public class LuceneSearchService implements SearchService {
     }
 
     /**
-     * Timed, source-bounded existence check. Verdicts are cached briefly;
-     * the stat itself runs on the bounded existence pool and is awaited only
-     * for the caller's remaining budget — a timeout is UNCERTAIN (keep), and
-     * repeated timeouts/unreachable roots back the whole source off.
+     * Source-bounded existence check on the bounded pool, awaited at most
+     * PER_CHECK_TIMEOUT_MS — sequential per search, so at most one stat is
+     * in flight per query and the pool queue can never pile up. Confirmed
+     * ghosts are cached briefly; timeouts, unreachable roots, permission or
+     * I/O-indeterminate results are UNCERTAIN: the hit is kept, the source
+     * backed off, and the outcome flagged unverified rather than guessed.
      */
     private boolean isGhost(String pathStr, RefillState st) {
         long now = System.currentTimeMillis();
         CachedVerdict v = verdictCache.get(pathStr);
         if (v != null && v.expiryMillis > now) {
-            return v.ghost;
+            return true; // only confirmed ghosts are ever cached
         }
         Path root = containingRoot(pathStr, rootsFor(st));
         String rootScope = (root == null) ? null : PathScope.normalizeIndexedPath(root);
         Long retryAt = rootScope == null ? null : rootRetryAt.get(rootScope);
         if (retryAt != null && retryAt > now) {
+            st.hadUncertain = true;
             return false; // source recently unreachable → unchecked keep
-        }
-        long remaining = st.remainingNanos();
-        if (remaining <= 0) {
-            return false; // caller's loop flags budgetExhausted next iteration
         }
         PathVerdict verdict;
         final String stop = rootScope;
+        java.util.concurrent.Future<PathVerdict> f;
         try {
-            verdict = existencePool.submit(() -> classifyPath(pathStr, stop))
-                    .get(remaining, TimeUnit.NANOSECONDS);
+            f = existencePool.submit(() -> classifyPath(pathStr, stop));
+        } catch (RuntimeException rejected) {
+            st.hadUncertain = true;
+            return false; // bounded queue full / pool down → unchecked keep
+        }
+        try {
+            verdict = f.get(PER_CHECK_TIMEOUT_MS, TimeUnit.MILLISECONDS);
         } catch (java.util.concurrent.TimeoutException te) {
+            f.cancel(true);
             verdict = PathVerdict.UNCERTAIN;
-            if (rootScope != null && remaining > BACKOFF_MIN_REMAINING_MS * 1_000_000L) {
+            if (rootScope != null) {
                 rootRetryAt.put(rootScope, now + ROOT_BACKOFF_MS);
             }
         } catch (InterruptedException ie) {
@@ -764,7 +778,7 @@ public class LuceneSearchService implements SearchService {
         }
         switch (verdict) {
             case GHOST:
-                cacheVerdict(pathStr, true, now);
+                cacheVerdict(pathStr, now);
                 return true;
             case ALIVE:
                 // Never cache ALIVE — a file deleted between searches would be
@@ -774,17 +788,19 @@ public class LuceneSearchService implements SearchService {
                 if (rootScope != null) {
                     rootRetryAt.put(rootScope, now + ROOT_BACKOFF_MS);
                 }
+                st.hadUncertain = true;
                 return false;
             default:
-                return false; // UNCERTAIN → keep
+                st.hadUncertain = true;
+                return false; // UNCERTAIN → kept but reported unverified
         }
     }
 
-    private void cacheVerdict(String pathStr, boolean ghost, long now) {
+    private void cacheVerdict(String pathStr, long now) {
         if (verdictCache.size() >= VERDICT_CACHE_MAX) {
             verdictCache.clear();
         }
-        verdictCache.put(pathStr, new CachedVerdict(ghost, now + VERDICT_TTL_MS));
+        verdictCache.put(pathStr, new CachedVerdict(now + VERDICT_TTL_MS));
     }
 
     private List<Path> rootsFor(RefillState st) {
@@ -833,63 +849,102 @@ public class LuceneSearchService implements SearchService {
     }
 
     /**
-     * Batch-deletes confirmed ghosts off the search path through the shared
-     * write lock, then refreshes the reader. Every path is re-verified
-     * against its source bound right before deletion so a file that came
-     * back (or a source that went dark) is never purged on a stale verdict.
+     * Merges confirmed ghosts into a bounded backlog and schedules one
+     * single-flight drain. The set is deduplicated and capacity-capped, the
+     * drain task exists at most once, and each batch writes through the
+     * shared coordinator — no unbounded queue of purge tasks.
      */
     private void enqueueGhostPurge(Set<String> ghosts) {
         if (ghosts == null || ghosts.isEmpty() || closed) {
             return;
         }
-        final List<Path> batch = new ArrayList<>(ghosts.size());
-        for (String g : ghosts) {
-            try {
-                if (pendingGhostPaths.add(g)) {
-                    batch.add(Paths.get(g));
+        synchronized (ghostDrainSet) {
+            for (String g : ghosts) {
+                if (ghostDrainSet.size() >= GHOST_BUFFER_CAP) {
+                    break; // backlog full — leftovers are re-detected next search
                 }
-            } catch (RuntimeException ignore) {
-                pendingGhostPaths.remove(g);
+                ghostDrainSet.add(g);
             }
         }
-        if (batch.isEmpty()) {
+        scheduleGhostDrain();
+    }
+
+    private void scheduleGhostDrain() {
+        if (closed || !ghostDrainActive.compareAndSet(false, true)) {
             return;
         }
         try {
-            ghostCleaner.submit(() -> {
-                try {
-                    IndexWriteCoordinator.run(() -> {
-                        List<Path> roots;
-                        try {
-                            roots = sourceRootProvider.loadRoots();
-                        } catch (Exception e) {
-                            roots = Collections.emptyList();
-                        }
-                        try (LuceneIndexer idx = new LuceneIndexer(indexDir, indexSettings)) {
-                            for (Path p : batch) {
-                                String s = p.toString();
-                                verdictCache.remove(s);
-                                if (isDefinitelyDeleted(s, containingRoot(s, roots))) {
-                                    idx.deletePath(p);
-                                }
-                            }
-                            idx.commit();
-                        } catch (IOException | RuntimeException e) {
-                            log.debug("ghost purge write failed: {}", e.toString());
-                        }
-                    });
-                    try {
-                        searcherManager.maybeRefresh();
-                    } catch (IOException | RuntimeException e) {
-                        log.debug("post-purge refresh failed: {}", e.toString());
-                    }
-                } finally {
-                    pendingGhostPaths.removeAll(ghosts);
-                }
-            });
+            ghostCleaner.submit(this::drainGhostQueue);
         } catch (RuntimeException rejected) {
-            pendingGhostPaths.removeAll(ghosts);
-            // Service is closing; ghosts get re-detected by the next search.
+            ghostDrainActive.set(false);
+        }
+    }
+
+    private void drainGhostQueue() {
+        try {
+            while (true) {
+                List<String> batch = new ArrayList<>(GHOST_PURGE_BATCH);
+                synchronized (ghostDrainSet) {
+                    java.util.Iterator<String> it = ghostDrainSet.iterator();
+                    while (it.hasNext() && batch.size() < GHOST_PURGE_BATCH) {
+                        batch.add(it.next());
+                        it.remove();
+                    }
+                }
+                if (batch.isEmpty()) {
+                    return;
+                }
+                purgeGhostBatch(batch);
+            }
+        } finally {
+            ghostDrainActive.set(false);
+            synchronized (ghostDrainSet) {
+                if (!ghostDrainSet.isEmpty()) {
+                    scheduleGhostDrain();
+                }
+            }
+        }
+    }
+
+    /**
+     * One batch write under the shared coordinator. The closed flag and each
+     * file's aliveness are re-checked under the lock, so a service that was
+     * closed (or a file that came back) is never written against a stale
+     * verdict — expired cleanup cannot delete newer index state.
+     */
+    private void purgeGhostBatch(List<String> batch) {
+        IndexWriteCoordinator.run(() -> {
+            if (closed) {
+                return;
+            }
+            List<Path> roots;
+            try {
+                roots = sourceRootProvider.loadRoots();
+            } catch (Exception e) {
+                roots = Collections.emptyList();
+            }
+            try (LuceneIndexer idx = new LuceneIndexer(indexDir, indexSettings)) {
+                for (String s : batch) {
+                    verdictCache.remove(s);
+                    if (closed) {
+                        return;
+                    }
+                    if (isDefinitelyDeleted(s, containingRoot(s, roots))) {
+                        try {
+                            idx.deletePath(Paths.get(s));
+                        } catch (RuntimeException ignore) {
+                        }
+                    }
+                }
+                idx.commit();
+            } catch (IOException | RuntimeException e) {
+                log.debug("ghost purge write failed: {}", e.toString());
+            }
+        });
+        try {
+            searcherManager.maybeRefresh();
+        } catch (IOException | RuntimeException e) {
+            log.debug("post-purge refresh failed: {}", e.toString());
         }
     }
 
@@ -911,21 +966,16 @@ public class LuceneSearchService implements SearchService {
         Query explainQuery = (userQuery != null || (nameClauses != null && !nameClauses.isEmpty()))
                 ? buildExplainQuery(userQuery, nameClauses) : null;
         for (ScoreDoc sd : top.scoreDocs) {
+            if (st != null && isStale(st.generation)) {
+                break; // a newer search superseded this one — stop spending I/O
+            }
             Document d = searcher.doc(sd.doc);
             boolean isFolder = KIND_FOLDER.equalsIgnoreCase(d.get(FIELD_KIND));
             String name = d.get(FIELD_NAME);
             String path = d.get(FIELD_PATH);
             if (st != null && path != null) {
-                if (!st.seen.add(path)) {
-                    continue; // already appended or already classified ghost
-                }
-                if (!st.canCheckMore()) {
-                    st.budgetExhausted = true;
-                    break;
-                }
-                st.candidatesLeft--;
                 if (isGhost(path, st)) {
-                    st.ghosts.add(path);
+                    st.addGhost(path);
                     continue;
                 }
             }
@@ -1127,17 +1177,25 @@ public class LuceneSearchService implements SearchService {
             scopeSupportCache.clear();
             scopeListenerKeys.clear();
         }
-        // Wait briefly for a purge already in flight so no Lucene writer or
-        // directory handle outlives the service (temp-index tests on Windows
-        // cannot delete a directory still held open).
+        // Cancel pending work: drop the purge backlog, stop the drain and the
+        // existence pool. Awaiting an in-flight purge must never happen on the
+        // EDT — the purge thread is a daemon and re-checks `closed` under the
+        // write lock before every delete, so it exits on its own shortly.
+        synchronized (ghostDrainSet) {
+            ghostDrainSet.clear();
+        }
         ghostCleaner.shutdown();
         existencePool.shutdownNow();
-        try {
-            if (!ghostCleaner.awaitTermination(2, TimeUnit.SECONDS)) {
+        if (!javax.swing.SwingUtilities.isEventDispatchThread()) {
+            try {
+                if (!ghostCleaner.awaitTermination(2, TimeUnit.SECONDS)) {
+                    ghostCleaner.shutdownNow();
+                }
+            } catch (InterruptedException e) {
+                Thread.currentThread().interrupt();
                 ghostCleaner.shutdownNow();
             }
-        } catch (InterruptedException e) {
-            Thread.currentThread().interrupt();
+        } else {
             ghostCleaner.shutdownNow();
         }
         try {

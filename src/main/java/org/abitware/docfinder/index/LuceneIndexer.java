@@ -70,6 +70,31 @@ public class LuceneIndexer implements AutoCloseable {
 
     private static final Map<String, FailedFileState> FAILED_CONTENT_CACHE = new ConcurrentHashMap<>();
 
+    /**
+     * Shared bounded pool for Tika extraction. At most PARSER_THREADS workers
+     * exist for the whole JVM and the submission queue is bounded — a parse
+     * that ignores interruption can occupy one slot, but slots never spawn
+     * replacements the way per-file single-thread executors did. Idle workers
+     * expire so the thread count provably returns to zero after indexing.
+     * Saturated pool → the file is recorded as failed and indexed without
+     * content instead of queueing unboundedly.
+     */
+    private static final int PARSER_THREADS = 2;
+    private static final int PARSER_QUEUE = 64;
+    private static final java.util.concurrent.ThreadPoolExecutor PARSER_POOL =
+            new java.util.concurrent.ThreadPoolExecutor(
+                    PARSER_THREADS, PARSER_THREADS,
+                    60L, TimeUnit.SECONDS,
+                    new java.util.concurrent.ArrayBlockingQueue<Runnable>(PARSER_QUEUE),
+                    r -> {
+                        Thread t = new Thread(r, "tika-extract");
+                        t.setDaemon(true);
+                        return t;
+                    });
+    static {
+        PARSER_POOL.allowCoreThreadTimeOut(true);
+    }
+
     private static class FailedFileState {
         final long size;
         final long mtime;
@@ -373,13 +398,9 @@ public class LuceneIndexer implements AutoCloseable {
     }
 
     private String extractTextReadOnly(Path file, BasicFileAttributes attrs) {
-        ExecutorService es = Executors.newSingleThreadExecutor(r -> {
-            Thread t = new Thread(r, "tika-extract");
-            t.setDaemon(true);
-            return t;
-        });
+        Future<String> fut;
         try {
-            Future<String> fut = es.submit(() -> {
+            fut = PARSER_POOL.submit(() -> {
                 try (InputStream is = Files.newInputStream(file, StandardOpenOption.READ)) {
                     Metadata md = new Metadata();
                     md.set(org.apache.tika.metadata.TikaCoreProperties.RESOURCE_NAME_KEY, file.getFileName().toString());
@@ -405,13 +426,23 @@ public class LuceneIndexer implements AutoCloseable {
                     }
                 }
             });
+        } catch (java.util.concurrent.RejectedExecutionException rex) {
+            // Pool saturated — record and index without content rather than
+            // queuing unboundedly or spawning a replacement thread.
+            log.warn("Tika parser pool saturated; content skipped for {}", file);
+            rememberFailedExtraction(file, attrs);
+            return "";
+        }
+        try {
             return fut.get(settings.parseTimeoutSec, TimeUnit.SECONDS);
         } catch (Throwable t) {
+            // Cancel first: an unstarted task is removed from the queue; a
+            // running one gets interrupted (it keeps a slot if uninterruptible,
+            // but the slot count stays bounded by the pool cap).
+            fut.cancel(true);
             log.warn("Extract text timeout or error: {}, exception: {}", file, t.getMessage());
             rememberFailedExtraction(file, attrs);
             return "";
-        } finally {
-            es.shutdownNow();
         }
     }
 

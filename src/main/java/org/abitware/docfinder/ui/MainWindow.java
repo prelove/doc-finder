@@ -2105,6 +2105,11 @@ public class MainWindow extends JFrame implements MenuBarPanel.MenuListener {
 
 	private void populateResults(String query, List<SearchResult> list, long elapsedMs,
 			org.abitware.docfinder.search.TriState hasMore) {
+		populateResults(query, list, elapsedMs, hasMore, false);
+	}
+
+	private void populateResults(String query, List<SearchResult> list, long elapsedMs,
+			org.abitware.docfinder.search.TriState hasMore, boolean hasUnverified) {
 
 		if (list == null) {
 
@@ -2149,6 +2154,12 @@ public class MainWindow extends JFrame implements MenuBarPanel.MenuListener {
 				statusLabel.setText(String.format("Showing first %d results  |  %d ms", list.size(), elapsedMs));
 			} else {
 				statusLabel.setText(String.format("Results: %d  |  %d ms", list.size(), elapsedMs));
+			}
+			if (hasUnverified) {
+				// Some hits could not be existence-checked (offline source or
+				// permission/timeout indeterminate) — say so explicitly instead
+				// of letting the page look fully verified.
+				statusLabel.setText(statusLabel.getText() + "  |  some results unverified (source offline?)");
 			}
 
 			resultTable.setRowSelectionInterval(0, 0);
@@ -2307,7 +2318,8 @@ public class MainWindow extends JFrame implements MenuBarPanel.MenuListener {
 
 			org.abitware.docfinder.search.TriState hasMore = (outcome == null)
 					? org.abitware.docfinder.search.TriState.UNKNOWN : outcome.hasMore;
-			populateResults(query, list, elapsed, hasMore);
+			boolean hasUnverified = outcome != null && outcome.hasUnverified;
+			populateResults(query, list, elapsed, hasMore, hasUnverified);
 
 		}
 

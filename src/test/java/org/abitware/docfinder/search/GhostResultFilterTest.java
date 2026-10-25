@@ -170,9 +170,10 @@ class GhostResultFilterTest {
     }
 
     @Test
-    void shouldReturnUnknownWhenAllEarlyCandidatesAreGhosts() throws Exception {
-        // 505 deleted hits: past the 500-candidate cap the budget must stop
-        // the walk instead of paging forever — results empty, verdict UNKNOWN
+    void shouldReturnFalseWhenEveryCandidateIsAGhost() throws Exception {
+        // 505 deleted hits — beyond the old candidate-cap semantics. The
+        // cursor must now walk the entire branch to the tail and report
+        // proven exhaustion (FALSE), not stop early on a budget.
         int n = 505;
         for (int i = 0; i < n; i++) {
             write(source.resolve(String.format("capghost-%03d.txt", i)), "lorem");
@@ -182,11 +183,40 @@ class GhostResultFilterTest {
             Files.delete(source.resolve(String.format("capghost-%03d.txt", i)));
         }
 
-        SearchOutcome o = detailed("capghost", 50);
+        // preemptive watchdog: a cursor regression would loop forever, so the
+        // assertion runs on a separate thread and fails fast instead of
+        // hanging the whole suite
+        SearchOutcome o = assertTimeoutPreemptively(java.time.Duration.ofSeconds(60),
+                () -> detailed("capghost", 50));
         assertTrue(o.results.isEmpty(),
-                "no displayable result may survive an all-ghost head");
-        assertEquals(TriState.UNKNOWN, o.hasMore,
-                "budget spent before the tail → UNKNOWN, never a fake FALSE");
+                "no displayable result may survive an all-ghost candidate list");
+        assertEquals(TriState.FALSE, o.hasMore,
+                "whole branch examined → FALSE, never a fabricated verdict");
+    }
+
+    @Test
+    void shouldWalkPast1024GhostsToReachValidTail() throws Exception {
+        // Regression from the handoff: the first 1024 hits are ghosts and
+        // valid hits sit behind them — the cursor must keep advancing rather
+        // than re-reading the same top-N window, and refill must reach the
+        // valid tail (fewer than limit → FALSE).
+        int ghosts = 1024;
+        for (int i = 0; i < ghosts; i++) {
+            write(source.resolve(String.format("zghost-%04d.txt", i)), "lorem");
+        }
+        write(source.resolve("tail-a.txt"), "lorem");
+        write(source.resolve("tail-b.txt"), "lorem");
+        write(source.resolve("tail-c.txt"), "lorem");
+        indexAndOpen();
+        for (int i = 0; i < ghosts; i++) {
+            Files.delete(source.resolve(String.format("zghost-%04d.txt", i)));
+        }
+
+        SearchOutcome o = assertTimeoutPreemptively(java.time.Duration.ofSeconds(60),
+                () -> detailed("lorem", 50));
+        assertEquals(3, o.results.size(), "refill must reach the valid tail past 1024 ghosts");
+        assertEquals(TriState.FALSE, o.hasMore,
+                "every candidate examined: 3 valid < limit → FALSE");
     }
 
     @Test
@@ -206,6 +236,69 @@ class GhostResultFilterTest {
         List<String> ns = names(detailed("inner", 50).results);
         assertTrue(ns.isEmpty(),
                 "file whose deleted parent chain reaches a live root must be dropped");
+    }
+
+    @Test
+    void shouldFlagUnverifiedWhenSourceRootGoesDark() throws Exception {
+        write(source.resolve("dark-hit.txt"), "lorem");
+        indexAndOpen();
+
+        // Whole source root vanishes (share unmounted). The file can neither
+        // be proven deleted nor verified alive — it must be KEPT and the
+        // outcome must explicitly flag the uncertainty.
+        deleteRecursively(source);
+        assertFalse(Files.exists(source));
+
+        SearchOutcome o = detailed("dark", 50);
+        assertEquals(1, o.results.size(),
+                "unverifiable hits are kept, never silently dropped or deleted");
+        assertTrue(o.hasUnverified,
+                "unverifiable hits must surface the explicit unverified flag");
+
+        waitForPurge();
+        SearchOutcome again = detailed("dark", 50);
+        assertEquals(1, again.results.size(),
+                "offline source entries must never be purged from the index");
+    }
+
+    @Test
+    void shouldNotPurgeFileRecreatedBeforePurgeLock() throws Exception {
+        write(source.resolve("revived.txt"), "lorem");
+        indexAndOpen();
+        Files.delete(source.resolve("revived.txt"));
+
+        // Hold the write lock across the search that detects the ghost, then
+        // recreate the file before the purge can acquire it — the queued
+        // purge must re-verify under the lock and keep the revived file.
+        org.abitware.docfinder.index.IndexWriteCoordinator.run(() -> {
+            SearchOutcome o = detailed("revived", 50);
+            assertTrue(o.results.isEmpty(), "deleted file is filtered now");
+            try {
+                write(source.resolve("revived.txt"), "lorem");
+            } catch (Exception e) {
+                throw new RuntimeException(e);
+            }
+        });
+
+        waitForPurge();
+        SearchOutcome after = detailed("revived", 50);
+        assertEquals(1, after.results.size(),
+                "a file recreated while the purge waited on the write lock must survive");
+    }
+
+    private static void deleteRecursively(Path p) throws Exception {
+        if (!Files.exists(p)) {
+            return;
+        }
+        try (java.util.stream.Stream<Path> s = Files.walk(p)) {
+            s.sorted(java.util.Comparator.reverseOrder())
+                    .forEach(f -> {
+                        try {
+                            Files.delete(f);
+                        } catch (Exception ignore) {
+                        }
+                    });
+        }
     }
 
     @Test

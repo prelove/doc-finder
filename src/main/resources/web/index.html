@@ -1055,6 +1055,11 @@
         var countText = (data.hasMore === true)
             ? 'Showing first ' + currentResults.length + ' results'
             : currentResults.length + ' result(s)';
+        // Some hits could not be existence-checked (offline source or
+        // permission/timeout indeterminate) — say so explicitly.
+        if (data.unverified === true) {
+            countText += ' — some results unverified (source offline?)';
+        }
         statusBar.textContent = countText + ' in ' + elapsed + ' ms' + scopeNote;
       })
       .catch(function(e) {

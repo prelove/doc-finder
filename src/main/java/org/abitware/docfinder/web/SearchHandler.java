@@ -139,6 +139,11 @@ class SearchHandler implements HttpHandler {
             boolean more = outcome.hasMore == TriState.TRUE;
             sb.append(",\"hasMore\":").append(more).append(",\"truncated\":").append(more);
         }
+        // Entries that could not be existence-checked (offline source,
+        // permission/timeout indeterminate) are kept but explicitly flagged.
+        if (outcome.hasUnverified) {
+            sb.append(",\"unverified\":true");
+        }
         sb.append(",\"results\":[");
         for (int i = 0; i < results.size(); i++) {
             if (i > 0) sb.append(',');

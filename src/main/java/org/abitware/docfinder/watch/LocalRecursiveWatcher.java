@@ -34,7 +34,20 @@ public class LocalRecursiveWatcher implements AutoCloseable {
     public interface Listener {
         // type: "CREATE" | "MODIFY" | "DELETE"
         void onChange(String type, Path path);
+
+        /**
+         * Called when events may have been lost (a WatchService OVERFLOW or a
+         * saturated registration backlog). The directory's containing source
+         * should be treated as reconciliation-needed rather than the gap
+         * being silently dropped.
+         */
+        default void onOverflow(Path dir) {}
     }
+
+    /** Registration tasks queued behind the single bootstrap worker. */
+    private static final int BOOTSTRAP_QUEUE_CAP = 256;
+    /** Debounced paths held at once; beyond this, events fire unbatched. */
+    private static final int MAX_DEBOUNCED = 20_000;
 
     private final List<Path> roots;
     private final Listener listener;
@@ -45,11 +58,27 @@ public class LocalRecursiveWatcher implements AutoCloseable {
         t.setDaemon(true);
         return t;
     });
-    private final ExecutorService bootstrap = Executors.newSingleThreadExecutor(r -> {
-        Thread t = new Thread(r, "docfinder-watch-bootstrap");
-        t.setDaemon(true);
-        return t;
-    });
+    /**
+     * Bounded registration queue: a full queue reports the directory as a
+     * reconcile-needed overflow instead of growing a backlog without bound.
+     */
+    private final java.util.concurrent.ThreadPoolExecutor bootstrap =
+            new java.util.concurrent.ThreadPoolExecutor(1, 1,
+                    0L, TimeUnit.MILLISECONDS,
+                    new java.util.concurrent.ArrayBlockingQueue<Runnable>(BOOTSTRAP_QUEUE_CAP),
+                    r -> {
+                        Thread t = new Thread(r, "docfinder-watch-bootstrap");
+                        t.setDaemon(true);
+                        return t;
+                    },
+                    new java.util.concurrent.RejectedExecutionHandler() {
+                        @Override
+                        public void rejectedExecution(Runnable r, java.util.concurrent.ThreadPoolExecutor e) {
+                            if (r instanceof BootstrapTask) {
+                                fireOverflow(((BootstrapTask) r).dir);
+                            }
+                        }
+                    });
     private final ScheduledExecutorService debouncer = Executors.newSingleThreadScheduledExecutor(r -> {
         Thread t = new Thread(r, "docfinder-watch-debounce");
         t.setDaemon(true);
@@ -57,6 +86,23 @@ public class LocalRecursiveWatcher implements AutoCloseable {
     });
     private final Map<Path, ScheduledFuture<?>> pending = new ConcurrentHashMap<>();
     private volatile boolean running = false;
+
+    /** Directory registration task carrying its dir so a rejection can be attributed. */
+    private final class BootstrapTask implements Runnable {
+        final Path dir;
+        BootstrapTask(Path dir) { this.dir = dir; }
+        @Override
+        public void run() {
+            registerExistingSubDirs(dir);
+        }
+    }
+
+    private void fireOverflow(Path dir) {
+        try {
+            listener.onOverflow(dir);
+        } catch (Throwable ignore) {
+        }
+    }
 
     public LocalRecursiveWatcher(List<Path> roots, Listener listener) throws IOException {
         this.roots = new ArrayList<>(roots);
@@ -79,7 +125,7 @@ public class LocalRecursiveWatcher implements AutoCloseable {
                     continue;
                 }
                 registerDir(root);
-                bootstrap.submit(() -> registerExistingSubDirs(root));
+                bootstrap.submit(new BootstrapTask(root));
             } catch (Throwable t) {
                 log.warn("Watch startup register root error: {}, exception: {}", root, t.getMessage());
             }
@@ -126,13 +172,16 @@ public class LocalRecursiveWatcher implements AutoCloseable {
             }
             Path dir = key2dir.get(key);
             if (dir == null) {
-                key.reset();
+                if (!key.reset()) {
+                    key2dir.remove(key); // dead key — drop its registration entry
+                }
                 continue;
             }
 
             for (WatchEvent<?> ev : key.pollEvents()) {
                 WatchEvent.Kind<?> kind = ev.kind();
                 if (kind == OVERFLOW) {
+                    fireOverflow(dir); // events lost — source needs reconciliation
                     continue;
                 }
 
@@ -144,7 +193,7 @@ public class LocalRecursiveWatcher implements AutoCloseable {
                 if (kind == ENTRY_CREATE) {
                     try {
                         if (Files.isDirectory(child)) {
-                            bootstrap.submit(() -> registerExistingSubDirs(child));
+                            bootstrap.submit(new BootstrapTask(child));
                         }
                     } catch (Exception ignore) {
                     }
@@ -153,17 +202,32 @@ public class LocalRecursiveWatcher implements AutoCloseable {
                 // 去抖：同一路径 500ms 合并，只保留最后一次类型
                 debounce(child, kind);
             }
-            key.reset();
+            if (!key.reset()) {
+                // Directory became inaccessible — the key can no longer be
+                // re-armed, so drop it instead of holding a dead registration.
+                key2dir.remove(key);
+            }
         }
     }
 
     private void debounce(Path child, WatchEvent.Kind<?> kind) {
+        String type = (kind == ENTRY_DELETE) ? "DELETE" : (kind == ENTRY_CREATE) ? "CREATE" : "MODIFY";
+
         ScheduledFuture<?> old = pending.get(child);
         if (old != null) {
             old.cancel(false);
         }
 
-        String type = (kind == ENTRY_DELETE) ? "DELETE" : (kind == ENTRY_CREATE) ? "CREATE" : "MODIFY";
+        if (pending.size() >= MAX_DEBOUNCED && !pending.containsKey(child)) {
+            // Debounce map at capacity: deliver immediately rather than
+            // dropping the event or growing the map without bound. The
+            // listener callback is a cheap map merge.
+            try {
+                listener.onChange(type, child);
+            } catch (Throwable ignore) {
+            }
+            return;
+        }
 
         pending.put(child, debouncer.schedule(() -> {
             pending.remove(child);
