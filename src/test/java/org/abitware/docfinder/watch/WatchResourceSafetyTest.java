@@ -114,6 +114,8 @@ class WatchResourceSafetyTest {
 
         assertEquals(0L, second.get().scannedFiles,
                 "a second poll must be skipped while one is in flight");
+        assertFalse(second.get().accepted, "a concurrent request must report rejection explicitly");
+        assertFalse(second.get().successful, "a rejected round must never claim successful completion");
     }
 
     @Test

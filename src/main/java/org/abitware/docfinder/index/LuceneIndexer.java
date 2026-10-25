@@ -138,6 +138,138 @@ public class LuceneIndexer implements AutoCloseable {
         return maxEvictedUpsertNs;
     }
 
+    /* ----------------- 锁外预构建 / 锁内代次保护应用 ----------------- */
+
+    /**
+     * A document fully prepared OUTSIDE the shared write lock — attrs read
+     * and content extraction already done — carrying the nanoTime baseline
+     * captured BEFORE any file I/O. {@link #applyPrepared} refuses it when
+     * a newer upsert landed meanwhile, so a stale prepare can never
+     * clobber a fresher record.
+     */
+    public static final class PreparedUpsert {
+        final String pathKey;
+        final Document document;
+        final long preparedAt;
+
+        private PreparedUpsert(String pathKey, Document document, long preparedAt) {
+            this.pathKey = pathKey;
+            this.document = document;
+            this.preparedAt = preparedAt;
+        }
+    }
+
+    /**
+     * Whether {@code path} should be indexed for the given index dir:
+     * exists on disk and is not excluded. Lock-free — safe to call from
+     * scan/diff phases before committing to a prepare.
+     */
+    public static boolean shouldIndexPath(Path path, Path indexDir, IndexSettings settings) {
+        if (path == null) {
+            return false;
+        }
+        try {
+            if (!Files.exists(path)) {
+                return false;
+            }
+        } catch (Throwable t) {
+            return false;
+        }
+        Path workDir = java.nio.file.Paths.get(System.getProperty("user.dir"))
+                .toAbsolutePath().normalize();
+        return !isExcluded(path, indexDir, settings, workDir);
+    }
+
+    /**
+     * Whether a file whose content extraction previously failed should be
+     * retried now — the size/mtime changed, or the failed-entry TTL window
+     * expired. False when there is no recorded failure (nothing to retry)
+     * or the identical file is still inside the skip window.
+     */
+    public static boolean contentRetryDue(Path path, long size, long mtime) {
+        if (path == null) {
+            return false;
+        }
+        FailedFileState failed = FAILED_CONTENT_CACHE.get(toPathKey(path));
+        if (failed == null) {
+            return false;
+        }
+        if (failed.size != size || failed.mtime != mtime) {
+            return true;
+        }
+        return System.currentTimeMillis() - failed.recordedAt > FAILED_RETRY_TTL_MS;
+    }
+
+    /**
+     * Builds the index document for {@code path} WITHOUT the write lock —
+     * the expensive part (attrs read, Tika extraction) happens here so the
+     * shared writer is held only for the {@link #applyPrepared} term swap.
+     * Returns {@code null} when the path is excluded or of a type never
+     * indexed — callers then converge to a delete. {@link NoSuchFileException}
+     * propagates: a known absence after CREATE/MODIFY converges to deletion.
+     */
+    public static PreparedUpsert prepareUpsert(Path path, Path indexDir, IndexSettings settings)
+            throws IOException {
+        if (path == null) {
+            return null;
+        }
+        // Baseline BEFORE the file I/O: any upsert during preparation is
+        // newer than this prepare and must supersede it at apply time.
+        long preparedAt = System.nanoTime();
+        BasicFileAttributes attrs = Files.readAttributes(path, BasicFileAttributes.class);
+        Path workDir = java.nio.file.Paths.get(System.getProperty("user.dir"))
+                .toAbsolutePath().normalize();
+        if (isExcluded(path, indexDir, settings, workDir)) {
+            return null;
+        }
+        Document doc = attrs.isDirectory()
+                ? buildDirDoc(path, attrs)
+                : buildFileDoc(path, attrs, settings);
+        if (doc == null) {
+            return null;
+        }
+        return new PreparedUpsert(Utils.normalizeForIndex(path), doc, preparedAt);
+    }
+
+    /**
+     * Applies a prepared document under the write coordinator. Returns
+     * false when an upsert newer than the preparation baseline already
+     * landed — the caller must abort the round rather than let a stale
+     * prepare overwrite fresher index state.
+     */
+    public boolean applyPrepared(PreparedUpsert prepared) throws IOException {
+        if (prepared == null) {
+            return false;
+        }
+        if (upsertedAt(prepared.pathKey) > prepared.preparedAt) {
+            return false;
+        }
+        writer.updateDocument(new Term("path", prepared.pathKey), prepared.document);
+        Tombstones.remove(prepared.pathKey);
+        recordUpsert(prepared.pathKey);
+        return true;
+    }
+
+    /**
+     * Deletes a path under the write coordinator and records its tombstone.
+     * Returns false only on a real write failure — the caller treats it as
+     * a superseded/failed change and aborts the round.
+     */
+    public boolean tryDeletePath(Path path) {
+        if (path == null) {
+            return true;
+        }
+        try {
+            String pathStr = Utils.normalizeForIndex(path);
+            writer.deleteDocuments(new Term("path", pathStr));
+            Tombstones.record(pathStr);
+            return true;
+        } catch (Throwable t) {
+            log.warn("Delete path error: {}, exception: {}", path, t.getMessage());
+            return false;
+        }
+    }
+
     /**
      * Shared bounded pool for Tika extraction. At most PARSER_THREADS workers
      * exist for the whole JVM and the submission queue is bounded — a parse
@@ -182,8 +314,9 @@ public class LuceneIndexer implements AutoCloseable {
         }
     }
 
-    /** Tika 解析器（自动探测） */
-    private final AutoDetectParser tikaParser = new AutoDetectParser();
+    /** Tika 解析器（自动探测）— shared: AutoDetectParser is thread-safe and
+     *  the static prepare path must parse without an indexer instance. */
+    private static final AutoDetectParser tikaParser = new AutoDetectParser();
 
     /** 索引目录、配置 */
     private final Path indexDir;
@@ -373,22 +506,7 @@ public class LuceneIndexer implements AutoCloseable {
     private void indexDirectory(IndexWriter writer, Path dir, BasicFileAttributes attrs) {
         try {
             String pathStr = Utils.normalizeForIndex(dir);
-            String name = dir.getFileName() == null ? dir.toString() : dir.getFileName().toString();
-
-            Document doc = new Document();
-            doc.add(new StringField("path", pathStr, Field.Store.YES));
-            doc.add(new StringField("path_scope", PathScope.normalizeIndexedPath(dir), Field.Store.NO));
-            doc.add(new TextField("name", name, Field.Store.YES));
-            doc.add(new StringField("name_raw", name.toLowerCase(Locale.ROOT), Field.Store.NO));
-            doc.add(new StringField("ext", "", Field.Store.YES));
-            doc.add(new StringField("kind", KIND_FOLDER, Field.Store.YES));
-            doc.add(new LongPoint("mtime_l", attrs.lastModifiedTime().toMillis()));
-            doc.add(new StoredField("mtime", attrs.lastModifiedTime().toMillis()));
-            doc.add(new StoredField("size", 0L));
-            doc.add(new StoredField("ctime", attrs.creationTime().toMillis()));
-            doc.add(new StoredField("atime", attrs.lastAccessTime().toMillis()));
-
-            writer.updateDocument(new Term("path", pathStr), doc);
+            writer.updateDocument(new Term("path", pathStr), buildDirDoc(dir, attrs));
             Tombstones.remove(pathStr);
             recordUpsert(pathStr);
         } catch (Throwable t) {
@@ -396,45 +514,74 @@ public class LuceneIndexer implements AutoCloseable {
         }
     }
 
+    /** Document construction WITHOUT a writer — the same fields the write
+     *  path adds, built outside the shared lock by prepareUpsert. */
+    private static Document buildDirDoc(Path dir, BasicFileAttributes attrs) {
+        String pathStr = Utils.normalizeForIndex(dir);
+        String name = dir.getFileName() == null ? dir.toString() : dir.getFileName().toString();
+
+        Document doc = new Document();
+        doc.add(new StringField("path", pathStr, Field.Store.YES));
+        doc.add(new StringField("path_scope", PathScope.normalizeIndexedPath(dir), Field.Store.NO));
+        doc.add(new TextField("name", name, Field.Store.YES));
+        doc.add(new StringField("name_raw", name.toLowerCase(Locale.ROOT), Field.Store.NO));
+        doc.add(new StringField("ext", "", Field.Store.YES));
+        doc.add(new StringField("kind", KIND_FOLDER, Field.Store.YES));
+        doc.add(new LongPoint("mtime_l", attrs.lastModifiedTime().toMillis()));
+        doc.add(new StoredField("mtime", attrs.lastModifiedTime().toMillis()));
+        doc.add(new StoredField("size", 0L));
+        doc.add(new StoredField("ctime", attrs.creationTime().toMillis()));
+        doc.add(new StoredField("atime", attrs.lastAccessTime().toMillis()));
+        return doc;
+    }
+
+    /** Document construction WITHOUT a writer, including content
+     *  extraction — null when the file type is never indexed. */
+    private static Document buildFileDoc(Path file, BasicFileAttributes attrs, IndexSettings settings) {
+        String name = file.getFileName() == null ? file.toString() : file.getFileName().toString();
+        // 排除二进制执行文件
+        if (name.endsWith(".exe") || name.endsWith(".dll")) return null;
+
+        String pathStr = Utils.normalizeForIndex(file);
+
+        Document doc = new Document();
+        doc.add(new StringField("path", pathStr, Field.Store.YES));
+        doc.add(new StringField("path_scope", PathScope.normalizeIndexedPath(file), Field.Store.NO));
+        doc.add(new TextField("name", name, Field.Store.YES));
+        doc.add(new StringField("name_raw", name.toLowerCase(Locale.ROOT), Field.Store.NO));
+        doc.add(new StringField("ext", getExt(name), Field.Store.YES));
+        doc.add(new StringField("kind", KIND_FILE, Field.Store.YES));
+        doc.add(new LongPoint("mtime_l", attrs.lastModifiedTime().toMillis()));
+        doc.add(new StoredField("mtime", attrs.lastModifiedTime().toMillis()));
+        doc.add(new StoredField("size", attrs.size()));
+        doc.add(new StoredField("ctime", attrs.creationTime().toMillis()));
+        doc.add(new StoredField("atime", attrs.lastAccessTime().toMillis()));
+
+        String mime = null;
+        String content = "";
+        try {
+            if (shouldParseContent(file, name, attrs.size(), settings) && !shouldSkipContentExtraction(file, attrs)) {
+                content = extractTextReadOnly(file, attrs, settings);
+            }
+            mime = Files.probeContentType(file);
+        } catch (Throwable e) {
+            log.warn("Get mime/content error: {}, exception: {}", file, e.getMessage());
+        }
+
+        if (mime != null) doc.add(new StringField("mime", mime, Field.Store.YES));
+        if (!content.isEmpty()) {
+            doc.add(new TextField("content", content, Field.Store.NO));
+            doc.add(new TextField("content_zh", content, Field.Store.NO));
+            doc.add(new TextField("content_ja", content, Field.Store.NO));
+        }
+        return doc;
+    }
+
     private void indexFile(IndexWriter writer, Path file, BasicFileAttributes attrs) {
         try {
-            String name = file.getFileName() == null ? file.toString() : file.getFileName().toString();
-            // 排除二进制执行文件
-            if (name.endsWith(".exe") || name.endsWith(".dll")) return;
-
+            Document doc = buildFileDoc(file, attrs, settings);
+            if (doc == null) return;
             String pathStr = Utils.normalizeForIndex(file);
-
-            Document doc = new Document();
-            doc.add(new StringField("path", pathStr, Field.Store.YES));
-            doc.add(new StringField("path_scope", PathScope.normalizeIndexedPath(file), Field.Store.NO));
-            doc.add(new TextField("name", name, Field.Store.YES));
-            doc.add(new StringField("name_raw", name.toLowerCase(Locale.ROOT), Field.Store.NO));
-            doc.add(new StringField("ext", getExt(name), Field.Store.YES));
-            doc.add(new StringField("kind", KIND_FILE, Field.Store.YES));
-            doc.add(new LongPoint("mtime_l", attrs.lastModifiedTime().toMillis()));
-            doc.add(new StoredField("mtime", attrs.lastModifiedTime().toMillis()));
-            doc.add(new StoredField("size", attrs.size()));
-            doc.add(new StoredField("ctime", attrs.creationTime().toMillis()));
-            doc.add(new StoredField("atime", attrs.lastAccessTime().toMillis()));
-
-            String mime = null;
-            String content = "";
-            try {
-                if (shouldParseContent(file, name, attrs.size()) && !shouldSkipContentExtraction(file, attrs)) {
-                    content = extractTextReadOnly(file, attrs);
-                }
-                mime = Files.probeContentType(file);
-            } catch (Throwable e) {
-                log.warn("Get mime/content error: {}, exception: {}", file, e.getMessage());
-            }
-
-            if (mime != null) doc.add(new StringField("mime", mime, Field.Store.YES));
-            if (!content.isEmpty()) {
-                doc.add(new TextField("content", content, Field.Store.NO));
-                doc.add(new TextField("content_zh", content, Field.Store.NO));
-                doc.add(new TextField("content_ja", content, Field.Store.NO));
-            }
-
             writer.updateDocument(new Term("path", pathStr), doc);
             Tombstones.remove(pathStr);
             recordUpsert(pathStr);
@@ -446,6 +593,11 @@ public class LuceneIndexer implements AutoCloseable {
     /* --------------------------- 规则/工具 --------------------------- */
 
     private boolean isExcluded(Path p) {
+        return isExcluded(p, indexDir, settings, appWorkDir);
+    }
+
+    /** Static form — the prepare path has no indexer instance. */
+    private static boolean isExcluded(Path p, Path indexDir, IndexSettings settings, Path appWorkDir) {
         try {
             String unix = p.toString().replace('\\', '/');
             String lower = unix.toLowerCase(Locale.ROOT);
@@ -482,7 +634,7 @@ public class LuceneIndexer implements AutoCloseable {
         return (i > 0) ? name.substring(i + 1).toLowerCase(Locale.ROOT) : "";
     }
 
-    private String extractTextReadOnly(Path file, BasicFileAttributes attrs) {
+    private static String extractTextReadOnly(Path file, BasicFileAttributes attrs, IndexSettings settings) {
         Future<String> fut;
         try {
             fut = PARSER_POOL.submit(() -> {
@@ -539,7 +691,7 @@ public class LuceneIndexer implements AutoCloseable {
         }
     }
 
-    private boolean shouldSkipContentExtraction(Path file, BasicFileAttributes attrs) {
+    private static boolean shouldSkipContentExtraction(Path file, BasicFileAttributes attrs) {
         String key = toPathKey(file);
         FailedFileState failed = FAILED_CONTENT_CACHE.get(key);
         if (failed == null) {
@@ -554,7 +706,7 @@ public class LuceneIndexer implements AutoCloseable {
         return failed.size == size && failed.mtime == mtime;
     }
 
-    private void rememberFailedExtraction(Path file, BasicFileAttributes attrs) {
+    private static void rememberFailedExtraction(Path file, BasicFileAttributes attrs) {
         if (attrs == null) {
             return;
         }
@@ -564,27 +716,27 @@ public class LuceneIndexer implements AutoCloseable {
         FAILED_CONTENT_CACHE.put(toPathKey(file), new FailedFileState(attrs.size(), attrs.lastModifiedTime().toMillis()));
     }
 
-    private void clearFailedExtraction(Path file) {
+    private static void clearFailedExtraction(Path file) {
         FAILED_CONTENT_CACHE.remove(toPathKey(file));
     }
 
-    private String toPathKey(Path file) {
+    private static String toPathKey(Path file) {
         return Utils.normalizeForIndex(file);
     }
 
-    private boolean isWriteLimitReached(String msg) {
+    private static boolean isWriteLimitReached(String msg) {
         String lower = msg.toLowerCase(Locale.ROOT);
         return lower.contains("limit has been reached") || lower.contains("more than") && lower.contains("characters");
     }
 
-    private boolean isSevereExtractionError(String msg) {
+    private static boolean isSevereExtractionError(String msg) {
         if (msg == null || msg.isEmpty()) {
             return true;
         }
         return !isWriteLimitReached(msg);
     }
 
-    private boolean shouldParseContent(Path file, String name, long sizeBytes) {
+    private static boolean shouldParseContent(Path file, String name, long sizeBytes, IndexSettings settings) {
         if (sizeBytes <= 0 || sizeBytes > settings.maxFileMB * 1024L * 1024L) return false;
         String ext = getExt(name);
         if (settings.includeExt != null && settings.includeExt.contains(ext)) return true;
@@ -600,7 +752,7 @@ public class LuceneIndexer implements AutoCloseable {
         return looksLikeText(file);
     }
 
-    private boolean isTextMime(Path file) {
+    private static boolean isTextMime(Path file) {
         try {
             String mime = Files.probeContentType(file);
             if (mime == null) return false;
@@ -620,7 +772,7 @@ public class LuceneIndexer implements AutoCloseable {
         }
     }
 
-    private boolean looksLikeText(Path file) {
+    private static boolean looksLikeText(Path file) {
         byte[] buf = new byte[4096];
         try (InputStream is = Files.newInputStream(file, StandardOpenOption.READ)) {
             int n = is.read(buf);
