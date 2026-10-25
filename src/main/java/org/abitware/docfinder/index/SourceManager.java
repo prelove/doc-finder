@@ -101,10 +101,11 @@ public class SourceManager {
         if (rootStrings != null) {
             for (String s : rootStrings) {
                 if (s == null || s.trim().isEmpty()) continue;
-                // 规范化一下再转 Path（兼容日文 OS 输入的 ¥¥server 之类）
+                // 规范化一下再转 Path（兼容日文 OS 输入的 ¥¥server 之类、~ 展开）
+                String expanded = org.abitware.docfinder.util.Utils.expandUserHome(s.trim());
                 String norm = org.abitware.docfinder.util.Utils.isWindows()
-                        ? org.abitware.docfinder.util.Utils.canonicalizeWinPathString(s)
-                        : s;
+                        ? org.abitware.docfinder.util.Utils.canonicalizeWinPathString(expanded)
+                        : expanded;
                 java.nio.file.Path p = java.nio.file.Paths.get(norm);
                 boolean net = org.abitware.docfinder.util.Utils.isLikelyNetwork(p);
                 list.add(new SourceEntry(p.toAbsolutePath().toString(), net));
@@ -136,7 +137,10 @@ public class SourceManager {
     /** 兼容旧代码：仅返回路径（不区分本地/网络） */
     public List<Path> load() {
         return loadEntries().stream()
-                .map(e -> Paths.get(e.path))
+                // Expand a stored ~ prefix — sources.txt may contain
+                // shell-style paths that Paths.get would resolve relative
+                // to the working directory and silently index nothing.
+                .map(e -> Paths.get(Utils.expandUserHome(e.path)))
                 .collect(Collectors.toList());
     }
 
@@ -205,7 +209,7 @@ public class SourceManager {
                 reason = "invalid network flag";
             }
             if (reason == null) {
-                String raw = sp[0].trim();
+                String raw = Utils.expandUserHome(sp[0].trim());
                 try {
                     if (PathScope.normalizeDirectory(raw) == null) {
                         reason = "empty path column";

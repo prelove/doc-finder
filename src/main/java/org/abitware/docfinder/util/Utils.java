@@ -97,6 +97,27 @@ public final class Utils {
         } catch (Exception ignore) { return false; }
     }
 
+    /**
+     * Expands a leading {@code ~} or {@code ~/} ({@code ~\} on Windows) to the
+     * user's home directory. {@code Paths.get} never expands the tilde, so a
+     * user-typed {@code ~/Documents} would otherwise resolve relative to the
+     * working directory and silently index nothing. {@code ~other} forms are
+     * left untouched — other users' homes are not resolvable.
+     */
+    public static String expandUserHome(String s) {
+        if (s == null || s.isEmpty() || s.charAt(0) != '~') {
+            return s;
+        }
+        if (s.length() == 1 || s.charAt(1) == '/' || (isWindows() && s.charAt(1) == '\\')) {
+            String home = System.getProperty("user.home");
+            if (home == null || home.isEmpty()) {
+                return s;
+            }
+            return home + s.substring(1);
+        }
+        return s;
+    }
+
     /** 索引用统一路径字符串（含日文 \ 表示兼容） */
     public static String normalizeForIndex(Path p) {
         String s = p.toAbsolutePath().toString();

@@ -5,6 +5,7 @@ import org.slf4j.LoggerFactory;
 
 import java.io.IOException;
 import java.nio.file.FileSystems;
+import java.nio.file.FileVisitOption;
 import java.nio.file.FileVisitResult;
 import java.nio.file.Files;
 import java.nio.file.Path;
@@ -14,6 +15,7 @@ import java.nio.file.WatchKey;
 import java.nio.file.WatchService;
 import java.nio.file.attribute.BasicFileAttributes;
 import java.util.ArrayList;
+import java.util.EnumSet;
 import java.util.List;
 import java.util.Map;
 import java.util.concurrent.ConcurrentHashMap;
@@ -141,7 +143,10 @@ public class LocalRecursiveWatcher implements AutoCloseable {
 
     private void registerExistingSubDirs(Path root) {
         try {
-            Files.walkFileTree(root, new SimpleFileVisitor<Path>() {
+            // FOLLOW_LINKS: a symlinked root (e.g. ~/OneDrive on macOS) must
+            // register its real subtree — link loops end in visitFileFailed.
+            Files.walkFileTree(root, EnumSet.of(FileVisitOption.FOLLOW_LINKS), Integer.MAX_VALUE,
+                    new SimpleFileVisitor<Path>() {
                 @Override
                 public FileVisitResult preVisitDirectory(Path dir, BasicFileAttributes attrs) {
                     if (!running) {

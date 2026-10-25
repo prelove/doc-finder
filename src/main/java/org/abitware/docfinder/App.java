@@ -24,6 +24,18 @@ import org.slf4j.LoggerFactory; // ADDED
 public class App {
     private static volatile MainWindow MAIN;          // 䧛 ACTIVATE 回调使用
     private static final String APP_ID = "org.abitware.docfinder"; // 影响端口计算
+    static {
+        // Point logback at the same base dir AppPaths resolves (covers the
+        // user.home fallback when user.dir is unusable). Runs before the
+        // logger field below so the file appender reads it at init; an
+        // explicit -Ddocfinder.base.dir wins.
+        try {
+            if (System.getProperty("docfinder.base.dir") == null) {
+                System.setProperty("docfinder.base.dir",
+                        org.abitware.docfinder.util.AppPaths.getBaseDir().toString());
+            }
+        } catch (Throwable ignore) { }
+    }
     private static final Logger logger = LoggerFactory.getLogger(App.class); // ADDED LOGGER
 
     public static void main(String[] args) {
@@ -124,6 +136,7 @@ public class App {
         SwingUtilities.invokeLater(() -> {
             MainWindow w = MAIN;
             if (w == null) return;
+            org.abitware.docfinder.ui.IconUtil.requestForegroundIfMac();
             if (!w.isVisible()) w.setVisible(true);
             int state = w.getExtendedState();
             w.setExtendedState(state & ~JFrame.ICONIFIED);

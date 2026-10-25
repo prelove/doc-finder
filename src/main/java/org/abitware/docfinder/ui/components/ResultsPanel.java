@@ -174,8 +174,10 @@ public class ResultsPanel extends JPanel {
         ActionMap am = resultTable.getActionMap();
 
         im.put(KeyStroke.getKeyStroke("ENTER"), "open");
-        im.put(KeyStroke.getKeyStroke("ctrl C"), "copyPath");
-        im.put(KeyStroke.getKeyStroke("ctrl shift C"), "copyName");
+        // Platform shortcut mask: Ctrl on Windows/Linux, Cmd on macOS.
+        int menuMask = Toolkit.getDefaultToolkit().getMenuShortcutKeyMask();
+        im.put(KeyStroke.getKeyStroke(KeyEvent.VK_C, menuMask), "copyPath");
+        im.put(KeyStroke.getKeyStroke(KeyEvent.VK_C, menuMask | KeyEvent.SHIFT_MASK), "copyName");
 
         am.put("open", new AbstractAction() {
             @Override

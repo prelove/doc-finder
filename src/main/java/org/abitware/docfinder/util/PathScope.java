@@ -56,6 +56,7 @@ public final class PathScope {
         if (raw.indexOf('\0') >= 0) {
             throw new IllegalArgumentException("directory path contains NUL");
         }
+        raw = Utils.expandUserHome(raw); // Paths.get never expands ~
         Path p;
         if (Utils.isWindows()) {
             String canon = Utils.canonicalizeWinPathString(raw);

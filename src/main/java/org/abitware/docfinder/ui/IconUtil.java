@@ -58,6 +58,24 @@ public final class IconUtil {
         } catch (Throwable ignored) { /* 无视 */ }
     }
 
+    /**
+     * Brings the application to the foreground on macOS via
+     * {@code com.apple.eawt.Application.requestForeground}. No-op elsewhere —
+     * {@code Window.toFront()} alone does not surface the app when it is
+     * behind another application's windows (e.g. a second launch sending
+     * ACTIVATE, or the global hotkey restoring the window).
+     */
+    public static void requestForegroundIfMac() {
+        if (!System.getProperty("os.name", "").toLowerCase().contains("mac")) {
+            return;
+        }
+        try {
+            Class<?> appClass = Class.forName("com.apple.eawt.Application");
+            Object app = appClass.getMethod("getApplication").invoke(null);
+            appClass.getMethod("requestForeground", boolean.class).invoke(app, true);
+        } catch (Throwable ignored) { /* best-effort activation */ }
+    }
+
     /** 从资源读 PNG。 */
     private static Image loadResource(String path) {
         try (InputStream in = IconUtil.class.getResourceAsStream(path)) {

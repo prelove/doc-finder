@@ -1,5 +1,5 @@
 <configuration>
-    <property name="DOCFINDER_BASE_DIR" value="${user.dir}/.docfinder"/>
+    <property name="DOCFINDER_BASE_DIR" value="${docfinder.base.dir:-${user.dir}/.docfinder}"/>
 
     <appender name="STDOUT" class="ch.qos.logback.core.ConsoleAppender">
         <encoder>

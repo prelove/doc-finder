@@ -192,7 +192,11 @@ public class NetPollerService implements AutoCloseable {
         try (SnapshotStore.Cursor old = round.indexedBaseline ? indexedSnapshot(root) : store.open(root);
              SnapshotStore.Builder builder = store.newBuilder()) {
             requireValid(round);
-            Files.walkFileTree(root, new SimpleFileVisitor<Path>() {
+            // FOLLOW_LINKS: a symlinked root (e.g. ~/OneDrive on macOS) must be
+            // walked, not recorded as a lone file — otherwise the snapshot diff
+            // deletes every doc under that root.
+            Files.walkFileTree(root, EnumSet.of(FileVisitOption.FOLLOW_LINKS), Integer.MAX_VALUE,
+                    new SimpleFileVisitor<Path>() {
                 private void record(Path path, BasicFileAttributes attrs) throws IOException {
                     requireValid(round);
                     builder.add(Utils.normalizeForIndex(path), new SnapshotStore.Entry(attrs.isDirectory() ? 0 : attrs.size(),
@@ -208,6 +212,9 @@ public class NetPollerService implements AutoCloseable {
                     return FileVisitResult.CONTINUE;
                 }
                 @Override public FileVisitResult visitFileFailed(Path path, IOException failure) throws IOException {
+                    // Following links can hit a link cycle — skip it instead of
+                    // failing the whole root scan.
+                    if (failure instanceof FileSystemLoopException) return FileVisitResult.CONTINUE;
                     throw failure == null ? new IOException("Cannot read " + path) : failure;
                 }
                 @Override public FileVisitResult postVisitDirectory(Path path, IOException failure) throws IOException {

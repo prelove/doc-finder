@@ -31,13 +31,21 @@ public final class SingleInstance implements AutoCloseable {
         this.server = server;
     }
 
+    /** Port derivation includes the OS user so two accounts on a shared
+     *  machine cannot collide — a foreign user's instance would otherwise
+     *  look like "already running" and a second launch would exit silently. */
+    private static int portFor(String appId) {
+        int base = 44121;
+        String user = System.getProperty("user.name", "");
+        return base + (Math.abs(Objects.hash(appId, user)) % 2000);
+    }
+
     /** 尝试成为首实例；成功返回 SingleInstance（需保留引用以便 close），失败返回 null 并已发送激活消息。 */
     public static SingleInstance tryAcquire(String appId, Consumer<String> onActivate) {
         Objects.requireNonNull(appId, "appId");
         Objects.requireNonNull(onActivate, "onActivate");
 
-        int base = 44121;
-        int port = base + (Math.abs(appId.hashCode()) % 2000);
+        int port = portFor(appId);
 
         // 尝试作为首实例监听
         try {
@@ -89,8 +97,7 @@ public final class SingleInstance implements AutoCloseable {
 
     /** 供次实例主动激活（当你想从脚本/其他进程触发时可用） */
     public static void sendActivate(String appId) {
-        int base = 44121;
-        int port = base + (Math.abs(appId.hashCode()) % 2000);
+        int port = portFor(appId);
         try (Socket s = new Socket("127.0.0.1", port);
              OutputStream os = s.getOutputStream()) {
             os.write("ACTIVATE\n".getBytes(StandardCharsets.UTF_8));
