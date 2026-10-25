@@ -2,7 +2,7 @@
 
 日期2026-10-25；审查代码 `ad363dacf550573e237cd6e4e3cd332490fd481c`，远端已确认。交付JAR SHA256：`213795F70914A8B8CF46F93E2194819211763573843F07DCD253CB448DF8588D`。
 
-**最新结论：c1b56e6复验仍为CHANGES_REQUESTED；本页前半保留ad363da历史，最新结果与修复任务见文末。**
+**最新结论：489905f的五个原始现场反例均已独立通过，核心恢复主流程改善；整体验收仍为CHANGES_REQUESTED。新的资源保护上限、分类交叠安全和来源故障恢复有实测缺口，首次全套也有1项不稳定失败。以文末最新状态为准，前文是历史记录。**
 
 **结论：CHANGES_REQUESTED，任务目标尚未完成。** 游标补足和若干单实例容量限制有实质改善；结果正确/足量、恢复文件重新出现、当前窗口自动更新及跨生命周期资源边界仍有缺口。不能以现有套件全绿代替目标验收。
 
@@ -140,3 +140,42 @@ RESULT pass=8 fail=0
 - 大快照双map内存、真实慢网络/句柄峰值实测缺口维持原记录；本批资源证据仍是线程/堆口径。
 
 以上为实测证据，非验收结论：R2-01～05的场景级修复已可复验，是否接受由下一轮独立探针判定。
+
+
+## 489905f独立复验：原始五场景通过，资源与正确性仍待修
+
+代码 `489905fb07cfe95a10f27d38181a5ce54242f3b4` 与远端一致；交付JAR SHA256 `B8F246CDFCFD4D0AACF9756AD1B32136DC179677523EA4BA1D2EBDB6A804FC57`。下列观察直接运行这份JAR和真实Java8，不以实现者探针输出代替独立验证。
+
+### 原始用例的关闭情况
+
+- **R2-01原场景通过**：真实MainWindow，静止后放回文件不做任何输入；3.5秒内searchCalls由3变4，窗口1行、索引1文档。
+- **R2-02原场景通过**：重开服务后仅全局搜索，结果1、来源已加载，墓碑移除；不再必须先选择目录。
+- **R2-03原场景通过**：前256项仍缺失，第257项恢复文件已入库，墓碑剩256，旋转游标有效。
+- **R2-04原场景通过**：真实HTTP、同IP两个独立请求，A=2/B=1且各自完整，null-tag不再互取消。手动轮询与来源根保护的旧回归也继续通过。
+- **R2-05原65条排队用例通过**：锁内恢复并upsert第65条后，旧批次没有删除该新文档（文件存在、索引1）。这只关闭该用例，不能替代下一节“分类过程中更新”的保护。
+
+不再要求重做上述已通过的机制；用户“剪切→放回→无需重输自动出现”的常规本地流程已有独立通过证据。
+
+### 本轮必须修复的三个缺口
+
+| ID | 优先级 | 实测与位置 | 修复约束 |
+| --- | --- | --- | --- |
+| R3-01 | P1 | LuceneIndexer:87-93的RECENT_UPSERTS只清2分钟前项，达到4096仍继续put。直接JAR诊断插入8192条近期记录，实际size=8192。前4096次12ms，后4096次319ms；这是表维护观察，不是全文检索基准 | 真正有界且摊销成本受控；不能每个upsert全表扫描，也不能简单丢掉仍保护在途清理的版本。考虑索引/在途批次代次等设计，而非仅扩大容量或用TTL冒充硬上限 |
+| R3-02 | P1 | LuceneSearchService:1103在分类完成之后才记classifiedAt。Java8子进程中在已读到文件缺失、即将检查祖先时暂停清理线程；主线程恢复文件并成功upsert，索引先有1条；放行旧分类后文件仍存在但新索引又被删为0 | 捕获分类开始前版本/时点，并保护整个校验期间与等待写入期间的更新。写前无法证明版本未变时保守跳过或重新验证。不要把“分类后才发生upsert”的旧测试当作全部竞态覆盖 |
+| R3-03 | P1 | 一次受控来源读取IOException后恢复provider正常，再放回文件并静置4秒：文件存在、索引0，sourceLoads维持3未再读取。rootsFor:973-978把失败发布为空列表，drain只对null重试 | 失败状态与合法空来源必须区分；定时恢复能重新读取成功配置，来源新增/移除也要使后台快照失效，不能永久复用失败/过时列表 |
+
+R3-01没有执行文件索引，只调用该JAR实际使用的私有维护入口来测其宣称容量；R3-02用Java8测试子进程SecurityManager的checkRead闸门模拟分类途中暂停，finally恢复并释放线程，没有修改系统安全设置或断开真实NAS。R3-03用显式provider故障注入，未修改业务来源配置。
+
+### 测试稳定性与仍有的遗留
+
+- 独立Git快照512MB fork首次 `clean verify` 实际结果：**234总数、1失败、0错误、2跳过，BUILD FAILURE**。失败为GhostResultFilterTest.shouldResurrectWhileIdleWithoutAnySearch第359行，固定waitForPurge(700ms)后“doc is really purged first”仍为true。
+- 保留首次完整XML后，仅重跑该方法：1项通过。判为异步前置条件测试不稳定，不能把重跑绿色写成首次全套绿色，也不能据此断言正常恢复产品流程失败。应以有上限的状态等待确认删除commit，区分“未核实而隐藏”和“已真实purge”，再开始恢复阶段，修后跑全套。
+- 已承认的写锁内同步stat/恢复upsert、排序/选择/预览被自动刷新重置、全未知空态、墓碑超限/写失败兜底仍未解决；大快照和真实扫描/慢网络句柄峰值尚无充分验证。因此主恢复流程通过不等于“不卡顿、正确足量、全链路资源受控”全部验收通过。
+
+### 给Devin的下一步
+
+先修R3-01/02这个保护机制的资源与版本语义，再修R3-03来源状态失效/恢复，补对应回归；不重新改动已通过的自主恢复、旋转游标和独立HTTP路径。将不稳定的固定700ms前置条件改为确定性等待，跑全套。对既有遗留明确逐项关闭或给出用户可接受的移期范围，不能再笼统报告“全部完成”。
+
+三个诊断源码已保存至 [CapacityProbe.java](probe-restoration-2026-10-25/CapacityProbe.java)、[ClassificationRaceProbe.java](probe-restoration-2026-10-25/ClassificationRaceProbe.java)、[SourceRetryProbe.java](probe-restoration-2026-10-25/SourceRetryProbe.java)。它们是当前结构的诊断探针，重构删除私有结构后可用等效行为/资源回归替代，不要求保留私有接口供探针调用。编译使用JDK17 `--release 8`、交付JAR作classpath；运行使用Java8，独立user.dir/user.home，场景树置于user.dir之外。ClassificationRaceProbe主类含包名org.abitware.docfinder.search。
+
+原始证据根：`C:\Users\Administrator\AppData\Local\Temp\docfinder-sweep-qa-20261025-qiq36mvp\`：完整失败报告full-suite-reports、clean-verify.log；单方法重跑targeted-reports/idle-test-rerun.log；probes下ui/cold/race/http/capacity/overlap/source日志，独立源码及场景。持久化的ClassificationRaceProbe自包含版本再次执行也复现1→0。测试服务已停止，正常退出，真实配置/来源/分享/历史哈希保持不变。
