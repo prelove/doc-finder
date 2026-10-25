@@ -2,6 +2,8 @@
 
 日期2026-10-25；审查代码 `ad363dacf550573e237cd6e4e3cd332490fd481c`，远端已确认。交付JAR SHA256：`213795F70914A8B8CF46F93E2194819211763573843F07DCD253CB448DF8588D`。
 
+**最新结论：c1b56e6复验仍为CHANGES_REQUESTED；本页前半保留ad363da历史，最新结果与修复任务见文末。**
+
 **结论：CHANGES_REQUESTED，任务目标尚未完成。** 游标补足和若干单实例容量限制有实质改善；结果正确/足量、恢复文件重新出现、当前窗口自动更新及跨生命周期资源边界仍有缺口。不能以现有套件全绿代替目标验收。
 
 ## 已验证范围
@@ -46,3 +48,43 @@ ResourceStabilityTest的40轮×2次搜索及6×3次服务启停确实通过。�
 3. 完成真实扫描/积压的资源验证，报告首屏/补满时延、预热后存活堆、线程/句柄、队列/缓存峰值及关闭后的回落。旧B验收保持不变，本轮改动仍未获接受，不再报告“全部完成”。
 
 本机证据：`C:\Users\Administrator\AppData\Local\Temp\docfinder-resource-qa-20261025-9zaldveb\`。完整日志clean-verify.log、baseline-reports；probes/src/GoalProbe.java、UiRefreshProbe.java；最终复现日志probes/results2.log、restoration.log、ui-refresh.log。四份真实config/sources/shares/history哈希均未变。
+
+
+## c1b56e6复验：真实恢复场景仍未完成
+
+代码 `c1b56e65f83771077aaea64363bd537dc10341be` 与远端已核实；交付JAR SHA256 `4F708F4FA6C068DDFCB0F7466A3DF7DB0BC052415AA0F10AB047D44546B32AF2`。独立Git快照512MB fork执行clean verify：230总数、228通过、0失败/错误、2个POSIX跳过。实现者3跳过与本轮差异为argLine探针已启用。
+
+**本轮主目标仍未通过，不能把“持续调用搜索后的恢复测试通过”当作“无需输入的自动恢复通过”。**
+
+### 实际交付JAR＋Java8隔离复现
+
+| ID | 优先级 | 场景及实际结果 | 必须修订 |
+| --- | --- | --- | --- |
+| R2-01 | P1 | 真实MainWindow、关闭watch：移出文件→搜索消失→等待删除/自动刷新完全静止3.5秒→放回→再等3.5秒。文件存在，但searchCalls保持3，窗口0行、索引0文档；手动再搜索后才恢复为1行 | 恢复必须有自主触发：有界后台对账/事件机制，不能只依赖搜索kick。不要靠恰好撞上上一轮700ms刷新窗口掩盖问题 |
+| R2-02 | P1 | 已purge文件放回后重开服务，连续6次默认全局NAME搜索：文件存在、结果0、sourceLoads=0、墓碑1；显式选择目录后才恢复为1 | lastRootsSnapshot最初为null，零命中查询不会执行rootsFor，kick永远无法启动。首个非空全局查询/启动必须能初始化恢复所需来源，仍保持空查询兼容边界 |
+| R2-03 | P1 | 前256个墓碑仍缺失，仅第257个文件恢复；反复搜索10次，目标文件存在但索引仍0，257个墓碑都保留 | 恢复批次使用轮转/游标，批次上限不能永久饿死后部记录；失败/超时来源不能堵住其他来源的恢复 |
+| R2-04 | P1 | 真实HTTP同IP两个独立请求，阻塞A后执行B：A应2条却只1条，B正常1条。直接null-tag服务探针已恢复为A=2 | SearchHandler:91按IP设clientTag，仍把同机不同浏览器/标签页或代理后用户合并。用真正的请求会话/标签页身份；没有显式会话的旧调用方保持独立 |
+| R2-05 | P1 | 私有清理入口受控65条批次：锁外确认后等写锁，锁内恢复并upsert第65条、等待400ms后放锁；旧清理结束后文件存在，但该新文档又被删为0 | 不能只对等待>300ms的前64条复核。所有删除须有服务/索引代次或记录版本保护；慢I/O移出全局写锁，并覆盖快速恢复及第65条以后 |
+
+以上探针均直接运行交付二进制。R2-05通过反射驱动实际批处理入口并控制写锁，证明生产批次边界，非真实NAS断线测试。进程正常退出、latch与线程均在finally释放；配置/来源/分享/历史四文件哈希未变。
+
+### 本轮已确认改善
+
+- 真正未start的手动poll：scanned=1、created=1、liveDocs=1，RG-03关闭。
+- null-tag独立调用：A应2实际2、B=1；全局互取消已改进，但HTTP映射仍需R2-04修正。
+- 消失来源根分类已是ROOT_UNREACHABLE，旧的根自身越界判GHOST用例关闭。
+- 共享EXISTENCE_POOL的生命周期新回归通过，watch注册execute/新目录根、Tika队列purge及快照并集删除等改进存在；不将这些局部通过等同全部扫描资源已验证。
+
+### 仍有高优先级静态缺口
+
+1. **写锁内慢I/O仍存在**：LuceneSearchService:1074-1076的最多64次复核仍直接stat；:1204-1216恢复持锁执行Files.exists与upsertFile（含文件属性/MIME/Tika解析）。条数限制不等于时间限制。锁外清理:1049也直接运行在每服务ghostCleaner上，绕过共享existence池，慢I/O时跨重开服务仍可能累积其他线程。RG-05/06只部分关闭。
+2. **停止后错误快照可被固化**：NetPollerService:298-300的closed只退出lambda，:316仍可能save未应用diff的新基线。pendingRoots只在已运行Callable finally减，取消尚未启动任务不会减；可能永久占single-flight。需真实扫描＋持锁停止/取消回归，不以空闲start/stop代替。
+3. **自动刷新会打断用户操作**：refreshResultsIfQueryActive直接doSearch，populateResults清排序、重建表且选第一行。需区分同一查询的后台刷新与用户新查询，保留排序、所选路径、预览和编辑草稿，并避免持续commit永远重启debounce导致刷新饥饿。
+4. **未知空态仍不诚实**：全部候选无法验证时，hadUncertain仍可能伴hasMore=FALSE；桌面空列表分支不显示unverified提示，呈现普通No results。未知项不占额度已改善，但不可声称已确认没有结果。
+5. **恢复记录完整性/重试**：超过4096或加载时超30天会丢掉墓碑，当前没有完整来源补账兜底；upsert吞错、commit前remove墓碑可能丢恢复依据。范围应明确并有持久补账，而非无声遗忘。Tika失败TTL仍需新的upsert才检查，轮询size/mtime不变时不自动重试；大快照仍两份全量map，慢解析/扫描/句柄峰值未实测。
+
+### 下一步仅针对目标闭环
+
+先修R2-01～03，增加“静止后放回且无任何输入”“重启后仅默认全局搜索”“257个以上墓碑”的真实回归，测试不得反复主动搜索来制造恢复触发。随后修R2-04/05及上述写锁/停止安全、刷新保持与未知状态。保留已修好的独立调用、手动轮询和来源根保护。最后给出真实扫描/慢I/O的资源证据再申请验收，不重建业务索引绕过问题。
+
+原始证据：`C:\Users\Administrator\AppData\Local\Temp\docfinder-resurrection-qa-20261025-l1wo293l\`，clean-verify.log、baseline-reports、summary.json；probes/src下ResurrectionUiProbe.java、ColdRestoreProbe.java、TransportProbe.java、PurgeRaceProbe.java；对应ui-results.log、cold-results.log、transport-results.log、race-results.log。所有探针使用独立工作目录及临时索引，服务器已停止。
