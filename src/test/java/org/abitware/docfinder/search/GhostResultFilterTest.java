@@ -286,6 +286,32 @@ class GhostResultFilterTest {
                 "a file recreated while the purge waited on the write lock must survive");
     }
 
+    @Test
+    void shouldResurrectFileRestoredAfterPurge() throws Exception {
+        write(source.resolve("revive-me.txt"), "lorem");
+        indexAndOpen();
+        Files.delete(source.resolve("revive-me.txt"));
+
+        // ghost detected + purged — the doc leaves the index
+        assertTrue(detailed("revive", 50).results.isEmpty());
+        waitForPurge();
+
+        // restore the file with NO watcher coverage — only the tombstone
+        // registry + resurrection pass can bring the doc back
+        write(source.resolve("revive-me.txt"), "lorem");
+
+        // each search paces a resurrection kick; poll until it lands
+        boolean found = false;
+        for (int i = 0; i < 10 && !found; i++) {
+            SearchOutcome o = detailed("revive", 50);
+            found = o.results.stream().anyMatch(r -> "revive-me.txt".equals(r.name));
+            if (!found) {
+                Thread.sleep(400);
+            }
+        }
+        assertTrue(found, "a file restored after purge must be resurrected into the index");
+    }
+
     private static void deleteRecursively(Path p) throws Exception {
         if (!Files.exists(p)) {
             return;

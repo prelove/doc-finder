@@ -161,6 +161,7 @@ public class MainWindow extends JFrame implements MenuBarPanel.MenuListener {
 	// restarts this single 250ms timer; class-B submissions stop it and submit
 	// once; class-C programmatic writes never reach the document listener.
 	private javax.swing.Timer searchDebounceTimer;
+	private javax.swing.Timer resultsRefreshTimer;
 	private boolean programmaticQueryEdit = false;
 
 	// Editable JComboBox can deliver one Enter commit as two ActionEvents when
@@ -274,6 +275,12 @@ public class MainWindow extends JFrame implements MenuBarPanel.MenuListener {
 		// submit; user typing invalidates in-flight work immediately (D6 A).
 		searchDebounceTimer = new javax.swing.Timer(250, e -> doSearch());
 		searchDebounceTimer.setRepeats(false);
+
+		// Index commits (watch, poller, ghost purge, resurrection) restart a
+		// short timer that re-runs the current query — displayed results track
+		// index changes without the user retyping the keyword.
+		resultsRefreshTimer = new javax.swing.Timer(700, e -> refreshResultsIfQueryActive());
+		resultsRefreshTimer.setRepeats(false);
 		searchField.getDocument().addDocumentListener(new javax.swing.event.DocumentListener() {
 			@Override public void insertUpdate(javax.swing.event.DocumentEvent e) { onUserTyping(); }
 			@Override public void removeUpdate(javax.swing.event.DocumentEvent e) { onUserTyping(); }
@@ -3108,6 +3115,12 @@ public class MainWindow extends JFrame implements MenuBarPanel.MenuListener {
 			this.searchService.close(); // Close the old service (same instance is kept)
 		}
 		this.searchService = newSvc;
+		// Background index writes by the service itself (ghost purge,
+		// resurrection) must also refresh the NRT reader and the view.
+		if (newSvc instanceof org.abitware.docfinder.search.LuceneSearchService) {
+			((org.abitware.docfinder.search.LuceneSearchService) newSvc)
+					.setIndexChangeListener(this::onIndexCommit);
+		}
 		// Keep the web server in sync with the latest search service
 		if (webServer != null) webServer.setSearchService(newSvc);
 		if (newSvc == null) {
@@ -3117,16 +3130,36 @@ public class MainWindow extends JFrame implements MenuBarPanel.MenuListener {
 		}
 	}
 
-	/** Called by background watcher/poller after commit; notifies search service to refresh NRT reader */
+	/** Called by background watcher/poller/search-service after commit;
+	 *  refreshes the NRT reader and re-runs the current query shortly after. */
 	private void onIndexCommit() {
 		SearchService svc = searchService;
 		if (svc != null) {
 			svc.notifyIndexCommit();
 		}
+		if (resultsRefreshTimer != null) {
+			javax.swing.SwingUtilities.invokeLater(() -> resultsRefreshTimer.restart());
+		}
+	}
+
+	/** Re-runs the current search when index changes landed — only with a
+	 *  live service and a non-blank query. */
+	private void refreshResultsIfQueryActive() {
+		if (searchService == null) {
+			return;
+		}
+		String q = getQueryText();
+		if (q == null || q.trim().isEmpty()) {
+			return;
+		}
+		doSearch();
 	}
 	@Override
 	public void dispose() {
 		stopSearchDebounce();
+		if (resultsRefreshTimer != null) {
+			resultsRefreshTimer.stop();
+		}
 		try {
 			UIManager.removePropertyChangeListener(lafListener);
 		} catch (Exception ignore) {

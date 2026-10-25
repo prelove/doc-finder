@@ -183,6 +183,10 @@ public class LuceneIndexer implements AutoCloseable {
         try {
             String pathStr = Utils.normalizeForIndex(file);
             this.writer.deleteDocuments(new Term("path", pathStr));
+            // Every deletion leaves a tombstone so a file that later comes
+            // back (restored, remounted) can be resurrected by re-indexing —
+            // even when no watcher or poller covers its root.
+            Tombstones.record(pathStr);
         } catch (Throwable t) {
             log.warn("Delete path error: {}, exception: {}", file, t.getMessage());
         }
@@ -308,6 +312,7 @@ public class LuceneIndexer implements AutoCloseable {
             doc.add(new StoredField("atime", attrs.lastAccessTime().toMillis()));
 
             writer.updateDocument(new Term("path", pathStr), doc);
+            Tombstones.remove(pathStr);
         } catch (Throwable t) {
             log.warn("Index directory error: {}, exception: {}", dir, t.getMessage());
         }
@@ -353,6 +358,7 @@ public class LuceneIndexer implements AutoCloseable {
             }
 
             writer.updateDocument(new Term("path", pathStr), doc);
+            Tombstones.remove(pathStr);
         } catch (Throwable t) {
             log.warn("Index file error: {}, exception: {}", file, t.getMessage());
         }
