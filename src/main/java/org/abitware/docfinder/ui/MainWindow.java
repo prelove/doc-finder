@@ -173,6 +173,9 @@ public class MainWindow extends JFrame implements MenuBarPanel.MenuListener {
 	// once; class-C programmatic writes never reach the document listener.
 	private javax.swing.Timer searchDebounceTimer;
 	private javax.swing.Timer resultsRefreshTimer;
+	private SearchRequest lastSearchRequest;
+	private boolean resultsRefreshPending;
+	private boolean updatingResults;
 	private boolean programmaticQueryEdit = false;
 
 	// Editable JComboBox can deliver one Enter commit as two ActionEvents when
@@ -234,7 +237,7 @@ public class MainWindow extends JFrame implements MenuBarPanel.MenuListener {
 		installTablePopupActions(); // Right-click: Open / Reveal / Copy
 		installTableShortcuts(); // Enter / Ctrl+C / Ctrl+Shift+C
 		resultTable.getSelectionModel().addListSelectionListener(e -> {
-			if (!e.getValueIsAdjusting())
+			if (!e.getValueIsAdjusting() && !updatingResults)
 				loadPreviewAsync();
 		});
 
@@ -297,9 +300,8 @@ public class MainWindow extends JFrame implements MenuBarPanel.MenuListener {
 		searchDebounceTimer = new javax.swing.Timer(250, e -> doSearch());
 		searchDebounceTimer.setRepeats(false);
 
-		// Index commits (watch, poller, ghost purge, resurrection) restart a
-		// short timer that re-runs the current query — displayed results track
-		// index changes without the user retyping the keyword.
+		// A commit burst shares one deadline; subsequent commits must not
+		// postpone that deadline while the index is changing continuously.
 		resultsRefreshTimer = new javax.swing.Timer(700, e -> refreshResultsIfQueryActive());
 		resultsRefreshTimer.setRepeats(false);
 		searchField.getDocument().addDocumentListener(new javax.swing.event.DocumentListener() {
@@ -2207,11 +2209,15 @@ public class MainWindow extends JFrame implements MenuBarPanel.MenuListener {
 	}
 
 	private void doSearch() {
+		if (windowClosed) {
+			return;
+		}
 		log.debug("doSearch() called.");
 		// Every explicit submission path (Enter, history pick, scope/mode/dir
 		// change, Clear, quick action, Apply filters, the debounce fire itself)
 		// cancels any pending debounce — class B submits exactly once (D6).
 		stopSearchDebounce();
+		resultsRefreshPending = false;
 		long token = ++searchSequence;
 		if (isIndexing) {
 			clearPresentedResults("Indexing in progress.");
@@ -2253,6 +2259,7 @@ public class MainWindow extends JFrame implements MenuBarPanel.MenuListener {
 
 
 		if (q.isEmpty()) {
+			lastSearchRequest = null;
 
 			// Routes through clearPresentedResults so the manual sort state is
 			// reset together with the table (arrows + restore button).
@@ -2266,7 +2273,8 @@ public class MainWindow extends JFrame implements MenuBarPanel.MenuListener {
 
 
 
-		SearchWorker worker = new SearchWorker(token, q, filters, getSelectedScope(), getSelectedMatchMode(), directory);
+		lastSearchRequest = new SearchRequest(q, 100, filters, getSelectedScope(), getSelectedMatchMode(), directory, "desktop");
+		SearchWorker worker = new SearchWorker(token, lastSearchRequest, false);
 
 		activeSearchWorker = worker;
 
@@ -2289,6 +2297,11 @@ public class MainWindow extends JFrame implements MenuBarPanel.MenuListener {
 
 	private void populateResults(String query, List<SearchResult> list, long elapsedMs,
 			org.abitware.docfinder.search.TriState hasMore, boolean hasUnverified) {
+		populateResults(query, list, elapsedMs, hasMore, hasUnverified, false);
+	}
+
+	private void populateResults(String query, List<SearchResult> list, long elapsedMs,
+			org.abitware.docfinder.search.TriState hasMore, boolean hasUnverified, boolean automaticRefresh) {
 
 		if (list == null) {
 
@@ -2296,58 +2309,90 @@ public class MainWindow extends JFrame implements MenuBarPanel.MenuListener {
 
 		}
 
-		// New results arrive in engine order; clear any manual sort so the
-		// header arrows match the displayed order.
-		if (resultSorter != null) {
+		java.util.Set<String> selectedPaths = new java.util.LinkedHashSet<>();
+		if (automaticRefresh) {
+			for (int row : resultTable.getSelectedRows()) {
+				selectedPaths.add(String.valueOf(model.getValueAt(resultTable.convertRowIndexToModel(row), 1)));
+			}
+		}
+		// A new user submission restores engine order; a commit refresh keeps
+		// the user's manual sort and follows the selected files by path.
+		if (!automaticRefresh && resultSorter != null) {
 			resultSorter.setSortKeys(null);
 		}
 
-		currentResults = new java.util.ArrayList<>(list);
-		model.setRowCount(0);
+		updatingResults = true;
+		try {
+			currentResults = new java.util.ArrayList<>(list);
+			model.setRowCount(0);
 
-		for (SearchResult r : list) {
+			for (SearchResult r : list) {
 
-			model.addRow(new Object[] { r.name, r.path, r.score, Long.valueOf(r.sizeBytes),
+				model.addRow(new Object[] { r.name, r.path, r.score, Long.valueOf(r.sizeBytes),
 
-				fmtTime(r.ctime), fmtTime(r.atime),
+					fmtTime(r.ctime), fmtTime(r.atime),
 
-				(r.match == null ? "" : r.match) });
+					(r.match == null ? "" : r.match) });
 
-		}
+			}
 
 
 
-		if (list.isEmpty()) {
+			if (list.isEmpty()) {
 
-			statusLabel.setText(String.format("No results. | %d ms", elapsedMs));
+				String emptyMessage = hasUnverified
+						? "Search unverified: source unavailable or validation incomplete."
+						: "No results.";
+				statusLabel.setText(String.format("%s | %d ms", emptyMessage, elapsedMs));
 
-			resultTable.clearSelection();
+				resultTable.clearSelection();
 
-			updatePreviewInner("No results.");
+				updatePreviewInner(emptyMessage);
 
-		} else {
-
-			// Tri-state truncation hint (D5): TRUE claims more exist, FALSE
-			// claims complete, UNKNOWN must not claim either.
-			if (hasMore == org.abitware.docfinder.search.TriState.TRUE) {
-				statusLabel.setText(String.format("Showing first %d results  |  %d ms", list.size(), elapsedMs));
 			} else {
-				statusLabel.setText(String.format("Results: %d  |  %d ms", list.size(), elapsedMs));
-			}
-			if (hasUnverified) {
-				// Some hits could not be existence-checked (offline source or
-				// permission/timeout indeterminate) — say so explicitly instead
-				// of letting the page look fully verified.
-				statusLabel.setText(statusLabel.getText() + "  |  some results unverified (source offline?)");
+
+				// Tri-state truncation hint (D5): TRUE claims more exist, FALSE
+				// claims complete, UNKNOWN must not claim either.
+				if (hasMore == org.abitware.docfinder.search.TriState.TRUE) {
+					statusLabel.setText(String.format("Showing first %d results  |  %d ms", list.size(), elapsedMs));
+				} else {
+					statusLabel.setText(String.format("Results: %d  |  %d ms", list.size(), elapsedMs));
+				}
+				if (hasUnverified) {
+					// Some hits could not be existence-checked (offline source or
+					// permission/timeout indeterminate) — say so explicitly instead
+					// of letting the page look fully verified.
+					statusLabel.setText(statusLabel.getText() + "  |  some results unverified (source offline?)");
+				}
+
+				if (automaticRefresh) {
+					for (int row = 0; row < model.getRowCount(); row++) {
+						if (selectedPaths.contains(String.valueOf(model.getValueAt(row, 1)))) {
+							int viewRow = resultTable.convertRowIndexToView(row);
+							resultTable.addRowSelectionInterval(viewRow, viewRow);
+						}
+					}
+				}
+				if (resultTable.getSelectedRow() < 0) {
+					resultTable.setRowSelectionInterval(0, 0);
+				}
+
 			}
 
-			resultTable.setRowSelectionInterval(0, 0);
 
+
+		} finally {
+			updatingResults = false;
 		}
-
-
-
-		addToHistory(query);
+		if (!list.isEmpty()) {
+			RowSel selected = getSelectedRow();
+			if (!automaticRefresh || selected == null || !selectedPaths.contains(selected.path)) {
+				loadPreviewAsync();
+			}
+		}
+		if (!automaticRefresh) {
+			addToHistory(query);
+		}
 
 	}
 
@@ -2366,6 +2411,7 @@ public class MainWindow extends JFrame implements MenuBarPanel.MenuListener {
 		private final MatchMode matchMode;
 
 		private final String directoryPath;
+		private final boolean automaticRefresh;
 
 		private org.abitware.docfinder.search.SearchOutcome outcome;
 
@@ -2373,13 +2419,14 @@ public class MainWindow extends JFrame implements MenuBarPanel.MenuListener {
 
 
 
-		SearchWorker(long token, String query, FilterState filter, SearchScope scope, MatchMode matchMode, String directoryPath) {
+		SearchWorker(long token, SearchRequest request, boolean automaticRefresh) {
 			this.token = token;
-			this.query = query;
-			this.filter = filter;
-			this.scope = (scope == null) ? SearchScope.ALL : scope;
-			this.matchMode = (matchMode == null) ? MatchMode.FUZZY : matchMode;
-			this.directoryPath = directoryPath;
+			this.query = request.query;
+			this.filter = request.filter;
+			this.scope = request.scope;
+			this.matchMode = request.matchMode;
+			this.directoryPath = request.directoryPath;
+			this.automaticRefresh = automaticRefresh;
 			log.debug("SearchWorker created for query: {} with token: {}", query, token);
 		}
 
@@ -2419,6 +2466,17 @@ public class MainWindow extends JFrame implements MenuBarPanel.MenuListener {
 		@Override
 
 		protected void done() {
+			try {
+				completeSearch();
+			} finally {
+				if (activeSearchWorker == this) {
+					activeSearchWorker = null;
+				}
+				schedulePendingResultsRefresh();
+			}
+		}
+
+		private void completeSearch() {
 			log.debug("SearchWorker.done() called for token: {}. Current searchSequence: {}", token, searchSequence);
 			if (token != searchSequence) {
 				log.debug("SearchWorker.done() for token {} is stale, ignoring.", token);
@@ -2499,7 +2557,7 @@ public class MainWindow extends JFrame implements MenuBarPanel.MenuListener {
 			org.abitware.docfinder.search.TriState hasMore = (outcome == null)
 					? org.abitware.docfinder.search.TriState.UNKNOWN : outcome.hasMore;
 			boolean hasUnverified = outcome != null && outcome.hasUnverified;
-			populateResults(query, list, elapsed, hasMore, hasUnverified);
+			populateResults(query, list, elapsed, hasMore, hasUnverified, automaticRefresh);
 
 		}
 
@@ -3027,6 +3085,12 @@ public class MainWindow extends JFrame implements MenuBarPanel.MenuListener {
                 netPollToggle.setSelected(false);
                 toggleNetPolling();
             }
+            // The JVM shutdown hook in App only knows the original instance —
+            // a port-changed replacement is stopped here before exit.
+            if (webServer != null) {
+                webServer.stop();
+                webServer = null;
+            }
         } catch (Exception ignore) {
         }
 
@@ -3102,6 +3166,11 @@ public class MainWindow extends JFrame implements MenuBarPanel.MenuListener {
     @Override
     public void onToggleWebServer() {
         toggleWebServer();
+    }
+
+    @Override
+    public void onShowWebPortSettings() {
+        showWebPortSettings();
     }
 
     @Override
@@ -3222,6 +3291,160 @@ public class MainWindow extends JFrame implements MenuBarPanel.MenuListener {
         }
     }
 
+    /** Allowed port window — matches ConfigManager.setWebPort clamping. */
+    static boolean isValidWebPort(int port) {
+        return port >= 1024 && port <= 65535;
+    }
+
+    /** True when nothing else can be bound on bindAddress:port. The check is
+     *  a probe — a later bind can still fail (TOCTOU), so callers must also
+     *  handle start() failing after a successful probe. */
+    static boolean isWebPortAvailable(String bindAddress, int port) {
+        try (java.net.ServerSocket probe = new java.net.ServerSocket()) {
+            probe.setReuseAddress(false);
+            probe.bind(new java.net.InetSocketAddress(bindAddress, port));
+            return true;
+        } catch (java.io.IOException e) {
+            return false;
+        }
+    }
+
+    /**
+     * Menu → "Web Server Port…". Validates the entry, refuses ports that
+     * are already bound, then — when the server is running — restarts it
+     * on the new port. The old instance is only dropped after the new one
+     * is proven running; a failed restart restores it and keeps the old
+     * persisted port.
+     */
+    private void showWebPortSettings() {
+        final org.abitware.docfinder.index.ConfigManager cm =
+                new org.abitware.docfinder.index.ConfigManager();
+        final int oldPort = cm.getWebPort();
+        final String bind = cm.getWebBindAddress();
+
+        JTextField portField = new JTextField(String.valueOf(oldPort), 8);
+        JPanel panel = new JPanel(new FlowLayout(FlowLayout.LEFT, 6, 4));
+        panel.add(new JLabel("Port:"));
+        panel.add(portField);
+        panel.add(new JLabel("(1024-65535, default 7070)"));
+
+        int ok = JOptionPane.showConfirmDialog(this, panel,
+                "Web Server Port", JOptionPane.OK_CANCEL_OPTION,
+                JOptionPane.PLAIN_MESSAGE);
+        if (ok != JOptionPane.OK_OPTION) {
+            return;
+        }
+        final int newPort;
+        try {
+            newPort = Integer.parseInt(portField.getText().trim());
+        } catch (NumberFormatException nfe) {
+            JOptionPane.showMessageDialog(this,
+                    "Invalid port: " + portField.getText().trim(),
+                    "Web Server Port", JOptionPane.ERROR_MESSAGE);
+            return;
+        }
+        if (!isValidWebPort(newPort)) {
+            JOptionPane.showMessageDialog(this,
+                    "Port must be between 1024 and 65535.",
+                    "Web Server Port", JOptionPane.ERROR_MESSAGE);
+            return;
+        }
+        if (newPort == oldPort) {
+            return; // unchanged — nothing to do
+        }
+
+        new javax.swing.SwingWorker<String, Void>() {
+            /** -1 = port occupied; -2 = restart failed; else new port. */
+            private int outcome;
+
+            @Override
+            protected String doInBackground() {
+                // Probe first: an occupied port must not disturb a running
+                // server or touch persisted config.
+                if (!isWebPortAvailable(bind, newPort)) {
+                    outcome = -1;
+                    return null;
+                }
+                org.abitware.docfinder.web.WebServer running =
+                        (webServer != null && webServer.isRunning()) ? webServer : null;
+                if (running == null) {
+                    // Server off — just persist; applies on next start.
+                    cm.setWebPort(newPort);
+                    outcome = newPort;
+                    return null;
+                }
+                org.abitware.docfinder.web.WebServer replacement =
+                        new org.abitware.docfinder.web.WebServer(newPort, bind);
+                if (searchService != null) {
+                    replacement.setSearchService(searchService);
+                }
+                try {
+                    replacement.start();
+                } catch (Exception ex) {
+                    outcome = -2;
+                    return ex.getMessage();
+                }
+                // New instance is up: drop the old one and publish.
+                running.stop();
+                webServer = replacement;
+                cm.setWebPort(newPort);
+                outcome = newPort;
+                return replacement.getBaseUrl() + "/";
+            }
+
+            @Override
+            protected void done() {
+                if (outcome == -1) {
+                    JOptionPane.showMessageDialog(MainWindow.this,
+                            "Port " + newPort + " is already in use. The port was not changed.",
+                            "Web Server Port", JOptionPane.WARNING_MESSAGE);
+                    return;
+                }
+                if (outcome == -2) {
+                    String msg;
+                    try {
+                        msg = "Restart on port " + newPort + " failed"
+                                + (get() != null ? ":\n" + get() : "");
+                    } catch (Exception ex) {
+                        msg = "Restart on port " + newPort + " failed.";
+                    }
+                    JOptionPane.showMessageDialog(MainWindow.this, msg,
+                            "Web Server Port", JOptionPane.ERROR_MESSAGE);
+                    return;
+                }
+                boolean running = webServer != null && webServer.isRunning();
+                if (openWebItem != null) openWebItem.setEnabled(running);
+                if (!running) {
+                    // Server was off — port saved for the next start.
+                    statusLabel.setText("Web server port saved: " + newPort
+                            + " (applies on next start)");
+                    return;
+                }
+                final String url;
+                try {
+                    url = get();
+                } catch (Exception ex) {
+                    return;
+                }
+                statusLabel.setText("Web server restarted: " + url);
+                Object[] options = { "Open in Browser", "Close" };
+                int pick = JOptionPane.showOptionDialog(MainWindow.this,
+                        "Web server now listens on a new address:\n" + url,
+                        "Web Server Port", JOptionPane.YES_NO_OPTION,
+                        JOptionPane.INFORMATION_MESSAGE, null, options, options[0]);
+                if (pick == 0) {
+                    try {
+                        Desktop.getDesktop().browse(new java.net.URI(url));
+                    } catch (Exception ex) {
+                        JOptionPane.showMessageDialog(MainWindow.this,
+                                "Open this URL in your browser:\n" + url,
+                                "Web Server Port", JOptionPane.INFORMATION_MESSAGE);
+                    }
+                }
+            }
+        }.execute();
+    }
+
 	private static String fmtTime(long epochMs) {
 		if (epochMs <= 0)
 			return "";
@@ -3313,35 +3536,61 @@ public class MainWindow extends JFrame implements MenuBarPanel.MenuListener {
 	/** Called by background watcher/poller/search-service after commit;
 	 *  refreshes the NRT reader and re-runs the current query shortly after. */
 	private void onIndexCommit() {
+		if (windowClosed) {
+			return;
+		}
 		SearchService svc = searchService;
 		if (svc != null) {
 			svc.notifyIndexCommit();
 		}
 		if (resultsRefreshTimer != null) {
-			javax.swing.SwingUtilities.invokeLater(() -> resultsRefreshTimer.restart());
+			javax.swing.SwingUtilities.invokeLater(() -> {
+				if (!windowClosed && lastSearchRequest != null) {
+					resultsRefreshPending = true;
+					schedulePendingResultsRefresh();
+				}
+			});
+		}
+	}
+
+	private void schedulePendingResultsRefresh() {
+		if (!windowClosed && resultsRefreshPending && lastSearchRequest != null
+				&& activeSearchWorker == null && !resultsRefreshTimer.isRunning()) {
+			resultsRefreshTimer.start();
 		}
 	}
 
 	/** Re-runs the current search when index changes landed — only with a
 	 *  live service and a non-blank query. */
 	private void refreshResultsIfQueryActive() {
-		if (searchService == null) {
+		if (windowClosed || searchService == null || isIndexing || !resultsRefreshPending
+				|| activeSearchWorker != null || lastSearchRequest == null
+				|| searchDebounceTimer.isRunning()) {
 			return;
 		}
-		String q = getQueryText();
-		if (q == null || q.trim().isEmpty()) {
+		if (lastSearchRequest.query.trim().isEmpty()) {
 			return;
 		}
+		resultsRefreshPending = false;
+		SearchWorker worker = new SearchWorker(++searchSequence, lastSearchRequest, true);
+		activeSearchWorker = worker;
 		try {
-			doSearch();
+			searchExecutor.submit(worker);
 		} catch (java.util.concurrent.RejectedExecutionException closing) {
 			// A queued timer tick can land after dispose() shut the pool.
+			activeSearchWorker = null;
 		}
 	}
 	@Override
 	public void dispose() {
 		windowClosed = true;
 		liveWatchDesired = false;
+		resultsRefreshPending = false;
+		searchSequence++;
+		if (activeSearchWorker != null) {
+			activeSearchWorker.cancel(true);
+			activeSearchWorker = null;
+		}
 		stopSearchDebounce();
 		if (resultsRefreshTimer != null) {
 			resultsRefreshTimer.stop();

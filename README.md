@@ -151,12 +151,13 @@ DocFinder is a desktop utility that lets you search **file names and file conten
   - `File → Index All Sources` and `File → Rebuild Index (Full)`
   - `File → Indexing Settings…`
   - `File → Enable Web Server` (toggle web interface, default port 7070)
+  - `File → Web Server Port…` (change the listen port; occupied ports are rejected before any change, a running server restarts on the new port first and the old one stops only after the new one is up)
   - `Help → Usage Guide`, `Help → About DocFinder`
 - **Tray icon** with context menu; **Global hotkey** toggles window.
 - **Icons**: load multi‑size PNGs from `src/main/resources/icons/`; Taskbar/Dock icon set via `Taskbar` (Java 9+) or `com.apple.eawt` on macOS.
 
 ### Web Interface
-- **Built-in web server** provides browser-based access (default: `http://localhost:7070`)
+- **Built-in web server** provides browser-based access (default: `http://localhost:7070`; port configurable via `File → Web Server Port…`)
 - **Self-contained preview system** for viewing files directly in the browser:
   - **PDF files**: Native browser PDF viewer (via iframe)
   - **Text/Code files**: 50+ formats with syntax highlighting (txt, log, md, json, xml, yaml, py, js, java, go, rs, c, cpp, sh, etc.)

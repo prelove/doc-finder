@@ -51,6 +51,9 @@ public class MenuBarPanel extends JMenuBar {
         /** Called when the user clicks "Open Web Interface…". */
         void onOpenWebInterface();
 
+        /** Called when the user clicks "Web Server Port…". */
+        void onShowWebPortSettings();
+
         /** Called when the user toggles the Score column visibility. */
         void onToggleScoreColumn(boolean visible);
     }
@@ -149,6 +152,13 @@ public class MenuBarPanel extends JMenuBar {
             if (menuListener != null) menuListener.onOpenWebInterface();
         });
         file.add(openWebItem);
+
+        JMenuItem webPortItem = new JMenuItem("Web Server Port…");
+        webPortItem.setToolTipText("Change the port the embedded web server listens on (default 7070)");
+        webPortItem.addActionListener(e -> {
+            if (menuListener != null) menuListener.onShowWebPortSettings();
+        });
+        file.add(webPortItem);
 
         file.addSeparator();
 
