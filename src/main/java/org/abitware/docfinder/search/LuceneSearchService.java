@@ -20,8 +20,6 @@ import java.util.regex.Matcher;
 import java.util.regex.Pattern;
 
 import org.apache.lucene.analysis.Analyzer;
-import org.apache.lucene.analysis.cn.smart.SmartChineseAnalyzer;
-import org.apache.lucene.analysis.ja.JapaneseAnalyzer;
 import org.apache.lucene.analysis.miscellaneous.PerFieldAnalyzerWrapper;
 import org.apache.lucene.analysis.standard.StandardAnalyzer;
 import org.apache.lucene.document.Document;
@@ -334,8 +332,8 @@ public class LuceneSearchService implements SearchService {
                 (sourceRootProvider == null) ? defaultProvider() : sourceRootProvider;
 
         Analyzer std = new StandardAnalyzer();
-        Analyzer zh  = new SmartChineseAnalyzer();
-        Analyzer ja  = new JapaneseAnalyzer();
+        Analyzer zh  = org.abitware.docfinder.index.Analyzers.chinese();
+        Analyzer ja  = org.abitware.docfinder.index.Analyzers.japanese();
         Map<String, Analyzer> perField = new HashMap<>();
         perField.put(FIELD_NAME, std);
         perField.put("content", std);

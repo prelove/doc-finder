@@ -1,10 +1,9 @@
 package org.abitware.docfinder.index;
 
+import org.abitware.docfinder.util.AppPaths;
 import org.abitware.docfinder.util.PathScope;
 import org.abitware.docfinder.util.Utils;
 import org.apache.lucene.analysis.Analyzer;
-import org.apache.lucene.analysis.cn.smart.SmartChineseAnalyzer;
-import org.apache.lucene.analysis.ja.JapaneseAnalyzer;
 import org.apache.lucene.analysis.miscellaneous.PerFieldAnalyzerWrapper;
 import org.apache.lucene.analysis.standard.StandardAnalyzer;
 import org.apache.lucene.document.Document;
@@ -27,19 +26,21 @@ import org.slf4j.LoggerFactory;
 
 import java.io.IOException;
 import java.io.InputStream;
+import java.nio.file.DirectoryIteratorException;
+import java.nio.file.DirectoryStream;
 import java.nio.file.FileSystems;
-import java.nio.file.FileVisitResult;
 import java.nio.file.Files;
 import java.nio.file.Path;
 import java.nio.file.PathMatcher;
-import java.nio.file.SimpleFileVisitor;
 import java.nio.file.StandardOpenOption;
 import java.nio.file.attribute.BasicFileAttributes;
 import java.util.Arrays;
 import java.util.HashMap;
+import java.util.HashSet;
 import java.util.List;
 import java.util.Locale;
 import java.util.Map;
+import java.util.Set;
 import java.util.concurrent.ExecutorService;
 import java.util.concurrent.Executors;
 import java.util.concurrent.Future;
@@ -59,13 +60,35 @@ public class LuceneIndexer implements AutoCloseable {
     private static final String KIND_FOLDER = "folder";
     private static final int DEFAULT_MAX_CHARS = 1_000_000;
     private static final int MAX_ERROR_CACHE_SIZE = 10_000;
+    // Per-OS junk never worth indexing. Entries are checked as lower.contains()
+    // against the unix-form path, so a leading '/' anchors them to the entry
+    // name only — ".trash" also covers ".Trashes"/".Trash-1000", "$windows.~"
+    // covers $Windows.~BT/~WS, "icon\r" is the macOS Finder Icon<CR> file.
     private static final List<String> DEFAULT_EXCLUDED_HINTS = Arrays.asList(
+            // Windows recycle/system dirs
             "/$recycle.bin/",
             "/$recycle.bin",
             "/system volume information/",
             "/system volume information",
             "/recycler/",
-            "/recycler"
+            "/recycler",
+            // Windows per-dir junk + huge system files + upgrade leftovers
+            "/desktop.ini",
+            "/thumbs.db",
+            "/$windows.~",
+            "/pagefile.sys",
+            "/hiberfil.sys",
+            "/swapfile.sys",
+            // macOS per-volume/per-dir junk (OneDrive .Trash also stalls listings)
+            "/.trash",
+            "/.ds_store",
+            "/.localized",
+            "/.fseventsd",
+            "/.spotlight-v100",
+            "/.documentrevisions-v100",
+            "/.temporaryitems",
+            "/.vol/",
+            "/icon\r"
     );
 
     private static final Map<String, FailedFileState> FAILED_CONTENT_CACHE = new ConcurrentHashMap<>();
@@ -175,9 +198,10 @@ public class LuceneIndexer implements AutoCloseable {
         } catch (Throwable t) {
             return false;
         }
-        Path workDir = java.nio.file.Paths.get(System.getProperty("user.dir"))
-                .toAbsolutePath().normalize();
-        return !isExcluded(path, indexDir, settings, workDir);
+        // Exclude the app's own data dir only — never the whole working dir:
+        // user.dir may be / or ~ (mac double-click, launched from home) and
+        // would exclude every source beneath it (rebuild flashes, empty index).
+        return !isExcluded(path, indexDir, settings, AppPaths.getBaseDir());
     }
 
     /**
@@ -217,9 +241,7 @@ public class LuceneIndexer implements AutoCloseable {
         // newer than this prepare and must supersede it at apply time.
         long preparedAt = System.nanoTime();
         BasicFileAttributes attrs = Files.readAttributes(path, BasicFileAttributes.class);
-        Path workDir = java.nio.file.Paths.get(System.getProperty("user.dir"))
-                .toAbsolutePath().normalize();
-        if (isExcluded(path, indexDir, settings, workDir)) {
+        if (isExcluded(path, indexDir, settings, AppPaths.getBaseDir())) {
             return null;
         }
         Document doc = attrs.isDirectory()
@@ -321,7 +343,7 @@ public class LuceneIndexer implements AutoCloseable {
     /** 索引目录、配置 */
     private final Path indexDir;
     private final IndexSettings settings;
-    private final Path appWorkDir;
+    private final Path appDataDir;
 
     /** 按字段选择分析器 */
     private final Analyzer perFieldAnalyzer;
@@ -332,11 +354,11 @@ public class LuceneIndexer implements AutoCloseable {
     public LuceneIndexer(Path indexDir, IndexSettings settings) throws IOException {
         this.indexDir = indexDir;
         this.settings = settings;
-        this.appWorkDir = java.nio.file.Paths.get(System.getProperty("user.dir")).toAbsolutePath().normalize();
+        this.appDataDir = AppPaths.getBaseDir();
 
         Analyzer std = new StandardAnalyzer();
-        Analyzer zh = new SmartChineseAnalyzer();
-        Analyzer ja = new JapaneseAnalyzer();
+        Analyzer zh = Analyzers.chinese();
+        Analyzer ja = Analyzers.japanese();
 
         Map<String, Analyzer> perField = new HashMap<>();
         perField.put("name", std);
@@ -436,8 +458,12 @@ public class LuceneIndexer implements AutoCloseable {
      */
     public int indexFolders(List<Path> roots, boolean full) throws IOException {
         if (full) {
+            // No intermediate commit: the rebuilt index swaps in atomically at
+            // the final commit below. Committing deleteAll() up front left an
+            // empty index visible for the whole rebuild — and permanently on
+            // disk if the app exited mid-run (searches then returned 0 hits
+            // with no error).
             writer.deleteAll();
-            writer.commit();
         }
 
         AtomicInteger count = new AtomicInteger(0);
@@ -451,53 +477,81 @@ public class LuceneIndexer implements AutoCloseable {
         return count.get();
     }
 
+    /** Hard recursion bound — a pathological nesting depth cannot blow the stack. */
+    private static final int MAX_WALK_DEPTH = 512;
+
     private void walkOneRoot(IndexWriter writer, Path root, AtomicInteger count) {
         try {
             if (!Files.exists(root)) {
                 log.warn("Root path does not exist: {}", root);
                 return;
             }
-            Files.walkFileTree(root, new SimpleFileVisitor<Path>() {
-                @Override
-                public FileVisitResult preVisitDirectory(Path dir, BasicFileAttributes attrs) {
-                    try {
-                        if (isExcluded(dir)) return FileVisitResult.SKIP_SUBTREE;
-                        indexDirectory(writer, dir, attrs);
-                        count.incrementAndGet();
-                    } catch (Throwable t) {
-                        log.warn("Pre-visit directory error: {}, exception: {}", dir, t.getMessage());
-                    }
-                    return FileVisitResult.CONTINUE;
-                }
-
-                @Override
-                public FileVisitResult visitFile(Path file, BasicFileAttributes attrs) {
-                    try {
-                        if (isExcluded(file)) return FileVisitResult.CONTINUE;
-                        indexFile(writer, file, attrs);
-                        count.incrementAndGet();
-                    } catch (Throwable t) {
-                        log.warn("Visit file error: {}, exception: {}", file, t.getMessage());
-                    }
-                    return FileVisitResult.CONTINUE;
-                }
-
-                @Override
-                public FileVisitResult visitFileFailed(Path file, IOException exc) {
-                    log.warn("Visit file failed: {}, exception: {}", file, exc != null ? exc.getMessage() : "unknown");
-                    return FileVisitResult.CONTINUE;
-                }
-
-                @Override
-                public FileVisitResult postVisitDirectory(Path dir, IOException exc) {
-                    if (exc != null) {
-                        log.warn("Post-visit directory error: {}, exception: {}", dir, exc.getMessage());
-                    }
-                    return FileVisitResult.CONTINUE;
-                }
-            });
+            // Recursive walk rather than Files.walkFileTree: a directory whose
+            // listing fails mid-iteration (cloud file-provider placeholders
+            // like OneDrive .Trash, permission errors, vanished dirs) must only
+            // lose its own subtree, not abort the whole root — walkFileTree
+            // propagates such failures and ends the scan. Links are followed,
+            // so a symlinked source root (~/OneDrive on macOS) is walked
+            // instead of indexed as a single file record.
+            walkDir(writer, root, count, new HashSet<Object>());
         } catch (Throwable t) {
             log.error("Walk tree error for root {}: {}", root, t.getMessage());
+        }
+    }
+
+    private void walkDir(IndexWriter writer, Path path, AtomicInteger count, Set<Object> ancestry) {
+        try {
+            if (isExcluded(path)) {
+                return;
+            }
+            BasicFileAttributes attrs;
+            try {
+                // Default readAttributes follows links — a symlinked dir is
+                // treated as a dir; a dangling link fails here and is skipped.
+                attrs = Files.readAttributes(path, BasicFileAttributes.class);
+            } catch (IOException e) {
+                log.warn("Visit path failed: {}, exception: {}", path, e.getMessage());
+                return;
+            }
+            if (!attrs.isDirectory()) {
+                try {
+                    indexFile(writer, path, attrs);
+                    count.incrementAndGet();
+                } catch (Throwable t) {
+                    log.warn("Visit file error: {}, exception: {}", path, t.getMessage());
+                }
+                return;
+            }
+            try {
+                indexDirectory(writer, path, attrs);
+                count.incrementAndGet();
+            } catch (Throwable t) {
+                log.warn("Pre-visit directory error: {}, exception: {}", path, t.getMessage());
+            }
+            if (ancestry.size() >= MAX_WALK_DEPTH) {
+                log.warn("Max directory depth reached, skipping subtree: {}", path);
+                return;
+            }
+            // Link-cycle detection across the current ancestor chain; fileKey
+            // (dev+inode) is free and needs no extra real-path resolution.
+            Object key = attrs.fileKey();
+            if (key != null && !ancestry.add(key)) {
+                return;
+            }
+            try (DirectoryStream<Path> stream = Files.newDirectoryStream(path)) {
+                for (Path child : stream) {
+                    walkDir(writer, child, count, ancestry);
+                }
+            } catch (IOException | DirectoryIteratorException e) {
+                // Scoped to this directory only — siblings keep walking.
+                log.warn("Directory listing failed: {}, exception: {}", path, e.getMessage());
+            } finally {
+                if (key != null) {
+                    ancestry.remove(key);
+                }
+            }
+        } catch (Throwable t) {
+            log.warn("Walk directory error: {}, exception: {}", path, t.getMessage());
         }
     }
 
@@ -593,16 +647,16 @@ public class LuceneIndexer implements AutoCloseable {
     /* --------------------------- 规则/工具 --------------------------- */
 
     private boolean isExcluded(Path p) {
-        return isExcluded(p, indexDir, settings, appWorkDir);
+        return isExcluded(p, indexDir, settings, appDataDir);
     }
 
     /** Static form — the prepare path has no indexer instance. */
-    private static boolean isExcluded(Path p, Path indexDir, IndexSettings settings, Path appWorkDir) {
+    private static boolean isExcluded(Path p, Path indexDir, IndexSettings settings, Path appDataDir) {
         try {
             String unix = p.toString().replace('\\', '/');
             String lower = unix.toLowerCase(Locale.ROOT);
             if (p.toAbsolutePath().normalize().startsWith(indexDir.toAbsolutePath().normalize())) return true;
-            if (p.toAbsolutePath().normalize().startsWith(appWorkDir)) return true;
+            if (p.toAbsolutePath().normalize().startsWith(appDataDir)) return true;
             for (String hint : DEFAULT_EXCLUDED_HINTS) {
                 if (lower.contains(hint)) return true;
             }

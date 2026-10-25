@@ -1010,8 +1010,10 @@ public class MainWindow extends JFrame implements MenuBarPanel.MenuListener {
 		ActionMap am = resultTable.getActionMap();
 
 		im.put(KeyStroke.getKeyStroke("ENTER"), "open");
-		im.put(KeyStroke.getKeyStroke("ctrl C"), "copyPath");
-		im.put(KeyStroke.getKeyStroke("ctrl shift C"), "copyName");
+		// Platform shortcut mask: Ctrl on Windows/Linux, Cmd on macOS.
+		int menuMask = Toolkit.getDefaultToolkit().getMenuShortcutKeyMask();
+		im.put(KeyStroke.getKeyStroke(KeyEvent.VK_C, menuMask), "copyPath");
+		im.put(KeyStroke.getKeyStroke(KeyEvent.VK_C, menuMask | KeyEvent.SHIFT_MASK), "copyName");
 
 		am.put("open", new AbstractAction() {
 			@Override
@@ -2525,7 +2527,7 @@ public class MainWindow extends JFrame implements MenuBarPanel.MenuListener {
 				if (cause instanceof org.abitware.docfinder.search.SearchException) {
 					code = ((org.abitware.docfinder.search.SearchException) cause).getCode();
 				} else {
-					log.warn("Search failed for token {}: {}", token, String.valueOf(cause));
+					log.warn("Search failed for token {}", token, cause);
 				}
 				clearResultsForError();
 				statusLabel.setText(org.abitware.docfinder.search.SearchErrorMessages.forCode(code));
