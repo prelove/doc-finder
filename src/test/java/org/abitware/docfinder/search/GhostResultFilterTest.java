@@ -149,6 +149,47 @@ class GhostResultFilterTest {
     }
 
     @Test
+    void shouldBoundReachabilityAtTheSourceRoot() {
+        // source-bounded: same deletions confirmed against a live source root
+        assertTrue(LuceneSearchService.isDefinitelyDeleted(
+                source.resolve("gone.txt").toString(), source),
+                "live source root confirms the deletion");
+
+        // a configured root that itself is gone → offline-source semantics:
+        // the walk must stop at the root, never conclude deletion from the
+        // still-alive filesystem root above it
+        Path darkRoot = fixtureRoot.resolve("dark-source"); // never created
+        assertFalse(LuceneSearchService.isDefinitelyDeleted(
+                darkRoot.resolve("deep").resolve("f.txt").toString(), darkRoot),
+                "vanished source root must keep its docs (offline, not deleted)");
+        // same path with NO source bound still walks to a live ancestor —
+        // the bound is what makes offline-vs-deleted distinguishable
+        assertTrue(LuceneSearchService.isDefinitelyDeleted(
+                darkRoot.resolve("deep").resolve("f.txt").toString()),
+                "unbounded walk reaches the live fixtureRoot → confirmed ghost");
+    }
+
+    @Test
+    void shouldReturnUnknownWhenAllEarlyCandidatesAreGhosts() throws Exception {
+        // 505 deleted hits: past the 500-candidate cap the budget must stop
+        // the walk instead of paging forever — results empty, verdict UNKNOWN
+        int n = 505;
+        for (int i = 0; i < n; i++) {
+            write(source.resolve(String.format("capghost-%03d.txt", i)), "lorem");
+        }
+        indexAndOpen();
+        for (int i = 0; i < n; i++) {
+            Files.delete(source.resolve(String.format("capghost-%03d.txt", i)));
+        }
+
+        SearchOutcome o = detailed("capghost", 50);
+        assertTrue(o.results.isEmpty(),
+                "no displayable result may survive an all-ghost head");
+        assertEquals(TriState.UNKNOWN, o.hasMore,
+                "budget spent before the tail → UNKNOWN, never a fake FALSE");
+    }
+
+    @Test
     void shouldKeepResultWhenParentAlsoGone() throws Exception {
         // whole subtree deleted: file + its parent dir both vanished, but the
         // source root still exists → confirmed deletion → filtered
