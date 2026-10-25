@@ -2233,7 +2233,8 @@ public class MainWindow extends JFrame implements MenuBarPanel.MenuListener {
 
 			}
 
-			SearchRequest request = new SearchRequest(query, 100, filter, scope, matchMode, directoryPath);
+			SearchRequest request = new SearchRequest(query, 100, filter, scope, matchMode, directoryPath,
+					"desktop");
 			log.debug("Executing search for token: {}", token);
 			outcome = svc.searchDetailed(request);
 			log.debug("Search for token {} completed with {} results.", token, outcome.results.size());

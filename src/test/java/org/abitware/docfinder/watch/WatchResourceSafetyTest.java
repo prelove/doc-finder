@@ -126,6 +126,7 @@ class WatchResourceSafetyTest {
                 ? org.abitware.docfinder.util.Utils.canonicalizeWinPathString(raw) : raw;
         String key = norm.replace(':', '_').replace('\\', '_').replace('/', '_');
         if (key.isEmpty()) key = "root";
+        key = key + "-" + Integer.toHexString(norm.hashCode()); // same disambiguation as SnapshotStore
         Path snapDir = AppPaths.getBaseDir().resolve("snapshots");
         Files.createDirectories(snapDir);
         Files.createDirectory(snapDir.resolve(key + ".txt"));
@@ -187,6 +188,30 @@ class WatchResourceSafetyTest {
         });
         assertEquals(2, docCount(index),
                 "complete scan may delete proven-absent paths");
+    }
+
+    @Test
+    void shouldApplyRealDiffOnManualPollWithoutStart() throws Exception {
+        // RG-03: a dedicated manual poller that was never start()ed must
+        // still perform real adds/mods/deletes — "scheduler off" is not
+        // "service closed".
+        write(source.resolve("a.txt"), "lorem");
+        write(source.resolve("b.txt"), "lorem");
+
+        poller = new NetPollerService(index, settings, Collections.singletonList(source));
+        // NOTE: no poller.start() — the manual entry alone must work.
+        NetPollerService.PollStats stats = poller.pollNowAsync().get(30, TimeUnit.SECONDS);
+
+        assertTrue(stats.scannedFiles >= 2, "manual poll must actually scan");
+        assertTrue(stats.created >= 2, "manual poll must write, not scan-only");
+        assertTrue(docCount(index) >= 2,
+                "manual poll must upsert docs into the index");
+
+        // a second manual round observes the baseline it saved and deletes
+        Files.delete(source.resolve("a.txt"));
+        NetPollerService.PollStats second = poller.pollNowAsync().get(30, TimeUnit.SECONDS);
+        assertEquals(1L, second.deleted,
+                "manual poll must delete proven-absent paths too");
     }
 
     @Test

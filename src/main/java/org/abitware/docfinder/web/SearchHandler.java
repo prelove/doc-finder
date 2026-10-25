@@ -88,7 +88,9 @@ class SearchHandler implements HttpHandler {
             directory = null;
         }
 
-        SearchRequest req = new SearchRequest(q, limit, filter, scope, mode, directory);
+        String clientTag = exchange.getRemoteAddress() == null ? null
+                : String.valueOf(exchange.getRemoteAddress().getAddress());
+        SearchRequest req = new SearchRequest(q, limit, filter, scope, mode, directory, clientTag);
         SearchOutcome outcome;
         try {
             outcome = svc.searchDetailed(req);

@@ -28,7 +28,10 @@ public class SnapshotStore {
                 ? org.abitware.docfinder.util.Utils.canonicalizeWinPathString(raw)
                 : raw;
         String k = norm.replace(':','_').replace('\\','_').replace('/','_');
-        return k.isEmpty() ? "root" : k;
+        if (k.isEmpty()) k = "root";
+        // Separator-folding alone collides (E:\a\b vs E:\a_b); the hash
+        // suffix disambiguates so two roots can never share a tmp/file.
+        return k + "-" + Integer.toHexString(norm.hashCode());
     }
 
     /**
@@ -88,6 +91,12 @@ public class SnapshotStore {
             }
             return true;
         } catch (IOException e) {
+            // Never leave a half-written tmp behind — a later load() must not
+            // trip over residue, and the stale tmp is useless anyway.
+            try {
+                Files.deleteIfExists(dir.resolve(keyForRoot(root) + ".tmp"));
+            } catch (IOException ignore) {
+            }
             return false;
         }
     }

@@ -53,6 +53,10 @@ public class LocalRecursiveWatcher implements AutoCloseable {
     private final Listener listener;
     private final WatchService ws;
     private final Map<WatchKey, Path> key2dir = new ConcurrentHashMap<>();
+    /** Directories currently registered — guards against double-registering
+     *  (duplicate WatchKeys → duplicate events) and enables re-registration
+     *  after an invalid key drops a mapping. */
+    private final java.util.Set<Path> registeredDirs = java.util.concurrent.ConcurrentHashMap.newKeySet();
     private final ExecutorService loop = Executors.newSingleThreadExecutor(r -> {
         Thread t = new Thread(r, "docfinder-watch-loop");
         t.setDaemon(true);
@@ -125,7 +129,10 @@ public class LocalRecursiveWatcher implements AutoCloseable {
                     continue;
                 }
                 registerDir(root);
-                bootstrap.submit(new BootstrapTask(root));
+                // execute (not submit): submit wraps the task in a FutureTask,
+                // which would defeat the BootstrapTask check in the rejection
+                // handler and silently drop registrations on a full queue.
+                bootstrap.execute(new BootstrapTask(root));
             } catch (Throwable t) {
                 log.warn("Watch startup register root error: {}, exception: {}", root, t.getMessage());
             }
@@ -140,12 +147,14 @@ public class LocalRecursiveWatcher implements AutoCloseable {
                     if (!running) {
                         return FileVisitResult.TERMINATE;
                     }
-                    if (!root.equals(dir)) {
-                        try {
-                            registerDir(dir);
-                        } catch (Throwable t) {
-                            log.debug("Watch register dir skipped: {}", dir);
-                        }
+                    // registerDir is idempotent (registeredDirs guard) — the
+                    // root itself is covered too: a BootstrapTask spawned by a
+                    // CREATE event must register the NEW dir, not just its
+                    // children (files created directly in it were unwatched).
+                    try {
+                        registerDir(dir);
+                    } catch (Throwable t) {
+                        log.debug("Watch register dir skipped: {}", dir);
                     }
                     return FileVisitResult.CONTINUE;
                 }
@@ -177,6 +186,7 @@ public class LocalRecursiveWatcher implements AutoCloseable {
                 }
                 continue;
             }
+            final Path watchedDir = dir;
 
             for (WatchEvent<?> ev : key.pollEvents()) {
                 WatchEvent.Kind<?> kind = ev.kind();
@@ -193,7 +203,7 @@ public class LocalRecursiveWatcher implements AutoCloseable {
                 if (kind == ENTRY_CREATE) {
                     try {
                         if (Files.isDirectory(child)) {
-                            bootstrap.submit(new BootstrapTask(child));
+                            bootstrap.execute(new BootstrapTask(child));
                         }
                     } catch (Exception ignore) {
                     }
@@ -204,8 +214,16 @@ public class LocalRecursiveWatcher implements AutoCloseable {
             }
             if (!key.reset()) {
                 // Directory became inaccessible — the key can no longer be
-                // re-armed, so drop it instead of holding a dead registration.
+                // re-armed. Drop the mapping AND mark the dir unregistered,
+                // then queue a bounded re-registration so the tree is not
+                // silently left unwatched forever.
                 key2dir.remove(key);
+                registeredDirs.remove(watchedDir);
+                try {
+                    bootstrap.execute(new BootstrapTask(watchedDir));
+                } catch (RuntimeException rex) {
+                    fireOverflow(watchedDir);
+                }
             }
         }
     }
@@ -239,8 +257,16 @@ public class LocalRecursiveWatcher implements AutoCloseable {
     }
 
     private void registerDir(Path dir) throws IOException {
-        WatchKey key = dir.register(ws, ENTRY_CREATE, ENTRY_MODIFY, ENTRY_DELETE);
-        key2dir.put(key, dir);
+        if (!registeredDirs.add(dir)) {
+            return; // already registered — a second WatchKey would double events
+        }
+        try {
+            WatchKey key = dir.register(ws, ENTRY_CREATE, ENTRY_MODIFY, ENTRY_DELETE);
+            key2dir.put(key, dir);
+        } catch (IOException | RuntimeException e) {
+            registeredDirs.remove(dir);
+            throw e;
+        }
     }
 
     @Override
@@ -261,5 +287,6 @@ public class LocalRecursiveWatcher implements AutoCloseable {
         }
         pending.clear();
         key2dir.clear();
+        registeredDirs.clear();
     }
 }

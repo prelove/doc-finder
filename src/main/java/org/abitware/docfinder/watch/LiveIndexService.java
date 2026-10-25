@@ -174,7 +174,13 @@ public class LiveIndexService implements AutoCloseable {
                 if (reconcile == null && batch.isEmpty()) {
                     return;
                 }
-                IndexWriteCoordinator.run(() -> applyBatch(reconcile, batch));
+                IndexWriteCoordinator.run(() -> {
+                    if (closed) {
+                        return; // re-check inside the write lock — a close
+                                // during lock acquisition must not write
+                    }
+                    applyBatch(reconcile, batch);
+                });
             }
         } finally {
             drainActive.set(false);

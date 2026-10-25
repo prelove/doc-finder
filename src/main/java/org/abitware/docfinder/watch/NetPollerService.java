@@ -38,14 +38,29 @@ public class NetPollerService implements AutoCloseable {
 
     private ScheduledExecutorService scheduler;
     private ExecutorService onDemand;
+    /** Scheduler liveness: scheduled ticks run only while this is set. */
     private volatile boolean running = false;
+    /**
+     * Service liveness: once closed, NO path (scheduled or manual) may scan
+     * or write. Distinct from {@link #running} — a manual poll on a
+     * never-started-but-not-closed poller must still apply real diffs.
+     */
+    private volatile boolean closed = false;
     /**
      * Single-flight guard: an automatic tick and a manual poll can never
      * overlap — and since one poll covers all roots, per-source overlap is
      * covered too. A second attempt returns immediately with empty stats.
+     * The flag is released only when every root task of the round has
+     * finished (see pendingRoots) — an interrupted merge must not free the
+     * gate while zombie root tasks still run.
      */
     private final java.util.concurrent.atomic.AtomicBoolean pollInFlight =
             new java.util.concurrent.atomic.AtomicBoolean();
+    /** Root tasks still running for the current (or interrupted) round. */
+    private final java.util.concurrent.atomic.AtomicInteger pendingRoots =
+            new java.util.concurrent.atomic.AtomicInteger();
+    /** Deferred gate release: poll body done, root tasks still in flight. */
+    private volatile boolean releasePollWhenDrained = false;
     /**
      * Persistent bounded scan pool (created once, reused across rounds —
      * no per-round fixed pool churn): at most MAX_SCAN_THREADS snapshot
@@ -121,11 +136,15 @@ public class NetPollerService implements AutoCloseable {
         if (onDemand == null || onDemand.isShutdown()) {
             onDemand = newOnDemand();
         }
+        closed = false;
         running = true;
         scheduler.scheduleWithFixedDelay(this::pollOnceSafe, 3, Math.max(1, minutes) * 60L, TimeUnit.SECONDS);
     }
 
     public Future<PollStats> pollNowAsync() {
+        if (closed) {
+            return java.util.concurrent.CompletableFuture.completedFuture(new PollStats());
+        }
         if (onDemand == null || onDemand.isShutdown()) {
             onDemand = newOnDemand();
         }
@@ -146,7 +165,7 @@ public class NetPollerService implements AutoCloseable {
     }
 
     private void pollOnceSafe() {
-        if (!running) {
+        if (!running || closed) {
             return;
         }
         try {
@@ -174,7 +193,19 @@ public class NetPollerService implements AutoCloseable {
             // at most MAX_SCAN_THREADS snapshot pairs are held at once.
             List<Future<RootStats>> futures = new ArrayList<>();
             for (Path root : activeRoots) {
-                futures.add(scanPool.submit(() -> processRoot(root)));
+                pendingRoots.incrementAndGet();
+                try {
+                    futures.add(scanPool.submit(() -> {
+                        try {
+                            return processRoot(root);
+                        } finally {
+                            rootTaskFinished();
+                        }
+                    }));
+                } catch (java.util.concurrent.RejectedExecutionException rex) {
+                    pendingRoots.decrementAndGet();
+                    log.warn("Scan pool full — root {} skipped this round", root);
+                }
             }
             for (Future<RootStats> f : futures) {
                 try {
@@ -186,8 +217,12 @@ public class NetPollerService implements AutoCloseable {
                         stats.deleted += rs.deleted;
                     }
                 } catch (InterruptedException ie) {
-                    // Service stopping — preserve the interrupt and skip the
-                    // remaining merges; the in-flight root task exits on its own.
+                    // Service stopping — preserve the interrupt, cancel what
+                    // has not started, and let the drain free the gate when
+                    // the still-running root tasks actually finish.
+                    for (Future<RootStats> rest : futures) {
+                        rest.cancel(true);
+                    }
                     Thread.currentThread().interrupt();
                     break;
                 } catch (Exception e) {
@@ -195,7 +230,11 @@ public class NetPollerService implements AutoCloseable {
                 }
             }
         } finally {
-            pollInFlight.set(false);
+            if (pendingRoots.get() == 0) {
+                pollInFlight.set(false);
+            } else {
+                releasePollWhenDrained = true;
+            }
         }
 
         // Notify search service to refresh reader after commit, making changes from this poll immediately visible to next search
@@ -250,12 +289,16 @@ public class NetPollerService implements AutoCloseable {
         }
         rs.complete = complete[0];
 
-        if (!running) {
-            return rs; // service stopping — don't write against a closed index
+        if (closed) {
+            return rs; // service closed — never write against a dead index
         }
 
         try {
             IndexWriteCoordinator.run(() -> {
+                if (closed) {
+                    return; // re-check inside the write lock — a stop during
+                            // lock acquisition must not write either
+                }
                 try (LuceneIndexer idx = new LuceneIndexer(indexDir, settings)) {
                     applySnapshotDiff(idx, oldSnap, newSnap, rs.complete, rs);
                     idx.commit();
@@ -281,36 +324,45 @@ public class NetPollerService implements AutoCloseable {
                                    Map<String, SnapshotStore.Entry> newSnap,
                                    boolean completeScan,
                                    RootStats stats) {
-        Set<String> all = new HashSet<>();
-        all.addAll(oldSnap.keySet());
-        all.addAll(newSnap.keySet());
-
-        for (String p : all) {
-            SnapshotStore.Entry o = oldSnap.get(p);
+        // Two passes avoid materializing a third union set on top of the two
+        // snapshot maps — peak memory stays at the two snapshots themselves.
+        for (Map.Entry<String, SnapshotStore.Entry> e : oldSnap.entrySet()) {
+            String p = e.getKey();
+            SnapshotStore.Entry o = e.getValue();
             SnapshotStore.Entry n = newSnap.get(p);
-
-            Path path;
-            try {
-                path = Paths.get(p);
-            } catch (Exception ex) {
-                continue;
-            }
-
-            if (o == null && n != null) {
-                safeUpsert(idx, path);
-                stats.created++;
-            } else if (o != null && n == null) {
+            if (n == null) {
                 if (!completeScan) {
                     // Partial scan: an absent path may simply be inside an
                     // unreadable branch — never delete on unproven absence.
                     continue;
                 }
+                Path path = toPath(p);
+                if (path == null) continue;
                 safeDelete(idx, path);
                 stats.deleted++;
-            } else if (o != null && n != null && (o.size != n.size || o.mtime != n.mtime)) {
+            } else if (o.size != n.size || o.mtime != n.mtime) {
+                Path path = toPath(p);
+                if (path == null) continue;
                 safeUpsert(idx, path);
                 stats.modified++;
             }
+        }
+        for (Map.Entry<String, SnapshotStore.Entry> e : newSnap.entrySet()) {
+            if (oldSnap.containsKey(e.getKey())) {
+                continue;
+            }
+            Path path = toPath(e.getKey());
+            if (path == null) continue;
+            safeUpsert(idx, path);
+            stats.created++;
+        }
+    }
+
+    private static Path toPath(String p) {
+        try {
+            return Paths.get(p);
+        } catch (Exception ex) {
+            return null;
         }
     }
 
@@ -328,8 +380,17 @@ public class NetPollerService implements AutoCloseable {
         }
     }
 
+    /** Releases the single-flight gate once all root tasks have drained. */
+    private void rootTaskFinished() {
+        if (pendingRoots.decrementAndGet() == 0 && releasePollWhenDrained) {
+            releasePollWhenDrained = false;
+            pollInFlight.set(false);
+        }
+    }
+
     public void stop() {
         running = false;
+        closed = true;
         if (scheduler != null) {
             scheduler.shutdownNow();
             scheduler = null;

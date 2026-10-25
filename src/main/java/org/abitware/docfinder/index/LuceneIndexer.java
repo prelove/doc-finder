@@ -95,13 +95,22 @@ public class LuceneIndexer implements AutoCloseable {
         PARSER_POOL.allowCoreThreadTimeOut(true);
     }
 
+    /**
+     * A failed parse is skipped only within this window — after it the file
+     * is retried on the next upsert, so a transient stall (slow share,
+     * saturated pool) cannot permanently strand a file without content.
+     */
+    private static final long FAILED_RETRY_TTL_MS = 10L * 60 * 1000;
+
     private static class FailedFileState {
         final long size;
         final long mtime;
+        final long recordedAt;
 
         FailedFileState(long size, long mtime) {
             this.size = size;
             this.mtime = mtime;
+            this.recordedAt = System.currentTimeMillis();
         }
     }
 
@@ -433,10 +442,11 @@ public class LuceneIndexer implements AutoCloseable {
                 }
             });
         } catch (java.util.concurrent.RejectedExecutionException rex) {
-            // Pool saturated — record and index without content rather than
-            // queuing unboundedly or spawning a replacement thread.
+            // Pool saturated — index without content rather than queueing
+            // unboundedly. NOT recorded in FAILED_CONTENT_CACHE: saturation is
+            // transient, so the file must be retried on the next index pass
+            // instead of being skipped forever on unchanged size/mtime.
             log.warn("Tika parser pool saturated; content skipped for {}", file);
-            rememberFailedExtraction(file, attrs);
             return "";
         }
         try {
@@ -444,9 +454,16 @@ public class LuceneIndexer implements AutoCloseable {
         } catch (Throwable t) {
             // Cancel first: an unstarted task is removed from the queue; a
             // running one gets interrupted (it keeps a slot if uninterruptible,
-            // but the slot count stays bounded by the pool cap).
+            // but the slot count stays bounded by the pool cap). purge() then
+            // physically drops cancelled-not-started FutureTasks so the slot
+            // is reclaimed immediately instead of waiting for a worker to
+            // reach and skip it.
             fut.cancel(true);
+            PARSER_POOL.purge();
             log.warn("Extract text timeout or error: {}, exception: {}", file, t.getMessage());
+            // A timeout is usually a slow share, not a corrupt file — skip
+            // re-parsing for a bounded window via the failed cache so a hang
+            // does not repeat every scan, but keep the retry path alive.
             rememberFailedExtraction(file, attrs);
             return "";
         }
@@ -460,6 +477,10 @@ public class LuceneIndexer implements AutoCloseable {
         }
         long size = attrs.size();
         long mtime = attrs.lastModifiedTime().toMillis();
+        if (System.currentTimeMillis() - failed.recordedAt > FAILED_RETRY_TTL_MS) {
+            FAILED_CONTENT_CACHE.remove(key);
+            return false; // retry window expired — parse again
+        }
         return failed.size == size && failed.mtime == mtime;
     }
 

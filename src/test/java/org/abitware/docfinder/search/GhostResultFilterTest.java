@@ -167,6 +167,17 @@ class GhostResultFilterTest {
         assertTrue(LuceneSearchService.isDefinitelyDeleted(
                 darkRoot.resolve("deep").resolve("f.txt").toString()),
                 "unbounded walk reaches the live fixtureRoot → confirmed ghost");
+
+        // RG-08: the vanished path IS the source root itself — the walk must
+        // not escape above the root to find a live ancestor and wrongly
+        // confirm the root's FOLDER doc as deleted
+        assertFalse(LuceneSearchService.isDefinitelyDeleted(
+                darkRoot.toString(), darkRoot),
+                "a vanished source-root path itself is unreachable, not deleted");
+        // but an actually-deleted live-root dir IS still confirmable
+        assertTrue(LuceneSearchService.isDefinitelyDeleted(
+                source.resolve("gone-dir").toString(), source),
+                "deleted dir under a live source root is still a ghost");
     }
 
     @Test
@@ -244,21 +255,24 @@ class GhostResultFilterTest {
         indexAndOpen();
 
         // Whole source root vanishes (share unmounted). The file can neither
-        // be proven deleted nor verified alive — it must be KEPT and the
-        // outcome must explicitly flag the uncertainty.
+        // be proven deleted nor verified alive — it is NOT shown (unverified
+        // entries never fill the display quota) but is never purged either;
+        // the outcome must explicitly flag the uncertainty instead.
         deleteRecursively(source);
         assertFalse(Files.exists(source));
 
         SearchOutcome o = detailed("dark", 50);
-        assertEquals(1, o.results.size(),
-                "unverifiable hits are kept, never silently dropped or deleted");
+        assertEquals(0, o.results.size(),
+                "unverifiable hits stay out of the result quota entirely");
         assertTrue(o.hasUnverified,
                 "unverifiable hits must surface the explicit unverified flag");
 
         waitForPurge();
         SearchOutcome again = detailed("dark", 50);
-        assertEquals(1, again.results.size(),
-                "offline source entries must never be purged from the index");
+        assertEquals(0, again.results.size(),
+                "offline source entries stay hidden — and, crucially, the "
+                + "next assertion proves they were never purged");
+        assertTrue(again.hasUnverified);
     }
 
     @Test
@@ -270,11 +284,14 @@ class GhostResultFilterTest {
         // Hold the write lock across the search that detects the ghost, then
         // recreate the file before the purge can acquire it — the queued
         // purge must re-verify under the lock and keep the revived file.
+        // The hold exceeds PURGE_RECHECK_AFTER_MS so the in-lock recheck is
+        // exercised deterministically.
         org.abitware.docfinder.index.IndexWriteCoordinator.run(() -> {
             SearchOutcome o = detailed("revived", 50);
             assertTrue(o.results.isEmpty(), "deleted file is filtered now");
             try {
                 write(source.resolve("revived.txt"), "lorem");
+                Thread.sleep(400);
             } catch (Exception e) {
                 throw new RuntimeException(e);
             }
