@@ -71,6 +71,38 @@ public class LuceneIndexer implements AutoCloseable {
     private static final Map<String, FailedFileState> FAILED_CONTENT_CACHE = new ConcurrentHashMap<>();
 
     /**
+     * Bounded registry of recent successful upserts: normalized path →
+     * System.nanoTime of the write. Lets a queued cleanup verify that the
+     * index record it is about to delete is still the same generation —
+     * a stale verdict must never delete a doc that was re-indexed after
+     * the verdict was formed. Read without holding the write lock.
+     */
+    private static final int RECENT_UPSERT_CAP = 4096;
+    /** Verdict-vs-upsert races resolve within seconds; older entries are dead weight. */
+    private static final long RECENT_UPSERT_TTL_NS = java.util.concurrent.TimeUnit
+            .MINUTES.toNanos(2);
+    private static final Map<String, Long> RECENT_UPSERTS = new ConcurrentHashMap<>();
+
+    private static void recordUpsert(String normalizedPath) {
+        if (RECENT_UPSERTS.size() >= RECENT_UPSERT_CAP) {
+            long cutoff = System.nanoTime() - RECENT_UPSERT_TTL_NS;
+            RECENT_UPSERTS.values().removeIf(t -> t < cutoff);
+            // If the cap is still exceeded the put proceeds anyway — a
+            // slight transient overshoot beats discarding live generations.
+        }
+        RECENT_UPSERTS.put(normalizedPath, System.nanoTime());
+    }
+
+    /**
+     * nanoTime of the last successful upsert for {@code normalizedPath}
+     * (same form as stored in the index / tombstones), or -1 when unknown.
+     */
+    public static long upsertedAt(String normalizedPath) {
+        Long t = RECENT_UPSERTS.get(normalizedPath);
+        return t == null ? -1L : t;
+    }
+
+    /**
      * Shared bounded pool for Tika extraction. At most PARSER_THREADS workers
      * exist for the whole JVM and the submission queue is bounded — a parse
      * that ignores interruption can occupy one slot, but slots never spawn
@@ -322,6 +354,7 @@ public class LuceneIndexer implements AutoCloseable {
 
             writer.updateDocument(new Term("path", pathStr), doc);
             Tombstones.remove(pathStr);
+            recordUpsert(pathStr);
         } catch (Throwable t) {
             log.warn("Index directory error: {}, exception: {}", dir, t.getMessage());
         }
@@ -368,6 +401,7 @@ public class LuceneIndexer implements AutoCloseable {
 
             writer.updateDocument(new Term("path", pathStr), doc);
             Tombstones.remove(pathStr);
+            recordUpsert(pathStr);
         } catch (Throwable t) {
             log.warn("Index file error: {}, exception: {}", file, t.getMessage());
         }

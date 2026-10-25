@@ -88,9 +88,10 @@ class SearchHandler implements HttpHandler {
             directory = null;
         }
 
-        String clientTag = exchange.getRemoteAddress() == null ? null
-                : String.valueOf(exchange.getRemoteAddress().getAddress());
-        SearchRequest req = new SearchRequest(q, limit, filter, scope, mode, directory, clientTag);
+        // Each web request is an independent session (null tag): two
+        // clients — or two tabs — behind the same IP must never cancel
+        // each other's in-flight searches.
+        SearchRequest req = new SearchRequest(q, limit, filter, scope, mode, directory);
         SearchOutcome outcome;
         try {
             outcome = svc.searchDetailed(req);

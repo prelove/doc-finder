@@ -329,6 +329,137 @@ class GhostResultFilterTest {
         assertTrue(found, "a file restored after purge must be resurrected into the index");
     }
 
+    /** Reads the index directly — proves convergence without any search call. */
+    private boolean indexHasDoc(String fileName) throws Exception {
+        String want = org.abitware.docfinder.util.Utils.normalizeForIndex(
+                source.resolve(fileName));
+        try (org.apache.lucene.store.FSDirectory d =
+                     org.apache.lucene.store.FSDirectory.open(index);
+             org.apache.lucene.index.DirectoryReader r =
+                     org.apache.lucene.index.DirectoryReader.open(d)) {
+            org.apache.lucene.search.IndexSearcher s =
+                    new org.apache.lucene.search.IndexSearcher(r);
+            return s.search(new org.apache.lucene.search.TermQuery(
+                    new org.apache.lucene.index.Term("path", want)), 1)
+                    .totalHits.value > 0;
+        }
+    }
+
+    @Test
+    void shouldResurrectWhileIdleWithoutAnySearch() throws Exception {
+        // The periodic sweep must re-index a restored file even when the
+        // app sits completely idle — "search again and it appears" is NOT
+        // accepted as automatic recovery.
+        write(source.resolve("idle-back.txt"), "lorem");
+        indexAndOpen();
+        Files.delete(source.resolve("idle-back.txt"));
+
+        assertTrue(detailed("idle-back", 50).results.isEmpty());
+        waitForPurge();
+        assertFalse(indexHasDoc("idle-back.txt"), "doc is really purged first");
+
+        // restore, then NO searches at all — just wait
+        write(source.resolve("idle-back.txt"), "lorem");
+        boolean found = false;
+        for (int i = 0; i < 16 && !found; i++) {
+            Thread.sleep(500);
+            found = indexHasDoc("idle-back.txt");
+        }
+        assertTrue(found,
+                "idle-time sweep must resurrect the file with zero intervening searches");
+    }
+
+    @Test
+    void shouldResurrectAcrossRestartWithoutScopedRequest() throws Exception {
+        // Restart scenario from the probe: tombstone persisted, file
+        // restored while down, and only GLOBAL searches afterwards.
+        write(source.resolve("back-after-restart.txt"), "lorem");
+        indexAndOpen();
+        Files.delete(source.resolve("back-after-restart.txt"));
+
+        assertTrue(detailed("back-after", 50).results.isEmpty());
+        waitForPurge();
+        assertFalse(indexHasDoc("back-after-restart.txt"));
+
+        service.close();
+        service = null;
+
+        write(source.resolve("back-after-restart.txt"), "lorem");
+
+        // fresh service = "restarted app": ctor seeds roots, the sweeper
+        // must resurrect without needing a scoped directory request
+        SourceRootProvider provider = () -> Collections.singletonList(source);
+        service = new LuceneSearchService(index, settings, provider);
+
+        boolean found = false;
+        for (int i = 0; i < 16 && !found; i++) {
+            Thread.sleep(500);
+            found = indexHasDoc("back-after-restart.txt");
+        }
+        assertTrue(found,
+                "restart + only-global-searches must still resurrect the restored file");
+    }
+
+    @Test
+    void shouldReachResurrectionTailDespiteMissingHead() throws Exception {
+        // Head of the tombstone list stays missing: a rotating cursor must
+        // still reach restored entries beyond the first RESURRECT_BATCH.
+        indexAndOpen();
+        java.util.List<String> fakes = new java.util.ArrayList<>();
+        for (int i = 0; i < 300; i++) {
+            String p = org.abitware.docfinder.util.Utils.normalizeForIndex(
+                    source.resolve(String.format("starve-%03d.txt", i)));
+            fakes.add(p);
+            org.abitware.docfinder.index.Tombstones.record(p);
+        }
+        Path real = source.resolve("starve-tail.txt");
+        write(real, "lorem");
+        String realKey = org.abitware.docfinder.util.Utils.normalizeForIndex(real);
+        org.abitware.docfinder.index.Tombstones.record(realKey);
+        try {
+            boolean found = false;
+            for (int i = 0; i < 20 && !found; i++) {
+                Thread.sleep(500);
+                found = indexHasDoc("starve-tail.txt");
+            }
+            assertTrue(found,
+                    "rotating cursor must reach tombstones behind 300 missing entries");
+        } finally {
+            for (String p : fakes) {
+                org.abitware.docfinder.index.Tombstones.remove(p);
+            }
+            org.abitware.docfinder.index.Tombstones.remove(realKey);
+        }
+    }
+
+    @Test
+    void shouldNotPurgeDocReindexedAfterVerdict() throws Exception {
+        // A doc re-indexed between phase-1 classification and the write
+        // lock must survive — the upsert-generation check inside the lock
+        // is generation-based, not wait-length-based.
+        write(source.resolve("reup.txt"), "lorem");
+        indexAndOpen();
+        Files.delete(source.resolve("reup.txt"));
+
+        org.abitware.docfinder.index.IndexWriteCoordinator.run(() -> {
+            SearchOutcome o = detailed("reup", 50);
+            assertTrue(o.results.isEmpty(), "ghost detected while lock held");
+            try {
+                write(source.resolve("reup.txt"), "lorem");
+                try (LuceneIndexer idx = new LuceneIndexer(index, settings)) {
+                    idx.upsertFile(source.resolve("reup.txt")); // newer generation
+                }
+            } catch (Exception e) {
+                throw new RuntimeException(e);
+            }
+        });
+
+        waitForPurge();
+        SearchOutcome after = detailed("reup", 50);
+        assertEquals(1, after.results.size(),
+                "a doc re-indexed after the purge verdict must not be deleted");
+    }
+
     private static void deleteRecursively(Path p) throws Exception {
         if (!Files.exists(p)) {
             return;

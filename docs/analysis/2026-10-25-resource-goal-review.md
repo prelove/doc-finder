@@ -88,3 +88,55 @@ ResourceStabilityTest的40轮×2次搜索及6×3次服务启停确实通过。�
 先修R2-01～03，增加“静止后放回且无任何输入”“重启后仅默认全局搜索”“257个以上墓碑”的真实回归，测试不得反复主动搜索来制造恢复触发。随后修R2-04/05及上述写锁/停止安全、刷新保持与未知状态。保留已修好的独立调用、手动轮询和来源根保护。最后给出真实扫描/慢I/O的资源证据再申请验收，不重建业务索引绕过问题。
 
 原始证据：`C:\Users\Administrator\AppData\Local\Temp\docfinder-resurrection-qa-20261025-l1wo293l\`，clean-verify.log、baseline-reports、summary.json；probes/src下ResurrectionUiProbe.java、ColdRestoreProbe.java、TransportProbe.java、PurgeRaceProbe.java；对应ui-results.log、cold-results.log、transport-results.log、race-results.log。所有探针使用独立工作目录及临时索引，服务器已停止。
+
+---
+
+## 实现者本轮修复与直接JAR证据（R2-01～05对应）
+
+提交为本节之后的新HEAD；交付JAR `target/docfinder-1.0.0.jar` SHA256 `B8F246CDFCFD4D0AACF9756AD1B32136DC179677523EA4BA1D2EBDB6A804FC57`。`mvn verify`：234总数、0失败/错误、3跳过。
+
+### 逐条修复映射
+
+| 评审项 | 修复机制 | 关键代码 |
+| --- | --- | --- |
+| R2-01 静止不恢复 | `resurrectTimer`：单守护线程 `scheduleWithFixedDelay(1.5s)`，经 `resurrectActive` CAS 单飞后提交 `drainResurrections` 到 ghostCleaner；恢复不再依赖任何搜索或输入 | LuceneSearchService 字段区/ctor、`resurrectSweepSafe` |
+| R2-02 重启+全局不恢复 | ctor 打开时即 `lastRootsSnapshot = safeLoadRoots()`（失败容忍，后台重试）；drain 发现快照仍 null 时才自行 `safeLoadRoots` 一次——零命中全局搜索不再阻塞复活 | LuceneSearchService ctor、`drainResurrections` 头部 |
+| R2-03 尾部饿死 | `lastResurrectKey` 旋转游标：每轮从上次检查键之后继续、尾部回绕；≤256次stat/轮的批次上限不再截断遍历范围 | `drainResurrections` 循环 |
+| R2-04 同IP互取消 | `SearchHandler` 不再按远端地址设置 `clientTag`，Web 每请求构造6参 SearchRequest（tag=null→私有会话），同IP两标签页互无代次共享 | web/SearchHandler.java |
+| R2-05 旧清理删新记录 | `LuceneIndexer.RECENT_UPSERTS`（4096上限+2分钟TTL驱逐）：indexFile/indexDirectory 成功 `updateDocument` 后记录 `nanoTime`；purge 相位1按路径记 `classifiedAt`，相位2锁内 `upsertedAt(s) > ct` 即跳过——代次判定无I/O、覆盖全部批次及任意等待时长 | index/LuceneIndexer.java、`purgeGhostBatch` |
+
+### 直接JAR探针（`docs/analysis/probe-restoration-2026-10-25/RestorationProbe.java`）
+
+在交付JAR上以 `java -cp` 运行，独立 `user.dir`（`.docfinder` 隔离），场景树位于 `user.dir` 之外（`isExcluded` 排除启动目录下路径，为产品既有行为，首轮探针因此失败已纠正）：
+
+```
+PASS P1 pre: ghost hidden
+PASS P1 pre: doc really purged
+PASS P1 idle sweep resurrects without any search
+PASS P2 pre: ghost hidden
+PASS P2 restart + global searches resurrect
+PASS P3 rotating cursor reaches tail past 300 missing
+PASS P4 both concurrent requests complete fully
+PASS P5 newer upsert survives stale purge verdict
+RESULT pass=8 fail=0
+```
+
+- P1：放回后**零搜索**等8s内自动入库（静止恢复，不依赖"再搜才出现"）。
+- P2：关服务→放回→开服务→仅ALL范围搜索轮询→恢复（重启+全局）。
+- P3：300条仍缺失墓碑在前、第301条已恢复文件入尾部→旋转游标到达。
+- P4：两并发 null-tag 请求各得20条完整结果（同IP独立）。
+- P5：写锁内恢复+upsert后，旧清理判定不删新文档（代次保护）。
+
+### 单测回归（GhostResultFilterTest 新增4例）
+
+`shouldResurrectWhileIdleWithoutAnySearch`、`shouldResurrectAcrossRestartWithoutScopedRequest`、`shouldReachResurrectionTailDespiteMissingHead`、`shouldNotPurgeDocReindexedAfterVerdict`——均以 `DirectoryReader` 直接验索引收敛，不用"反复搜索触发恢复"作证据。
+
+### 仍未闭合（如实声明）
+
+- 上一轮静态缺口3（自动刷新打断用户操作/排序预览保持）与4（全未知空态诚实提示）本轮未动，仍开。
+- `resurrectBatch` 中 `upsertFile` 吞错后仍 `Tombstones.remove` 的丢失窗口仍在（excluded路径场景）；墓碑>4096容量/30天TTL的兜底补账机制未实现。
+- 写锁内 recheck 仍是最多64条直接stat（仅在等锁>300ms时执行）；代次检查已将误删窗口压到"分类之后、锁内判定之前"的寄存器语义，但锁内stat本身未消除。
+- Web null-tag 意味着同标签页快速重输也不再相互取消（每请求独立）——陈旧响应由前端 stale 保护丢弃而非服务端取消。
+- 大快照双map内存、真实慢网络/句柄峰值实测缺口维持原记录；本批资源证据仍是线程/堆口径。
+
+以上为实测证据，非验收结论：R2-01～05的场景级修复已可复验，是否接受由下一轮独立探针判定。

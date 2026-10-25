@@ -144,21 +144,26 @@ class DirectoryScopedSearchTest {
 
     @Test
     void shouldInvokeProviderAtMostOncePerRequestAndNotForBlank() {
+        // The constructor performs one deterministic seed load for
+        // background resurrection/purge scoping — measure per-request
+        // deltas from there so only request work is counted.
+        int base = providerCalls.get();
+
         scoped("alpha", source.toString(), SearchScope.ALL);
-        assertEquals(1, providerCalls.get(),
+        assertEquals(base + 1, providerCalls.get(),
                 "one snapshot per scoped request, reused by the ghost filter");
 
         scoped("alpha", source.toString(), SearchScope.ALL);
-        assertEquals(2, providerCalls.get());
+        assertEquals(base + 2, providerCalls.get());
 
         // unscoped requests load sources lazily on the first existence check
         // (needed for source-bounded reachability), still once per request
         service.search(new SearchRequest("alpha", 10, null));
-        assertEquals(3, providerCalls.get());
+        assertEquals(base + 3, providerCalls.get());
 
         service.search(new SearchRequest("", 10, null, SearchScope.ALL,
                 MatchMode.FUZZY, source.toString())); // blank query + dir
-        assertEquals(3, providerCalls.get(),
+        assertEquals(base + 3, providerCalls.get(),
                 "blank-query requests must not load sources");
     }
 

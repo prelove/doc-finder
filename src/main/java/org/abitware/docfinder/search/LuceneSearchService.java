@@ -260,9 +260,27 @@ public class LuceneSearchService implements SearchService {
     private static final int RESURRECT_BATCH = 256;
     private static final int RESURRECT_TIMEOUT_GIVEUP = 8;
     private static final long RESURRECT_PACE_MS = 3_000;
+    /**
+     * Periodic resurrection sweep: tombstoned files that come back are
+     * re-indexed even while the app is completely IDLE — restoration must
+     * not depend on the user running another search.
+     */
+    private static final long RESURRECT_SWEEP_MS = 1_500;
     private final java.util.concurrent.atomic.AtomicBoolean resurrectActive =
             new java.util.concurrent.atomic.AtomicBoolean();
     private volatile long lastResurrectAt;
+    /**
+     * Rotating cursor over the tombstone list: each pass resumes AFTER the
+     * last examined key (wrapping at the end), so a head full of
+     * still-missing files can never starve the tail.
+     */
+    private volatile String lastResurrectKey;
+    private final java.util.concurrent.ScheduledExecutorService resurrectTimer =
+            java.util.concurrent.Executors.newSingleThreadScheduledExecutor(r -> {
+                Thread t = new Thread(r, "docfinder-resurrect");
+                t.setDaemon(true);
+                return t;
+            });
 
     /** Fired after any background index write (ghost purge, resurrection). */
     private volatile Runnable indexChangeListener;
@@ -332,9 +350,42 @@ public class LuceneSearchService implements SearchService {
             this.directory.close();
             throw e;
         }
-        // One resurrection pass at open: tombstoned files that came back
-        // while the app was down are re-indexed in the background.
+        // Seed the roots cache once at open: background work (resurrection
+        // sweeps, ghost purges) must be able to scope paths to configured
+        // sources without a request loading them first — a global search
+        // with zero candidates never loads roots, which would otherwise
+        // leave tombstones unexaminable forever.
+        lastRootsSnapshot = safeLoadRoots();
+        // Periodic sweep + one immediate pass: tombstoned files that came
+        // back while the app was down — or while it idles — are re-indexed
+        // without waiting for the next search.
+        resurrectTimer.scheduleWithFixedDelay(this::resurrectSweepSafe,
+                RESURRECT_SWEEP_MS, RESURRECT_SWEEP_MS, TimeUnit.MILLISECONDS);
         kickResurrection();
+    }
+
+    /** Provider load that tolerates failure — null means "retry later". */
+    private List<Path> safeLoadRoots() {
+        try {
+            return sourceRootProvider.loadRoots();
+        } catch (Exception e) {
+            return null;
+        }
+    }
+
+    /** Timer entry: a bounded pass per tick, same single-flight discipline. */
+    private void resurrectSweepSafe() {
+        if (closed || org.abitware.docfinder.index.Tombstones.isEmpty()) {
+            return;
+        }
+        if (!resurrectActive.compareAndSet(false, true)) {
+            return;
+        }
+        try {
+            ghostCleaner.submit(this::drainResurrections);
+        } catch (RuntimeException rejected) {
+            resurrectActive.set(false);
+        }
     }
 
     /**
@@ -1041,6 +1092,7 @@ public class LuceneSearchService implements SearchService {
         // Phase 1 — existence classification WITHOUT the global write lock:
         // slow stats (network shares) must never block an unrelated writer.
         List<String> confirmed = new ArrayList<>(batch.size());
+        Map<String, Long> classifiedAt = new HashMap<>(batch.size() * 2);
         for (String s : batch) {
             if (closed) {
                 return;
@@ -1048,6 +1100,7 @@ public class LuceneSearchService implements SearchService {
             verdictCache.remove(s);
             if (isDefinitelyDeleted(s, containingRoot(s, roots))) {
                 confirmed.add(s);
+                classifiedAt.put(s, System.nanoTime());
             }
         }
         if (confirmed.isEmpty() || closed) {
@@ -1070,6 +1123,14 @@ public class LuceneSearchService implements SearchService {
                 for (String s : confirmed) {
                     if (closed) {
                         return;
+                    }
+                    // Generation check (no I/O): the path was re-indexed
+                    // AFTER our classification — the verdict is stale and
+                    // the newer record must survive. This holds regardless
+                    // of how long the lock wait was.
+                    Long ct = classifiedAt.get(s);
+                    if (ct != null && LuceneIndexer.upsertedAt(s) > ct) {
+                        continue;
                     }
                     if (recheck && rechecked < PURGE_RECHECK_CAP) {
                         rechecked++;
@@ -1141,16 +1202,36 @@ public class LuceneSearchService implements SearchService {
         try {
             List<Path> roots = lastRootsSnapshot;
             if (roots == null) {
-                return; // roots never loaded → keep tombstones, retry later
+                roots = safeLoadRoots(); // ctor-time load may have failed
+                if (roots == null) {
+                    return;
+                }
+                lastRootsSnapshot = roots;
+            }
+            List<String> snap = org.abitware.docfinder.index.Tombstones.snapshot();
+            int n = snap.size();
+            if (n == 0) {
+                return;
+            }
+            // Rotating cursor: resume AFTER the previously examined key and
+            // wrap at the end — a head of still-missing files must never
+            // starve tail entries out of every pass.
+            int start = 0;
+            String last = lastResurrectKey;
+            if (last != null) {
+                int at = snap.indexOf(last);
+                start = (at < 0) ? 0 : (at + 1) % n;
             }
             List<String> batch = new ArrayList<>(RESURRECT_BATCH);
             int timeouts = 0;
             int checked = 0;
-            for (String p : org.abitware.docfinder.index.Tombstones.snapshot()) {
-                if (closed || checked >= RESURRECT_BATCH
-                        || timeouts >= RESURRECT_TIMEOUT_GIVEUP) {
-                    break;
+            for (int i = 0; i < n && checked < RESURRECT_BATCH
+                    && timeouts < RESURRECT_TIMEOUT_GIVEUP; i++) {
+                if (closed) {
+                    return;
                 }
+                String p = snap.get((start + i) % n);
+                lastResurrectKey = p;
                 // Only roots currently configured are resurrection-eligible —
                 // paths outside all sources stay tombstoned but cost no I/O.
                 if (containingRoot(p, roots) == null) {
@@ -1482,6 +1563,7 @@ public class LuceneSearchService implements SearchService {
             ghostDrainSet.clear();
         }
         org.abitware.docfinder.index.Tombstones.flush();
+        resurrectTimer.shutdownNow();
         ghostCleaner.shutdown();
         // EXISTENCE_POOL is a shared JVM resource — a closed service must
         // not shut it down (other instances still submit). Stale requests
