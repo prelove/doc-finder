@@ -261,7 +261,7 @@ PROBE evicted_active_guard otherRealDirectoryUpserts=4096 fileExists=true guardA
 
 ### 其他进度
 
-用户新增的“启动默认开启Local Watch”仍不包含在1ac2a9c；当前工作树已见MainWindow/LiveWatchIntentTest及说明改动，待新提交后独立验证，不提前计通过。已承认未动的写锁内stat、刷新排序/选择保持、未知空态、墓碑超限/写失败兜底、扫描/慢网络句柄与快照峰值等仍按原清单收尾，不因这轮探针通过自动消失。
+用户新增的“启动默认开启Local Watch”不包含在1ac2a9c；复验期间以90e0660并行提交，本轮没有运行该UI版本的独立验证，待另行核验，不提前计通过。已承认未动的写锁内stat、刷新排序/选择保持、未知空态、墓碑超限/写失败兜底、扫描/慢网络句柄与快照峰值等仍按原清单收尾，不因这轮探针通过自动消失。
 
 证据根：`C:\Users\Administrator\AppData\Local\Temp\docfinder-lru-qa-20261025-arwn8x_g\`。clean-verify.log、suite-reports；probes/capacity-results.log、overlap-results.log、source-results.log、eviction-results.log及原始源码。真实配置/来源/分享/历史哈希未变，测试进程正常退出。
 
