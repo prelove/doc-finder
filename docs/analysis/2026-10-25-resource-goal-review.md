@@ -2,7 +2,7 @@
 
 日期2026-10-25；审查代码 `ad363dacf550573e237cd6e4e3cd332490fd481c`，远端已确认。交付JAR SHA256：`213795F70914A8B8CF46F93E2194819211763573843F07DCD253CB448DF8588D`。
 
-**最新结论：489905f的五个原始现场反例均已独立通过，核心恢复主流程改善；整体验收仍为CHANGES_REQUESTED。新的资源保护上限、分类交叠安全和来源故障恢复有实测缺口，首次全套也有1项不稳定失败。以文末最新状态为准，前文是历史记录。**
+**最新结论：1ac2a9c的R3原始三个探针与首次236项全套均通过；容量与时点/来源重试改善已验证。但硬LRU遗忘在途版本仍会误删已恢复的新索引，完整正确性/资源目标尚未验收。最新状态以文末为准，前文保留历史。**
 
 **结论：CHANGES_REQUESTED，任务目标尚未完成。** 游标补足和若干单实例容量限制有实质改善；结果正确/足量、恢复文件重新出现、当前窗口自动更新及跨生命周期资源边界仍有缺口。不能以现有套件全绿代替目标验收。
 
@@ -216,3 +216,80 @@ PROBE source_config_retry fileExists=true indexedAfterRecovery=1 loadsBeforeIdle
 ### 仍未闭合（维持如实声明）
 
 写锁内 ≤64 条 recheck 直接 stat、自动刷新重置排序/选择/预览、全未知空态、墓碑 >4096 容量/30 天 TTL 兜底、`resurrectBatch` 中 upsert 吞错后仍 remove 墓碑、大快照双 map 内存与真实慢网络句柄峰值实测——以上维持上一轮记录，未在本轮范围。
+
+
+## 1ac2a9c复验：原R3通过，在途保护仍有一个实测阻断
+
+代码 `1ac2a9c1d2248b8534d0a08ba27bbdc54c2b5e61`，远端与JAR SHA256 `7CC44F3FC5BE69DA35733F2236E6EE0DE775E77EC12D898106F805A237E31697` 均已核实。
+
+### 本轮确认通过
+
+- 独立干净Git快照512MB fork首次 `clean verify`：**236总数、0失败/错误、2个POSIX跳过，BUILD SUCCESS**。argLine探针启用，所以比实现者3跳过少1项。此前固定700ms等待的失败本轮未再出现。
+- 直接JAR与Java8复跑CapacityProbe：configuredCap=4096、actualSize=4096，前/后4096次插入39ms/49ms。硬上限及不再逐次扫描整表已改善；不是全文检索延迟基准。
+- ClassificationRaceProbe：文件存在，旧分类期间已恢复的索引1→1，分类开始前基线修复通过。
+- SourceRetryProbe：provider恢复后无需输入自动入库，indexedAfterRecovery=1、loads=3→4，旧故障自愈反例通过。
+
+### R4-01 / P1：LRU淘汰了在途清理仍依赖的版本
+
+这对应上一轮R3-01已写明的“不能简单丢掉仍保护在途清理的版本”，不是新增产品要求。
+
+真实交付JAR、Java8、受控临时索引与两个配置来源：
+
+1. 旧清理在锁外确认65条缺失路径，随后等待写协调锁。
+2. 持锁主线程恢复第65条文件并真正upsert；随后对另一来源4096个真实目录执行upsert并commit。
+3. 目标新文档确认存在，但目标版本已被LRU淘汰，`upsertedAt` 返回-1。
+4. 放锁后，旧清理把“版本未知”当作“没有较新写入”；目标又位于64条文件复核上限之外，新文档被删除。
+
+最终输出：
+
+```text
+PROBE evicted_active_guard otherRealDirectoryUpserts=4096 fileExists=true guardAfterUpserts=-1 indexedBeforeOldPurge=1 indexedAfterOldPurge=0
+```
+
+测试临时停用该服务的复活timer，只隔离删除协议的正确性，避免后续修复任务掩盖误删；所有文件和4096次目录更新均在独立QA目录，文件本体没有被清理任务删除。父进程未触碰业务索引。
+
+定位：LuceneIndexer:95无条件LRU淘汰；upsertedAt:114缺失返回-1；purgeGhostBatch把缺失当作可继续删除。硬容量已正确，但“最不可能仍在竞态”不能作为删除安全保证。
+
+### 下一步修复约束
+
+- 保留真正的容量上限及O(1)/摊销受控维护，不能改回无界表或每次写入全表扫描。
+- 区分“本来没有登记”和“本轮在途保护因淘汰丢失”。可用索引/写入代次、淘汰水位或有界在途保护；证据丢失时跳过旧判定并受控重试，不能直接删除。
+- 也不能为通过此例一律停用幽灵清理：重启后版本表为空的旧索引，真正缺失的文件仍须能完成过滤和清理。禁止形成跳过→立即重试的忙循环。
+- 加上本轮实际批量更新交叠回归，再跑已有原R3及主恢复场景；已经通过的常规恢复、冷启动和HTTP独立请求不再返工。
+
+诊断源码附 [EvictedGuardProbe.java](probe-restoration-2026-10-25/EvictedGuardProbe.java)。仓库为自包含版本，已独立编译，增加期望保留新记录的断言用于后续红绿回归；为减少额外资源消耗未再次运行4096目录，自包含前的原始场景源码/实际输出留在下面QA根。运行需Java8、独立工作目录、fresh临时场景树且位于user.dir之外。
+
+### 其他进度
+
+用户新增的“启动默认开启Local Watch”仍不包含在1ac2a9c；当前工作树已见MainWindow/LiveWatchIntentTest及说明改动，待新提交后独立验证，不提前计通过。已承认未动的写锁内stat、刷新排序/选择保持、未知空态、墓碑超限/写失败兜底、扫描/慢网络句柄与快照峰值等仍按原清单收尾，不因这轮探针通过自动消失。
+
+证据根：`C:\Users\Administrator\AppData\Local\Temp\docfinder-lru-qa-20261025-arwn8x_g\`。clean-verify.log、suite-reports；probes/capacity-results.log、overlap-results.log、source-results.log、eviction-results.log及原始源码。真实配置/来源/分享/历史哈希未变，测试进程正常退出。
+
+---
+
+## 启动默认开启 Local Watch（独立启动行为，本轮实现）
+
+交付 JAR `target/docfinder-1.0.0.jar` SHA256 `49981B308347ACCABE25A7596E92B7683DF9868A3035E91419B5DB32719D7800`。`mvn clean verify`：239 总数、0 失败/错误、3 跳过，BUILD SUCCESS。
+
+### 实现要点（MainWindow）
+
+| 要求 | 落地 |
+| --- | --- |
+| 每次启动默认勾选、会话可关 | 构造器末尾 `liveWatchDesired = true` + `liveWatchToggle.setSelected(true)` + `applyLiveWatchIntent(false)`；手动取消勾选只影响本次会话 |
+| 勾选即真实启动 | 单一激活路径 `applyLiveWatchIntent`：SwingWorker 后台加载 `SourceManager` 条目、过滤 `!e.network`、`indexReady(indexDir)` 用 `DirectoryReader.indexExists` 判就绪、`LiveIndexService.start()` 真实启动后才更新状态 |
+| 真实状态不伪报 | 状态栏新增独立 `watchStatusLabel` 槽位：ON(n roots)/waiting(no sources)/waiting(index not built)/failed(msg)/paused/OFF；勾选=会话意图，标签=服务真实态；启动失败即清意图+去勾选+报失败 |
+| 重建期间暂停按意图恢复 | `liveWatchSuppressed` 抑制标志：`pauseLiveWatchForIndexing` 关服务+置位；`resumeLiveWatchIfDesired` 清位后按 `liveWatchDesired` 重走激活路径；索引操作进行中 attach 被闸（新开的服务实例直接 close） |
+| 关闭释放资源 | `dispose()`/`onExit()` 同步 `liveService.close()`；`windowClosed` 标志使晚到的 SwingWorker `done()` 只关不挂 |
+| 不重复创建 | `applyLiveWatchIntent` 入口对 `liveService != null || liveWatchStarting` 去重；`stopLiveWatch.done()` 尾部 `resumeLiveWatchIfDesired()` 消除 Manage Sources 重启竞态（意图重挂而旧服务仍在关→done 里补激活） |
+
+### 回归测试（LiveWatchIntentTest，无 Swing 依赖，3/3）
+
+- `liveWatchPlan`：无本地源→WAIT_NO_SOURCES；有源未建库→WAIT_NO_INDEX；有源已建库→START。
+
+### 既有 harness 兼容
+
+`DirectoryScopeDesktopHarnessTest` 20/20 全绿——首轮曾 11 败：watch 状态误写共享 `statusLabel` 覆盖搜索/索引状态文本。改为状态栏东侧独立槽位后全部恢复，主状态语义零变化。
+
+### 遗留说明
+
+`stopLiveWatch` 关服务仍在后台 SwingWorker 中执行（EDT 不阻塞）；onExit 走同步直连关闭。watchStatusLabel 仅反映最后一次状态迁移，不持久化。

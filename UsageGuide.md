@@ -90,7 +90,7 @@ _Local file name & content search. Fast, read‑only, and multilingual._
 
 ## 7) Live Updates（实时与轮询）
 
-- **Live Watch（本地）**：对 **Local** 源使用 OS `WatchService` 增量更新。
+- **Live Watch（本地）**：对 **Local** 源使用 OS `WatchService` 增量更新。**每次启动默认开启**（本次会话可手动关闭，不持久化）；未配置本地源或索引未建好时状态栏显示等待（自动接续），启动失败显示真实错误，重建索引期间自动暂停、完成后恢复。
 - **Network Polling（网络）**：对 **Network** 源按间隔轮询；
   - **Poll Network Sources Now**：立即轮询，**后台**执行，不会阻塞 UI；完成后状态栏显示统计（scanned/created/modified/deleted）。
 

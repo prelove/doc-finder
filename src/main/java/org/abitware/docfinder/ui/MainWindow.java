@@ -46,6 +46,15 @@ public class MainWindow extends JFrame implements MenuBarPanel.MenuListener {
 	private static final Logger log = LoggerFactory.getLogger(MainWindow.class);
 	private org.abitware.docfinder.watch.LiveIndexService liveService;
 	private javax.swing.JCheckBoxMenuItem liveWatchToggle;
+	/** Session intent for Local Watch — default ON at every launch; a manual
+	 *  uncheck turns it off for this session only (never persisted). */
+	private volatile boolean liveWatchDesired;
+	/** Single-flight guard so the one activation path cannot overlap. */
+	private volatile boolean liveWatchStarting;
+	/** Suppresses watch attach while a full index/rebuild owns the index. */
+	private volatile boolean liveWatchSuppressed;
+	/** Set by dispose(); late async callbacks must not attach a service after close. */
+	private volatile boolean windowClosed;
 
 	private javax.swing.JCheckBoxMenuItem netPollToggle;
 	private org.abitware.docfinder.watch.NetPollerService netPoller;
@@ -129,6 +138,8 @@ public class MainWindow extends JFrame implements MenuBarPanel.MenuListener {
 	// Bottom: status bar
 	private final JLabel statusLabel = new JLabel("Search index is initializing...");
 	private final JLabel progressLabel = new JLabel(" ");
+	/** Dedicated watch-state slot — must not overwrite the main status text. */
+	private final JLabel watchStatusLabel = new JLabel(" ");
 	private final JProgressBar progressBar = new JProgressBar();
 	private final JToggleButton previewToggle = new JToggleButton("Preview");
 	private int lastDividerLocation = -1;
@@ -239,6 +250,16 @@ public class MainWindow extends JFrame implements MenuBarPanel.MenuListener {
 
 		// Load configured sources for the directory-scope combo off the EDT
 		refreshSourceDirectoriesAsync();
+
+		// Local Watch defaults ON at every launch (this session may uncheck
+		// it). Activation runs in the background: no sources / index not
+		// built / start failure are reported as real states instead of a
+		// checked-but-not-running checkbox.
+		liveWatchDesired = true;
+		if (liveWatchToggle != null) {
+			liveWatchToggle.setSelected(true);
+		}
+		applyLiveWatchIntent(false);
 
 		lafListener = evt -> {
 			if ("lookAndFeel".equals(evt.getPropertyName())) {
@@ -538,6 +559,7 @@ public class MainWindow extends JFrame implements MenuBarPanel.MenuListener {
 		previewToggle.addActionListener(e -> setPreviewVisible(previewToggle.isSelected()));
 
 		JPanel east = new JPanel(new FlowLayout(FlowLayout.RIGHT, 6, 0));
+		east.add(watchStatusLabel);
 		east.add(previewToggle);
 		east.add(progressBar);
 		bottom.add(statusLabel, BorderLayout.WEST);
@@ -735,19 +757,64 @@ public class MainWindow extends JFrame implements MenuBarPanel.MenuListener {
 		}.execute();
 	}
 
+	/**
+	 * Manual toggle: the checkbox carries this session's intent. Enable
+	 * routes through the single activation path; disable stops the service.
+	 */
 	private void toggleLiveWatch() {
-		final boolean enable = liveWatchToggle.isSelected();
+		liveWatchDesired = liveWatchToggle.isSelected();
+		if (liveWatchDesired) {
+			applyLiveWatchIntent(true);
+		} else {
+			stopLiveWatch();
+		}
+	}
+
+	/** What the activation path may conclude — kept testable without Swing. */
+	enum LiveWatchPlan { START, WAIT_NO_SOURCES, WAIT_NO_INDEX }
+
+	static LiveWatchPlan liveWatchPlan(boolean hasLocalRoots, boolean indexReady) {
+		if (!hasLocalRoots) {
+			return LiveWatchPlan.WAIT_NO_SOURCES;
+		}
+		return indexReady ? LiveWatchPlan.START : LiveWatchPlan.WAIT_NO_INDEX;
+	}
+
+	/** A valid commit marks the index as built — the honest readiness gate. */
+	private static boolean indexReady(java.nio.file.Path indexDir) {
+		try {
+			if (!java.nio.file.Files.isDirectory(indexDir)) {
+				return false;
+			}
+			try (org.apache.lucene.store.FSDirectory d =
+					org.apache.lucene.store.FSDirectory.open(indexDir)) {
+				return org.apache.lucene.index.DirectoryReader.indexExists(d);
+			}
+		} catch (Exception e) {
+			return false;
+		}
+	}
+
+	/**
+	 * The single background activation path for Local Watch — used by the
+	 * manual toggle, startup default-on, source-apply and index-build
+	 * continuation. Reports true states (ON / waiting / failed) instead of
+	 * leaving a checked-but-not-running checkbox.
+	 */
+	private void applyLiveWatchIntent(boolean interactive) {
+		if (!liveWatchDesired || liveService != null || liveWatchStarting
+				|| liveWatchSuppressed || windowClosed) {
+			return;
+		}
+		liveWatchStarting = true;
 		liveWatchToggle.setEnabled(false);
-		statusLabel.setText(enable ? "Enabling live watch..." : "Disabling live watch...");
-		new javax.swing.SwingWorker<Void, Void>() {
+		watchStatusLabel.setText("Live watch: enabling...");
+		new javax.swing.SwingWorker<Integer, Void>() {
 			private String message;
-			private int messageType = javax.swing.JOptionPane.ERROR_MESSAGE;
-			private int rootCount = 0;
 			private org.abitware.docfinder.watch.LiveIndexService newService;
-			private boolean success = false;
 
 			@Override
-			protected Void doInBackground() {
+			protected Integer doInBackground() {
 				try {
 					org.abitware.docfinder.index.SourceManager sm = new org.abitware.docfinder.index.SourceManager();
 					java.util.List<org.abitware.docfinder.index.SourceManager.SourceEntry> entries = sm.loadEntries();
@@ -757,32 +824,104 @@ public class MainWindow extends JFrame implements MenuBarPanel.MenuListener {
 							localRoots.add(java.nio.file.Paths.get(e.path));
 						}
 					}
-					if (enable) {
-						if (localRoots.isEmpty()) {
-							message = "No local sources. Use 'Manage Sources...' first.";
-							messageType = javax.swing.JOptionPane.INFORMATION_MESSAGE;
-							return null;
-						}
-						org.abitware.docfinder.index.ConfigManager cm = new org.abitware.docfinder.index.ConfigManager();
-						org.abitware.docfinder.index.IndexSettings s = cm.loadIndexSettings();
-						org.abitware.docfinder.watch.LiveIndexService existing = liveService;
-						if (existing != null) {
-							try { existing.close(); } catch (Exception ignore) {}
-						}
-						org.abitware.docfinder.watch.LiveIndexService service = new org.abitware.docfinder.watch.LiveIndexService(sm.getIndexDir(), s, localRoots, MainWindow.this::onIndexCommit);
-						service.start();
-						newService = service;
-						rootCount = localRoots.size();
-					} else {
-						org.abitware.docfinder.watch.LiveIndexService existing = liveService;
-						if (existing != null) {
-							try { existing.close(); } catch (Exception ignore) {}
-						}
-						newService = null;
+					LiveWatchPlan plan = liveWatchPlan(!localRoots.isEmpty(),
+							indexReady(sm.getIndexDir()));
+					if (plan == LiveWatchPlan.WAIT_NO_SOURCES) {
+						return -2;
 					}
-					success = true;
+					if (plan == LiveWatchPlan.WAIT_NO_INDEX) {
+						return -3;
+					}
+					org.abitware.docfinder.index.ConfigManager cm = new org.abitware.docfinder.index.ConfigManager();
+					org.abitware.docfinder.index.IndexSettings s = cm.loadIndexSettings();
+					org.abitware.docfinder.watch.LiveIndexService existing = liveService;
+					if (existing != null) {
+						try { existing.close(); } catch (Exception ignore) {}
+					}
+					org.abitware.docfinder.watch.LiveIndexService service = new org.abitware.docfinder.watch.LiveIndexService(sm.getIndexDir(), s, localRoots, MainWindow.this::onIndexCommit);
+					service.start();
+					newService = service;
+					return localRoots.size();
 				} catch (Exception ex) {
-					message = (enable ? "Live watch failed:\n" : "Disable live watch failed:\n") + ex.getMessage();
+					message = ex.getMessage();
+					return -1;
+				}
+			}
+
+			@Override
+			protected void done() {
+				liveWatchStarting = false;
+				liveWatchToggle.setEnabled(true);
+				int result;
+				try {
+					result = get();
+				} catch (Exception ex) {
+					result = -1;
+					message = String.valueOf(ex.getCause() != null ? ex.getCause() : ex);
+				}
+				if (newService != null && (windowClosed || !liveWatchDesired || liveWatchSuppressed)) {
+					// The window closed, the intent was dropped, or an index
+					// operation took over while this worker was running: the
+					// freshly started service must not be attached.
+					try { newService.close(); } catch (Exception ignore) {}
+					newService = null;
+					if (!windowClosed && result >= 0) {
+						watchStatusLabel.setText("Live watch: paused");
+					}
+					return;
+				}
+				if (result == -2) {
+					watchStatusLabel.setText("Live watch: waiting (no local sources configured)");
+					if (interactive) {
+						javax.swing.JOptionPane.showMessageDialog(MainWindow.this,
+								"No local sources. Use 'Manage Sources...' first; watch starts automatically afterwards.",
+								"Enable Live Watch", javax.swing.JOptionPane.INFORMATION_MESSAGE);
+					}
+				} else if (result == -3) {
+					watchStatusLabel.setText("Live watch: waiting (index not built yet)");
+					if (interactive) {
+						javax.swing.JOptionPane.showMessageDialog(MainWindow.this,
+								"Index is not built yet; watch starts automatically after indexing.",
+								"Enable Live Watch", javax.swing.JOptionPane.INFORMATION_MESSAGE);
+					}
+				} else if (result < 0) {
+					// A real start failure drops the intent so the checkbox
+					// never claims a service that is not running.
+					liveWatchDesired = false;
+					liveWatchToggle.setSelected(false);
+					watchStatusLabel.setText("Live watch: failed (" + message + ")");
+					if (interactive) {
+						javax.swing.JOptionPane.showMessageDialog(MainWindow.this,
+								"Live watch failed:\n" + message,
+								"Enable Live Watch", javax.swing.JOptionPane.ERROR_MESSAGE);
+					}
+				} else {
+					liveService = newService;
+					watchStatusLabel.setText("Live watch: ON (" + result + " local root(s))");
+					liveWatchToggle.setSelected(true);
+				}
+			}
+		}.execute();
+	}
+
+	/** Stop path for the intent-off case (manual uncheck / exit). */
+	private void stopLiveWatch() {
+		liveWatchToggle.setEnabled(false);
+		watchStatusLabel.setText("Live watch: disabling...");
+		new javax.swing.SwingWorker<Void, Void>() {
+			private boolean failed;
+			private String message;
+
+			@Override
+			protected Void doInBackground() {
+				try {
+					org.abitware.docfinder.watch.LiveIndexService existing = liveService;
+					if (existing != null) {
+						existing.close();
+					}
+				} catch (Exception ex) {
+					failed = true;
+					message = ex.getMessage();
 				}
 				return null;
 			}
@@ -790,23 +929,47 @@ public class MainWindow extends JFrame implements MenuBarPanel.MenuListener {
 			@Override
 			protected void done() {
 				liveWatchToggle.setEnabled(true);
-				if (!success) {
-					liveWatchToggle.setSelected(!enable);
-					if (message != null) {
-						javax.swing.JOptionPane.showMessageDialog(MainWindow.this, message, enable ? "Enable Live Watch" : "Disable Live Watch", messageType);
-					}
-					statusLabel.setText(liveService != null ? "Live watch: ON" : "Live watch: OFF");
-				} else {
-					if (enable) {
-						liveService = newService;
-						statusLabel.setText("Live watch: ON (" + rootCount + " local root(s))");
-					} else {
-						liveService = null;
-						statusLabel.setText("Live watch: OFF");
-					}
+				liveService = null;
+				if (windowClosed) {
+					return;
 				}
+				if (failed) {
+					watchStatusLabel.setText("Live watch: stop reported an error (" + message + ")");
+				} else {
+					watchStatusLabel.setText(liveWatchDesired ? "Live watch: paused" : "Live watch: OFF");
+				}
+				// If the intent was re-armed while this stop was in flight
+				// (e.g. Manage Sources restart), activate now that the field
+				// is clear — without this the checkbox could sit ON with no
+				// running service.
+				resumeLiveWatchIfDesired();
 			}
 		}.execute();
+	}
+
+	/** Pause during a full index operation; the intent flag is untouched. */
+	private void pauseLiveWatchForIndexing() {
+		liveWatchSuppressed = true;
+		org.abitware.docfinder.watch.LiveIndexService existing = liveService;
+		liveService = null;
+		if (existing != null) {
+			try {
+				existing.close();
+			} catch (Exception ex) {
+				log.warn("Failed to pause live watch for indexing: {}", ex.getMessage());
+			}
+		}
+		if (liveWatchDesired) {
+			watchStatusLabel.setText("Live watch: paused (indexing)");
+		}
+	}
+
+	/** After sources/index become ready, resume when the intent is still on. */
+	private void resumeLiveWatchIfDesired() {
+		liveWatchSuppressed = false;
+		if (liveWatchDesired && liveService == null && !liveWatchStarting && !windowClosed) {
+			applyLiveWatchIntent(false);
+		}
 	}
 
 	/** Clear search history: confirm -> clear persisted file content -> clear dropdown list -> clear input box */
@@ -971,6 +1134,7 @@ public class MainWindow extends JFrame implements MenuBarPanel.MenuListener {
 			activeSearchWorker.cancel(true);
 			activeSearchWorker = null;
 		}
+		pauseLiveWatchForIndexing();
 
 		new javax.swing.SwingWorker<Integer, Void>() {
 			@Override
@@ -1003,6 +1167,8 @@ public class MainWindow extends JFrame implements MenuBarPanel.MenuListener {
 					isIndexing = false;
 					setIndexingUiEnabled(true);
 					setBusyProgress(false, "");
+					// Watch intent survives indexing: resume if it was on.
+					resumeLiveWatchIfDesired();
 					// Whether the run fully succeeded or stopped after partial
 					// commits, try to (re)open the search service so committed
 					// data becomes searchable without restart (D8/F-022). If no
@@ -1778,6 +1944,7 @@ public class MainWindow extends JFrame implements MenuBarPanel.MenuListener {
 			activeSearchWorker = null;
 		}
 		setSearchService(null);
+		pauseLiveWatchForIndexing();
         statusLabel.setText("Rebuilding index (full)… Searching is disabled.");
 		setBusyProgress(true, "Rebuilding index...");
 		long t0 = System.currentTimeMillis();
@@ -1812,6 +1979,8 @@ public class MainWindow extends JFrame implements MenuBarPanel.MenuListener {
 					isIndexing = false;
 					setIndexingUiEnabled(true);
 					setBusyProgress(false, "");
+					// Watch intent survives the rebuild: resume if it was on.
+					resumeLiveWatchIfDesired();
 					refreshSourceDirectoriesAsync();
 				}
 			}
@@ -1902,12 +2071,15 @@ public class MainWindow extends JFrame implements MenuBarPanel.MenuListener {
 			log.warn("Failed to stop search service before lock recovery: {}", ex.getMessage());
 		}
 
+		// The watch service is stopped above; the toggle keeps reflecting the
+		// session intent — a later successful rebuild resumes it via
+		// resumeLiveWatchIfDesired().
 		javax.swing.SwingUtilities.invokeLater(() -> {
-			if (liveWatchToggle != null) {
-				liveWatchToggle.setSelected(false);
-			}
 			if (netPollToggle != null) {
 				netPollToggle.setSelected(false);
+			}
+			if (liveWatchDesired) {
+				watchStatusLabel.setText("Live watch: paused (index recovery)");
 			}
 		});
 	}
@@ -2838,11 +3010,18 @@ public class MainWindow extends JFrame implements MenuBarPanel.MenuListener {
 
     @Override
     public void onExit() {
-        // Optional: gracefully stop local file watch & network polling (if currently enabled)
+        // Gracefully stop local file watch & network polling (if enabled).
+        // Intent is dropped first so a queued activation cannot restart it,
+        // then the service is closed directly — an async toggle-off might
+        // not finish before System.exit releases the handles.
+        liveWatchDesired = false;
         try {
-            if (liveWatchToggle != null && liveWatchToggle.isSelected()) {
+            if (liveWatchToggle != null) {
                 liveWatchToggle.setSelected(false);
-                toggleLiveWatch();
+            }
+            if (liveService != null) {
+                liveService.close();
+                liveService = null;
             }
             if (netPollToggle != null && netPollToggle.isSelected()) {
                 netPollToggle.setSelected(false);
@@ -3153,13 +3332,28 @@ public class MainWindow extends JFrame implements MenuBarPanel.MenuListener {
 		if (q == null || q.trim().isEmpty()) {
 			return;
 		}
-		doSearch();
+		try {
+			doSearch();
+		} catch (java.util.concurrent.RejectedExecutionException closing) {
+			// A queued timer tick can land after dispose() shut the pool.
+		}
 	}
 	@Override
 	public void dispose() {
+		windowClosed = true;
+		liveWatchDesired = false;
 		stopSearchDebounce();
 		if (resultsRefreshTimer != null) {
 			resultsRefreshTimer.stop();
+		}
+		// Release the watch service directly — a queued toggle worker might
+		// not run before System.exit releases the handles.
+		try {
+			if (liveService != null) {
+				liveService.close();
+				liveService = null;
+			}
+		} catch (Exception ignore) {
 		}
 		try {
 			UIManager.removePropertyChangeListener(lafListener);

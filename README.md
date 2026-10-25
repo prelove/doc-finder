@@ -138,7 +138,7 @@ DocFinder is a desktop utility that lets you search **file names and file conten
 ## Sources: Local vs Network
 - **Storage**: `./.docfinder/sources.txt` with lines of `path|0/1` (`1 = Network`). Old single‑column files are auto‑upgraded.
 - **Detection** (Windows): tries PowerShell `Get-PSDrive`, `net use`, `wmic`, with caching; falls back to `FileStore` type and UNC prefixes. Mapped drives (`J:\`, `M:\`) are treated as Network when resolved to remote targets.
-- **Live Watch**: enabled only for **Local** sources (uses NIO `WatchService`).
+- **Live Watch**: enabled only for **Local** sources (uses NIO `WatchService`). On by default at every launch (a session uncheck is not persisted); when no local source exists or the index is not built yet, the status bar shows a waiting state and it resumes automatically once they are ready; it pauses during a full index rebuild and resumes per intent.
 - **Network Polling**: enabled only for **Network** sources; background snapshots + diffs; `Poll Network Sources Now` is async and updates the status bar when done.
 
 ---
