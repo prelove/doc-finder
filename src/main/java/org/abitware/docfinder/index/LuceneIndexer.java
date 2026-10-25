@@ -324,6 +324,18 @@ public class LuceneIndexer implements AutoCloseable {
      */
     private static final long FAILED_RETRY_TTL_MS = 10L * 60 * 1000;
 
+    /**
+     * Extraction-stall circuit breaker: consecutive parse-future timeouts
+     * (the uninterruptible kind — a native read parked on a stalled cloud
+     * file-provider; fast OS-level failures do not count). Once tripped,
+     * content extraction is skipped for the rest of the run so a
+     * placeholder storm costs O(1) per file instead of parseTimeoutSec.
+     * Name/path fields keep indexing, so the files stay searchable.
+     */
+    private static final int EXTRACT_TIMEOUT_BREAKER_LIMIT = 12;
+    private static final AtomicInteger CONSECUTIVE_EXTRACT_TIMEOUTS = new AtomicInteger(0);
+    private static volatile boolean extractionBreakerOpen = false;
+
     private static class FailedFileState {
         final long size;
         final long mtime;
@@ -447,6 +459,8 @@ public class LuceneIndexer implements AutoCloseable {
      * 全量索引一个根目录。
      */
     public int indexFolder(Path root) throws IOException {
+        CONSECUTIVE_EXTRACT_TIMEOUTS.set(0);
+        extractionBreakerOpen = false;
         AtomicInteger count = new AtomicInteger(0);
         walkOneRoot(this.writer, root, count);
         writer.commit();
@@ -457,6 +471,8 @@ public class LuceneIndexer implements AutoCloseable {
      * 多目录全量索引；full=true 表示强制重建（CREATE，覆盖旧索引）。
      */
     public int indexFolders(List<Path> roots, boolean full) throws IOException {
+        CONSECUTIVE_EXTRACT_TIMEOUTS.set(0);
+        extractionBreakerOpen = false;
         if (full) {
             // No intermediate commit: the rebuilt index swaps in atomically at
             // the final commit below. Committing deleteAll() up front left an
@@ -614,7 +630,9 @@ public class LuceneIndexer implements AutoCloseable {
         String mime = null;
         String content = "";
         try {
-            if (shouldParseContent(file, name, attrs.size(), settings) && !shouldSkipContentExtraction(file, attrs)) {
+            if (shouldParseContent(file, name, attrs.size(), settings)
+                    && !extractionBreakerOpen
+                    && !shouldSkipContentExtraction(file, attrs)) {
                 content = extractTextReadOnly(file, attrs, settings);
             }
             mime = Files.probeContentType(file);
@@ -726,20 +744,39 @@ public class LuceneIndexer implements AutoCloseable {
             return "";
         }
         try {
-            return fut.get(settings.parseTimeoutSec, TimeUnit.SECONDS);
-        } catch (Throwable t) {
+            String extracted = fut.get(settings.parseTimeoutSec, TimeUnit.SECONDS);
+            // The provider responded (empty string from a fast parse failure
+            // also lands here): the stall streak is broken.
+            CONSECUTIVE_EXTRACT_TIMEOUTS.set(0);
+            return extracted;
+        } catch (java.util.concurrent.TimeoutException te) {
             // Cancel first: an unstarted task is removed from the queue; a
-            // running one gets interrupted (it keeps a slot if uninterruptible,
-            // but the slot count stays bounded by the pool cap). purge() then
-            // physically drops cancelled-not-started FutureTasks so the slot
-            // is reclaimed immediately instead of waiting for a worker to
-            // reach and skip it.
+            // running one gets interrupted. A native read parked on a stalled
+            // cloud file-provider cannot be interrupted — the tika thread stays
+            // pinned until the OS eventually answers, bounded only by the pool cap.
             fut.cancel(true);
             PARSER_POOL.purge();
-            log.warn("Extract text timeout or error: {}, exception: {}", file, t.getMessage());
+            int streak = CONSECUTIVE_EXTRACT_TIMEOUTS.incrementAndGet();
+            if (!extractionBreakerOpen && streak >= EXTRACT_TIMEOUT_BREAKER_LIMIT) {
+                extractionBreakerOpen = true;
+                log.warn("Extraction timed out {} times in a row — degrading to "
+                        + "name-only indexing for the rest of this run. Likely a "
+                        + "stalled cloud file-provider (on-demand placeholder reads "
+                        + "park in the kernel and cannot be interrupted). File names "
+                        + "keep indexing; content coverage for these files resumes on "
+                        + "a later index pass or after pinning the folder locally.", streak);
+            }
+            log.warn("Extract text timeout or error: {}, exception: {}", file, te.getMessage());
             // A timeout is usually a slow share, not a corrupt file — skip
             // re-parsing for a bounded window via the failed cache so a hang
             // does not repeat every scan, but keep the retry path alive.
+            rememberFailedExtraction(file, attrs);
+            return "";
+        } catch (Throwable t) {
+            CONSECUTIVE_EXTRACT_TIMEOUTS.set(0);
+            fut.cancel(true);
+            PARSER_POOL.purge();
+            log.warn("Extract text timeout or error: {}, exception: {}", file, t.getMessage());
             rememberFailedExtraction(file, attrs);
             return "";
         }
