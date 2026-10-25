@@ -177,7 +177,9 @@ public class MainWindow extends JFrame implements MenuBarPanel.MenuListener {
 
 		setDefaultCloseOperation(WindowConstants.HIDE_ON_CLOSE);
 		setMinimumSize(new Dimension(900, 560));
+		setSize(1100, 700); // restore size used when the user un-maximizes
 		setLocationRelativeTo(null);
+		setExtendedState(JFrame.MAXIMIZED_BOTH); // start maximized by default
 		getContentPane().setLayout(new BorderLayout());
 
 		// 1) Top North: search bar + directory scope + collapsible filter bar

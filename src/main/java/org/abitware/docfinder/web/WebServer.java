@@ -1,6 +1,7 @@
 package org.abitware.docfinder.web;
 
 import com.sun.net.httpserver.HttpServer;
+import org.abitware.docfinder.index.SourceManager;
 import org.abitware.docfinder.search.SearchService;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
@@ -60,8 +61,10 @@ public class WebServer {
 
         String base = "http://" + bindAddress + ":" + port;
         ShareHandler shareHandler = new ShareHandler(shareManager, base);
+        SourceManager sourceManager = new SourceManager();
 
         s.createContext("/api/search",  new SearchHandler(() -> searchService));
+        s.createContext("/api/sources", new SourcesHandler(sourceManager::loadSearchRoots));
         s.createContext("/api/preview", new PreviewHandler());
         s.createContext("/api/file",    new FileServeHandler());
         s.createContext("/api/text",    new TextServeHandler());

@@ -238,8 +238,9 @@
     <option value="EXACT">Exact</option>
   </select>
   <input type="text" id="extInput" placeholder="ext: pdf,docx" title="Filter by extension"/>
-  <input type="text" id="dirInput" placeholder="Server directory (optional)" title="Limit search to a directory on the server and all its subfolders. It must be inside a configured index source; other directories are rejected." style="flex:0 0 240px;min-width:180px;"/>
-  <button id="clearDirBtn" type="button" title="Clear the directory scope and search all sources" style="background:var(--btn-sec);">Clear</button>
+  <select id="dirSelect" title="Directory scope: a configured source, or a subfolder picked via 📂 on a result row. The scope covers the whole subtree." style="flex:0 0 260px;min-width:180px;">
+    <option value="">All sources</option>
+  </select>
   <select id="limitSelect" title="Result limit">
     <option value="50">50 results</option>
     <option value="100">100 results</option>
@@ -528,8 +529,7 @@
   var scopeSelect       = document.getElementById('scopeSelect');
   var modeSelect        = document.getElementById('modeSelect');
   var extInput          = document.getElementById('extInput');
-  var dirInput          = document.getElementById('dirInput');
-  var clearDirBtn       = document.getElementById('clearDirBtn');
+  var dirSelect         = document.getElementById('dirSelect');
   var limitSelect       = document.getElementById('limitSelect');
   var searchBtn         = document.getElementById('searchBtn');
   var statusBar         = document.getElementById('statusBar');
@@ -1018,7 +1018,7 @@
     var scope = scopeSelect.value;
     var mode  = modeSelect.value;
     var ext   = extInput.value.trim();
-    var dir   = dirInput.value.trim();
+    var dir   = dirSelect.value;
     var limit = limitSelect.value;
 
     statusBar.innerHTML = '<span class="spinner"></span>Searching…';
@@ -1129,8 +1129,7 @@
         e.stopPropagation();
         var dir = btn.dataset.dir;
         if (!dir) return;
-        dirInput.value = dir;
-        search(); // keeps query/filters; commits exactly once
+        applyDirectoryScope(dir); // injects the subfolder option if needed, then searches once
       });
     });
     resultsBody.querySelectorAll('.copypath-btn').forEach(function(btn) {
@@ -1359,11 +1358,40 @@
   // ── Keyboard navigation ──────────────────────────────────────────────────────
   searchBtn.addEventListener('click', search);
   queryInput.addEventListener('keydown', function(e) { if (e.key === 'Enter') search(); });
-  dirInput.addEventListener('keydown', function(e) { if (e.key === 'Enter') search(); });
-  clearDirBtn.addEventListener('click', function() {
-    dirInput.value = '';
-    search(); // empty query invalidates in-flight requests and clears; otherwise back to all sources, keeping query/filters
-  });
+  // Changing the scope select re-runs the search immediately (keeps query/filters).
+  dirSelect.addEventListener('change', function() { search(); });
+
+  // The directory scope is a dropdown of configured sources; a 📂 button on a
+  // result row can scope to any subfolder — inject it as an option on demand.
+  function applyDirectoryScope(dir) {
+    var found = false;
+    for (var i = 0; i < dirSelect.options.length; i++) {
+      if (dirSelect.options[i].value === dir) { found = true; break; }
+    }
+    if (!found) {
+      var opt = document.createElement('option');
+      opt.value = dir;
+      opt.textContent = dir;
+      opt.title = dir;
+      dirSelect.appendChild(opt);
+    }
+    dirSelect.value = dir;
+    search(); // keeps query/filters; commits exactly once
+  }
+
+  // Populate the scope dropdown from the configured sources.
+  fetch('/api/sources')
+    .then(function(r) { return r.ok ? r.json() : { sources: [] }; })
+    .then(function(data) {
+      (data.sources || []).forEach(function(p) {
+        var opt = document.createElement('option');
+        opt.value = p;
+        opt.textContent = p;
+        opt.title = p;
+        dirSelect.appendChild(opt);
+      });
+    })
+    .catch(function() { /* leave "All sources" as the only option */ });
   document.addEventListener('keydown', function(e) {
     if (shareModal.classList.contains('active')) return;
     if (currentResults.length === 0) return;

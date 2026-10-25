@@ -45,20 +45,21 @@ class WebAssetsOfflineTest {
     }
 
     /**
-     * A6/DS-08~12: directory-scope UI surface — server-directory input, Clear,
-     * per-row scope quick actions, copy path. Static presence check only;
-     * interactive behavior is verified on a real host (M-04/M-05).
+     * Directory-scope UI surface — a select populated from /api/sources
+     * (All sources + configured roots), per-row scope quick actions that may
+     * inject an arbitrary subfolder option, copy path. Static presence check
+     * only; interactive behavior is verified on a real host.
      */
     @Test
     void shouldExposeDirectoryScopeControlsInIndexPage() throws IOException {
         String html = readResource("/web/index.html");
-        assertTrue(html.contains("id=\"dirInput\""), "missing server directory input");
-        assertTrue(html.contains("id=\"clearDirBtn\""), "missing Clear button");
+        assertTrue(html.contains("id=\"dirSelect\""), "missing directory-scope select");
+        assertTrue(html.contains("All sources"), "select must offer the all-sources option");
         assertTrue(html.contains("directory="), "search must send directory param");
         assertTrue(html.contains("dirscope-btn"), "missing row-level scope quick action");
         assertTrue(html.contains("copypath-btn"), "missing copy-path action");
         assertTrue(html.contains("parentDirectory"), "must consume server-provided parentDirectory");
-        assertFalse(html.contains("/api/sources"), "no source-list API may be added");
+        assertTrue(html.contains("/api/sources"), "the scope select must be populated from /api/sources");
         assertFalse(html.contains("/api/browse"), "no server browse API may be added");
         int fn = html.indexOf("function search()");
         String body = html.substring(fn, html.indexOf("function clearCurrentResults()"));
