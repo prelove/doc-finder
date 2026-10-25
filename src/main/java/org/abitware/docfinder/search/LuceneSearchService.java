@@ -188,32 +188,9 @@ public class LuceneSearchService implements SearchService {
         }
     }
 
-    private static boolean isStale(RefillState st) {
-        return st.sessionGen != null && st.sessionGen.get() != st.generation;
-    }
-
-    /**
-     * Shared bounded pool for existence stats — one pool for the WHOLE JVM,
-     * not per service instance: closing/reopening a service can never pile
-     * up additional blocked-stat workers. 4 workers cover concurrent
-     * searches; a bounded queue + AbortPolicy means overflow degrades to
-     * UNCERTAIN keeps, and idle daemon threads expire after 60s.
-     */
-    static final java.util.concurrent.ThreadPoolExecutor EXISTENCE_POOL;
-    static {
-        java.util.concurrent.ThreadPoolExecutor p = new java.util.concurrent.ThreadPoolExecutor(
-                4, 4, 60L, TimeUnit.SECONDS,
-                new java.util.concurrent.ArrayBlockingQueue<Runnable>(128),
-                new ThreadFactory() {
-                    @Override
-                    public Thread newThread(Runnable r) {
-                        Thread t = new Thread(r, "docfinder-existence");
-                        t.setDaemon(true);
-                        return t;
-                    }
-                });
-        p.allowCoreThreadTimeOut(true);
-        EXISTENCE_POOL = p;
+    private boolean isStale(RefillState st) {
+        return closed || Thread.currentThread().isInterrupted()
+                || st.sessionGen != null && st.sessionGen.get() != st.generation;
     }
 
     private static final class CachedVerdict {
@@ -357,6 +334,7 @@ public class LuceneSearchService implements SearchService {
             // Constructor failure (e.g. IndexNotFoundException before the first
             // commit) must not leak the directory — the caller can only retry.
             this.directory.close();
+            this.queryAnalyzer.close();
             throw e;
         }
         // Seed the roots cache once at open: background work (resurrection
@@ -389,7 +367,7 @@ public class LuceneSearchService implements SearchService {
 
     /** Timer entry: a bounded pass per tick, same single-flight discipline. */
     private void resurrectSweepSafe() {
-        if (closed || org.abitware.docfinder.index.Tombstones.isEmpty()) {
+        if (closed) {
             return;
         }
         if (!resurrectActive.compareAndSet(false, true)) {
@@ -399,6 +377,15 @@ public class LuceneSearchService implements SearchService {
             ghostCleaner.submit(this::drainResurrections);
         } catch (RuntimeException rejected) {
             resurrectActive.set(false);
+        }
+    }
+
+    private boolean hasRecoveryWork() {
+        try {
+            return !org.abitware.docfinder.index.Tombstones.isEmpty();
+        } catch (RuntimeException failure) {
+            log.warn("Recovery registry unavailable; retrying on next sweep", failure);
+            return false;
         }
     }
 
@@ -843,7 +830,7 @@ public class LuceneSearchService implements SearchService {
         if (resultCount > limit) {
             return TriState.TRUE;
         }
-        if (allBranchesExhausted) {
+        if (allBranchesExhausted && !st.hadUncertain) {
             return TriState.FALSE;
         }
         return TriState.UNKNOWN;
@@ -855,7 +842,8 @@ public class LuceneSearchService implements SearchService {
      * bounded at the containing source root (stopScope): reaching a vanished
      * source root yields ROOT_UNREACHABLE, never GHOST, so an offline share
      * can never be misread as a mass deletion. Permission/IO-indeterminate
-     * stats are UNCERTAIN. Runs on EXISTENCE_POOL — may block on slow shares.
+     * stats are UNCERTAIN. Compatibility seam for classification unit tests;
+     * production checks run in the disposable helper process.
      */
     static PathVerdict classifyPath(String pathStr, String stopScope) {
         try {
@@ -931,29 +919,7 @@ public class LuceneSearchService implements SearchService {
             st.hadUncertain = true;
             return PathVerdict.UNCERTAIN; // source recently unreachable → unchecked keep
         }
-        PathVerdict verdict;
-        final String stop = rootScope;
-        java.util.concurrent.Future<PathVerdict> f;
-        try {
-            f = EXISTENCE_POOL.submit(() -> classifyPath(pathStr, stop));
-        } catch (RuntimeException rejected) {
-            st.hadUncertain = true;
-            return PathVerdict.UNCERTAIN; // bounded queue full → unchecked keep
-        }
-        try {
-            verdict = f.get(PER_CHECK_TIMEOUT_MS, TimeUnit.MILLISECONDS);
-        } catch (java.util.concurrent.TimeoutException te) {
-            f.cancel(true);
-            verdict = PathVerdict.UNCERTAIN;
-            if (rootScope != null) {
-                rootRetryAt.put(rootScope, now + ROOT_BACKOFF_MS);
-            }
-        } catch (InterruptedException ie) {
-            Thread.currentThread().interrupt();
-            verdict = PathVerdict.UNCERTAIN;
-        } catch (java.util.concurrent.ExecutionException | RuntimeException e) {
-            verdict = PathVerdict.UNCERTAIN;
-        }
+        PathVerdict verdict = isolatedVerdict(pathStr, root);
         switch (verdict) {
             case GHOST:
                 cacheVerdict(pathStr, now);
@@ -969,9 +935,27 @@ public class LuceneSearchService implements SearchService {
                 st.hadUncertain = true;
                 return PathVerdict.UNCERTAIN;
             default:
+                if (rootScope != null) rootRetryAt.put(rootScope, now + ROOT_BACKOFF_MS);
                 st.hadUncertain = true;
                 return PathVerdict.UNCERTAIN;
         }
+    }
+
+    /** A stuck native stat is confined to a disposable helper process. */
+    private static PathVerdict isolatedVerdict(String path, Path root) {
+        if (Thread.currentThread().isInterrupted()) return PathVerdict.UNCERTAIN;
+        if (root == null) {
+            try {
+                org.abitware.docfinder.util.IsolatedFileAccess.attributes(Paths.get(path), PER_CHECK_TIMEOUT_MS);
+                return PathVerdict.ALIVE;
+            } catch (IOException | RuntimeException e) {
+                return PathVerdict.UNCERTAIN; // no configured root can prove deletion
+            }
+        }
+        org.abitware.docfinder.util.IsolatedFileAccess.Classification verdict =
+                org.abitware.docfinder.util.IsolatedFileAccess.classify(path,
+                        PathScope.normalizeIndexedPath(root), PER_CHECK_TIMEOUT_MS);
+        return PathVerdict.valueOf(verdict.name());
     }
 
     private void cacheVerdict(String pathStr, long now) {
@@ -1093,22 +1077,8 @@ public class LuceneSearchService implements SearchService {
         }
     }
 
-    /**
-     * One batch write under the shared coordinator. The closed flag and each
-     * file's aliveness are re-checked under the lock, so a service that was
-     * closed (or a file that came back) is never written against a stale
-     * verdict — expired cleanup cannot delete newer index state.
-     */
-    /** A lock wait longer than this re-verifies each path before deleting —
-     *  a file restored during a long wait must not be purged on a stale
-     *  verdict. Recheck is capped per batch so a contended share can never
-     *  park the write lock on thousands of slow stats. */
+    /** Old verdicts waiting this long for the writer are deferred, without source I/O under the lock. */
     private static final long PURGE_RECHECK_AFTER_MS = 300;
-    private static final int PURGE_RECHECK_CAP = 64;
-    /** Extra bounded stats for candidates whose upsert-generation evidence
-     *  was evicted after classification. Over-budget candidates are skipped
-     *  this pass — never deleted on an unverifiable verdict. */
-    private static final int PURGE_EVIDENCE_RECHECK_CAP = 64;
 
     private void purgeGhostBatch(List<String> batch) {
         List<Path> roots = lastRootsSnapshot;
@@ -1128,7 +1098,7 @@ public class LuceneSearchService implements SearchService {
             // upsert that lands during classification — not only after it —
             // is newer than the verdict and must survive the queued delete.
             long checkStart = System.nanoTime();
-            if (isDefinitelyDeleted(s, containingRoot(s, roots))) {
+            if (isolatedVerdict(s, containingRoot(s, roots)) == PathVerdict.GHOST) {
                 confirmed.add(s);
                 classifiedAt.put(s, checkStart);
             }
@@ -1142,13 +1112,10 @@ public class LuceneSearchService implements SearchService {
             if (closed) {
                 return;
             }
-            // Phase 2 — the write itself. Re-check `closed` under the lock,
-            // and if the wait for the lock was long, re-stat each path once
-            // (generation-style protection for files restored meanwhile).
-            boolean recheck = TimeUnit.NANOSECONDS.toMillis(
-                    System.nanoTime() - queuedAt) > PURGE_RECHECK_AFTER_MS;
-            int rechecked = 0;
-            int evidenceRechecked = 0;
+            // A stale classification is deferred to a later search, never
+            // re-statted while holding the application-wide write lock.
+            if (TimeUnit.NANOSECONDS.toMillis(System.nanoTime() - queuedAt)
+                    > PURGE_RECHECK_AFTER_MS) return;
             try (LuceneIndexer idx = new LuceneIndexer(indexDir, indexSettings)) {
                 boolean deletedAny = false;
                 for (String s : confirmed) {
@@ -1160,34 +1127,11 @@ public class LuceneSearchService implements SearchService {
                     // the newer record must survive, whether the upsert
                     // landed mid-classification or during the lock wait.
                     Long ct = classifiedAt.get(s);
-                    long upsertedAt = LuceneIndexer.upsertedAt(s);
-                    if (ct != null && upsertedAt > ct) {
+                    if (ct == null || LuceneIndexer.hasNewerUpsert(s, ct)) {
                         continue;
                     }
-                    // "Never registered" (watermark at/below baseline) may
-                    // still delete after the ordinary recheck. "Protection
-                    // evicted" (watermark above baseline) cannot — that
-                    // path gets its own bounded re-stat: file present →
-                    // keep the record, budget spent → defer to a later
-                    // pass whose baseline postdates the evictions.
-                    if (ct != null && upsertedAt < 0
-                            && LuceneIndexer.maxEvictedUpsertNs() > ct) {
-                        if (evidenceRechecked >= PURGE_EVIDENCE_RECHECK_CAP) {
-                            continue;
-                        }
-                        evidenceRechecked++;
-                        if (!isDefinitelyDeleted(s, containingRoot(s, roots))) {
-                            continue;
-                        }
-                    } else if (recheck && rechecked < PURGE_RECHECK_CAP) {
-                        rechecked++;
-                        if (!isDefinitelyDeleted(s, containingRoot(s, roots))) {
-                            continue;
-                        }
-                    }
                     try {
-                        idx.deletePath(Paths.get(s));
-                        deletedAny = true;
+                        deletedAny |= idx.tryDeletePath(Paths.get(s));
                     } catch (RuntimeException ignore) {
                     }
                 }
@@ -1220,8 +1164,7 @@ public class LuceneSearchService implements SearchService {
      * background cleaner thread — nothing blocks the search path.
      */
     private void kickResurrection() {
-        if (closed || lastRootsSnapshot == null
-                || org.abitware.docfinder.index.Tombstones.isEmpty()) {
+        if (closed || lastRootsSnapshot == null) {
             return;
         }
         long now = System.currentTimeMillis();
@@ -1247,6 +1190,10 @@ public class LuceneSearchService implements SearchService {
      */
     private void drainResurrections() {
         try {
+            // All recovery-store access belongs to this background task.
+            // In particular, a slow registry flush must not block a query
+            // merely trying to enqueue optional recovery work.
+            if (closed || !hasRecoveryWork()) return;
             List<Path> roots = lastRootsSnapshot;
             // Refresh when never loaded, when the last load failed (a
             // transient provider error must not freeze the snapshot
@@ -1268,20 +1215,18 @@ public class LuceneSearchService implements SearchService {
                     // else keep the last-good snapshot for this pass
                 }
             }
-            List<String> snap = org.abitware.docfinder.index.Tombstones.snapshot();
+            List<String> snap = org.abitware.docfinder.index.Tombstones.snapshotAfter(
+                    lastResurrectKey, RESURRECT_BATCH, roots);
+            if (snap.isEmpty() && lastResurrectKey != null) {
+                lastResurrectKey = null;
+                snap = org.abitware.docfinder.index.Tombstones.snapshotAfter(null, RESURRECT_BATCH, roots);
+            }
             int n = snap.size();
             if (n == 0) {
                 return;
             }
-            // Rotating cursor: resume AFTER the previously examined key and
-            // wrap at the end — a head of still-missing files must never
-            // starve tail entries out of every pass.
-            int start = 0;
-            String last = lastResurrectKey;
-            if (last != null) {
-                int at = snap.indexOf(last);
-                start = (at < 0) ? 0 : (at + 1) % n;
-            }
+            // The disk-backed cursor covers every recovery record, even
+            // beyond the compatibility snapshot's first 4096 entries.
             List<String> batch = new ArrayList<>(RESURRECT_BATCH);
             int timeouts = 0;
             int checked = 0;
@@ -1290,7 +1235,7 @@ public class LuceneSearchService implements SearchService {
                 if (closed) {
                     return;
                 }
-                String p = snap.get((start + i) % n);
+                String p = snap.get(i);
                 lastResurrectKey = p;
                 // Only roots currently configured are resurrection-eligible —
                 // paths outside all sources stay tombstoned but cost no I/O.
@@ -1315,57 +1260,39 @@ public class LuceneSearchService implements SearchService {
 
     /** Existence stat on the bounded pool with the per-check timeout. */
     private Boolean statExists(String pathStr) {
-        java.util.concurrent.Future<Boolean> f;
-        try {
-            f = EXISTENCE_POOL.submit(() -> {
-                try {
-                    return Files.exists(Paths.get(pathStr));
-                } catch (RuntimeException e) {
-                    return Boolean.FALSE;
-                }
-            });
-        } catch (RuntimeException rejected) {
-            return null;
-        }
-        try {
-            return f.get(PER_CHECK_TIMEOUT_MS, TimeUnit.MILLISECONDS);
-        } catch (java.util.concurrent.TimeoutException te) {
-            f.cancel(true);
-            return null;
-        } catch (InterruptedException ie) {
-            Thread.currentThread().interrupt();
-            return null;
-        } catch (java.util.concurrent.ExecutionException | RuntimeException e) {
-            return null;
-        }
+        PathVerdict verdict = isolatedVerdict(pathStr, containingRoot(pathStr, lastRootsSnapshot));
+        return verdict == PathVerdict.ALIVE ? Boolean.TRUE
+                : verdict == PathVerdict.GHOST ? Boolean.FALSE : null;
     }
 
     /** Re-indexes resurrected paths under the shared write lock. */
     private void resurrectBatch(List<String> batch) {
-        IndexWriteCoordinator.run(() -> {
-            if (closed) {
-                return;
-            }
-            try (LuceneIndexer idx = new LuceneIndexer(indexDir, indexSettings)) {
-                for (String s : batch) {
-                    if (closed) {
-                        return;
+        boolean wroteAny = false;
+        for (String path : batch) {
+            if (closed || Thread.currentThread().isInterrupted()) break;
+            try {
+                // Source I/O and parsing finish before acquiring the writer.
+                LuceneIndexer.PreparedUpsert prepared = LuceneIndexer.prepareUpsert(
+                        Paths.get(path), indexDir, indexSettings);
+                if (prepared == null) continue;
+                boolean applied = IndexWriteCoordinator.call(() -> {
+                    if (closed) return false;
+                    try (LuceneIndexer idx = new LuceneIndexer(indexDir, indexSettings)) {
+                        if (!idx.applyPrepared(prepared)) return false;
+                        idx.commit(); // recovery evidence retires only after this succeeds
+                        return true;
                     }
-                    try {
-                        Path p = Paths.get(s);
-                        if (Files.exists(p)) {
-                            idx.upsertFile(p);
-                            org.abitware.docfinder.index.Tombstones.remove(s);
-                            verdictCache.remove(s); // clear any stale GHOST verdict
-                        }
-                    } catch (RuntimeException ignore) {
-                    }
+                });
+                if (applied) {
+                    verdictCache.remove(path);
+                    wroteAny = true;
                 }
-                idx.commit();
-            } catch (IOException | RuntimeException e) {
+            } catch (Exception e) {
                 log.debug("resurrect write failed: {}", e.toString());
+                // Keep the tombstone; a later bounded pass retries the path.
             }
-        });
+        }
+        if (!wroteAny) return;
         try {
             searcherManager.maybeRefresh();
         } catch (IOException | RuntimeException e) {
@@ -1616,19 +1543,27 @@ public class LuceneSearchService implements SearchService {
             scopeListenerKeys.clear();
         }
         // Cancel pending work: drop the purge backlog, stop the drain and the
-        // existence pool. Awaiting an in-flight purge must never happen on the
+        // background cleaner. Awaiting an in-flight purge must never happen on the
         // EDT — the purge thread is a daemon and re-checks `closed` under the
         // write lock before every delete, so it exits on its own shortly.
         synchronized (ghostDrainSet) {
             ghostDrainSet.clear();
         }
-        org.abitware.docfinder.index.Tombstones.flush();
+        try {
+            if (javax.swing.SwingUtilities.isEventDispatchThread()) {
+                org.abitware.docfinder.index.Tombstones.requestFlush();
+            } else {
+                org.abitware.docfinder.index.Tombstones.flush();
+            }
+        } catch (RuntimeException failure) {
+            // Dirty recovery evidence is retried by its app-wide flusher;
+            // a storage failure must not skip reader/timer/thread cleanup.
+            log.warn("Recovery registry flush failed while closing search", failure);
+        }
         resurrectTimer.shutdownNow();
         ghostCleaner.shutdown();
-        // EXISTENCE_POOL is a shared JVM resource — a closed service must
-        // not shut it down (other instances still submit). Stale requests
-        // stop referencing it via their session-gen checks; in-flight stats
-        // are bounded and expire on the pool's own idle timeout.
+        // IsolatedFileAccess owns the JVM-wide helper pool. Closing a search
+        // service must not shut down helpers used by another service.
         if (!javax.swing.SwingUtilities.isEventDispatchThread()) {
             try {
                 if (!ghostCleaner.awaitTermination(2, TimeUnit.SECONDS)) {
@@ -1645,12 +1580,12 @@ public class LuceneSearchService implements SearchService {
             if (searcherManager != null) {
                 searcherManager.close();
             }
-            if (directory != null) {
-                directory.close();
-            }
         } catch (IOException e) {
-            // TODO: log this error
-            e.printStackTrace();
+            log.warn("Could not close search reader", e);
+        } finally {
+            queryAnalyzer.close();
+            try { directory.close(); }
+            catch (IOException e) { log.warn("Could not close search directory", e); }
         }
     }
 

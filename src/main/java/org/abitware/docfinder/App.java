@@ -66,10 +66,14 @@ public class App {
             } catch (IOException ex) {
                 logger.error("Failed to start web interface", ex);
             }
-            Runtime.getRuntime().addShutdownHook(new Thread(webServer::stop, "docfinder-web-stop"));
         } else {
             webServer = null;
         }
+        Runtime.getRuntime().addShutdownHook(new Thread(() -> {
+            MainWindow current = MAIN;
+            if (current != null) current.shutdownWebServer();
+            else if (webServer != null) webServer.stop();
+        }, "docfinder-web-stop"));
 
         // 5) Show window on the EDT, then open the search index in a background thread to avoid EDT blocking
         SwingUtilities.invokeLater(() -> {

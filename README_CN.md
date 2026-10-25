@@ -293,7 +293,7 @@ java -jar target/docfinder-1.0.0.jar
 - 旧索引先Index All Sources；残留旧记录仍阻断时，检查来源可达性，维护时段备份后再Full Rebuild。它先清空后重建、非原子，期间不可搜索。
 - 通配符 `*.ext` 通过 `ext` MUST 子句加速
 - 前缀提升提高简短文件名标记的相关性
-- 索引写入器为批量索引使用更大的 RAM 缓冲区；如需要可在代码中调整
+- 索引写入器 RAM 缓冲区上限为 32 MB；属性检查和正文提取使用可复用、有时限的辅助 JVM。
 - 内容提取使用超时和短路启发式算法跳过明显的二进制文件
 
 --- 
@@ -301,7 +301,8 @@ java -jar target/docfinder-1.0.0.jar
 ## 开发路线图
 - A：目录检索实现/自动修复已核验，用户已确认最新版手工验收完全成功，主规格已同步并已归档。
 - B：improve-name-search-experience 已实现名称子串、多词AND、防抖、截断提示和排序复位；独立自动验证已完成，用户于2026-10-25试用接受并已归档。
-- C1/C2：索引一致性、监控恢复、异步正文解析属于后续change。
+- C：删除过滤与结果补足、持久化恢复、桌面自动刷新、默认 Local Watch、流式轮询及 Web 端口配置已实现并整合至 main；验证和平台边界见[当前整合记录](docs/analysis/2026-10-25-main-closeout.md)。桌面同一查询自动刷新保留排序、选择和编辑草稿，主动新查询恢复默认排序。
+- C2：独立排队补正文和持久化解析状态仍为后续工作；当前正文失败在后续索引轮次按策略重试。
 - D：Java8约束下的指定依赖升级已实施，新Java栈/native另行评估。
 - 以 [产品路线图](docs/roadmap.md) 和 [当前状态](openspec/changes/archive/2026-10-24-add-directory-scoped-search/delivery-status.yaml) 为准。
 

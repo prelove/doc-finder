@@ -301,15 +301,16 @@ Paths are relative to the JVM working directory (`user.dir`), which may differ f
 - Old scoped indexes: try Index All Sources first. Deleted/removed/offline-source legacy records can still require a backed-up manual Full Rebuild, which is non-atomic and unavailable for search while running.
 - Wildcard `*.ext` is accelerated with an `ext` MUST clause.
 - Prefix boosting improves relevance for short filename tokens.
-- Index writer uses a larger RAM buffer for bulk indexing; adjust in code if needed.
+- Index writer RAM buffer is bounded at 32 MB; source metadata and content extraction use reusable helper JVMs with deadlines.
 - Content extraction uses timeouts and short‑circuit heuristics to skip obvious binaries.
 
 ---
 
 ## Roadmap
 - A: directory-scoped implementation and automated remediation verified; the user confirmed latest manual acceptance fully successful. Accepted specifications are synchronized and the completed change is archived.
-- B: `improve-name-search-experience` implemented on `codex/name-search` — literal name substring, multi-word AND, tier-ranked dual-list ALL, 250ms debounce and tri-state truncation; accepted by the user on 2026-10-25 and archived.
-- C1/C2: index consistency, watcher recovery and staged content extraction remain future work.
+- B: `improve-name-search-experience` accepted on 2026-10-25 and archived; its implementation and subsequent fixes are integrated into `main`.
+- C: deleted-result filtering/refill, persistent restoration, automatic desktop refresh, default Local Watch, streaming polling and configurable Web port are implemented. See [current integration status](docs/analysis/2026-10-25-main-closeout.md) for verification and remaining platform limits. Automatic refresh preserves desktop sort/selection/drafts; a new query resets sorting.
+- C2: independently queued content enrichment and persisted parse-status presentation remain future work; failed extraction currently retries on later indexing rounds.
 - D: selected Java8-compatible dependency upgrades implemented; supported newer-Java stacks and native validation remain separate.
 - [Product sequence](docs/roadmap.md) and [delivery status](openspec/changes/archive/2026-10-24-add-directory-scoped-search/delivery-status.yaml) define current gates.
 

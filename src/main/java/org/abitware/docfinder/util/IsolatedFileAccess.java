@@ -28,6 +28,7 @@ public final class IsolatedFileAccess {
     static final byte CLASSIFY = 1;
     static final byte ATTRIBUTES = 2;
     static final byte EXTRACT = 3;
+    static final byte PROBE_TEXT = 4;
     private static final AtomicInteger THREAD_IDS = new AtomicInteger();
     // Wire helpers are also used inside children; they must not initialize parent process pools.
     private static final class Shared {
@@ -77,6 +78,11 @@ public final class IsolatedFileAccess {
         return Shared.PARSING.call(EXTRACT, absolute(path), "", maxChars, timeoutMs).extraction;
     }
 
+    /** Preserves the text-like fallback without reading source bytes in the application JVM. */
+    public static boolean isTextLike(Path path, int timeoutMs) throws IOException {
+        return Shared.METADATA.call(PROBE_TEXT, absolute(path), "", 0, timeoutMs).textLike;
+    }
+
     private static String absolute(Path path) throws IOException {
         if (path == null) throw new IOException("Missing source path");
         try {
@@ -120,6 +126,7 @@ public final class IsolatedFileAccess {
         Classification classification;
         Attributes attributes;
         Extraction extraction;
+        boolean textLike;
     }
 
     static void writeString(DataOutputStream out, String text, int limit) throws IOException {
@@ -181,6 +188,15 @@ public final class IsolatedFileAccess {
                 throw new IOException("Source I/O queue is full or closed", e);
             }
             try {
+                if (operation == CLASSIFY) {
+                    // JVM startup/queue admission is distinct from source I/O.
+                    // A healthy cold helper must not consume the 250 ms stat
+                    // budget and turn real matches into offline results.
+                    if (!request.ioStarted.await(5, TimeUnit.SECONDS)) {
+                        throw new TimeoutException("Source worker startup deadline exceeded");
+                    }
+                    deadline = System.nanoTime() + TimeUnit.MILLISECONDS.toNanos(timeoutMs);
+                }
                 return future.get(Math.max(1, deadline - System.nanoTime()), TimeUnit.NANOSECONDS);
             } catch (InterruptedException e) {
                 request.cancel();
@@ -205,6 +221,7 @@ public final class IsolatedFileAccess {
             final String path, root;
             final int maxChars;
             final AtomicBoolean cancelled = new AtomicBoolean();
+            final java.util.concurrent.CountDownLatch ioStarted = new java.util.concurrent.CountDownLatch(1);
             volatile Process process;
             Request(byte operation, String path, String root, int maxChars) {
                 this.operation = operation; this.path = path; this.root = root; this.maxChars = maxChars;
@@ -217,12 +234,20 @@ public final class IsolatedFileAccess {
             }
             public Response call() throws Exception {
                 Worker worker = available.take();
+                boolean exchanged = false;
+                boolean warmed = false;
+                boolean cleanFailure = false;
                 try {
                     synchronized (worker) { worker.busy = true; }
                     if (cancelled.get() || closed) throw new IOException("Source I/O cancelled");
                     if (worker.invalid || worker.process == null || !worker.process.isAlive()) worker.start();
+                    warmed = true;
+                    // A caller can time out while a fresh JVM starts. Keep that
+                    // warmed helper for the next request; no source I/O has begun.
+                    if (cancelled.get() || closed) throw new IOException("Source I/O cancelled");
                     process = worker.process;
-                    if (cancelled.get() || closed) { cancel(); throw new IOException("Source I/O cancelled"); }
+                    exchanged = true;
+                    ioStarted.countDown();
                     DataOutputStream out = worker.output;
                     out.writeInt(MAGIC);
                     out.writeByte(operation);
@@ -233,7 +258,11 @@ public final class IsolatedFileAccess {
                     DataInputStream in = worker.input;
                     if (in.readInt() != MAGIC) throw new IOException("Invalid worker response");
                     int status = in.readUnsignedByte();
-                    if (status == 1) throw new IOException(readString(in, 4096));
+                    if (status == 1) {
+                        String failure = readString(in, 4096);
+                        cleanFailure = true;
+                        throw new IOException(failure);
+                    }
                     if (status != 0 || in.readByte() != operation) throw new IOException("Invalid worker response kind");
                     Response result = new Response();
                     if (operation == CLASSIFY) {
@@ -247,13 +276,16 @@ public final class IsolatedFileAccess {
                         String text = readString(in, Math.min(MAX_TEXT_BYTES, maxChars * 4));
                         if (text.length() > maxChars) throw new IOException("Worker text exceeds requested limit");
                         result.extraction = new Extraction(text, readString(in, 4096), in.readBoolean(), in.readBoolean());
+                    } else if (operation == PROBE_TEXT) {
+                        result.textLike = in.readBoolean();
                     } else throw new IOException("Invalid source I/O operation");
                     return result;
                 } catch (Exception e) {
-                    worker.destroy();
+                    if (!cleanFailure && (!warmed || exchanged || closed || !cancelled.get())) worker.destroy();
                     throw e;
                 } finally {
-                    if (cancelled.get() || closed) worker.destroy();
+                    ioStarted.countDown();
+                    if (closed || cancelled.get() && exchanged) worker.destroy();
                     process = null;
                     synchronized (worker) { worker.lastUsed = System.nanoTime(); worker.busy = false; }
                     available.offer(worker);
@@ -283,6 +315,14 @@ public final class IsolatedFileAccess {
                 invalid = false;
                 input = new DataInputStream(process.getInputStream());
                 output = new DataOutputStream(process.getOutputStream());
+                Process starting = process;
+                java.util.concurrent.ScheduledFuture<?> startupDeadline = Shared.REAPER.schedule(
+                        starting::destroyForcibly, 5, TimeUnit.SECONDS);
+                try {
+                    if (input.readInt() != MAGIC) throw new IOException("Invalid worker startup handshake");
+                } finally {
+                    startupDeadline.cancel(false);
+                }
             }
             void destroy() {
                 Process current = process;

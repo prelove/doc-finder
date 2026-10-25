@@ -59,9 +59,12 @@ public class MainWindow extends JFrame implements MenuBarPanel.MenuListener {
 
 	private javax.swing.JCheckBoxMenuItem netPollToggle;
 	private org.abitware.docfinder.watch.NetPollerService netPoller;
+	private String pollStatusWarning;
 
 	// Web server
-	private org.abitware.docfinder.web.WebServer webServer;
+	private volatile org.abitware.docfinder.web.WebServer webServer;
+    private final Object webLifecycleLock = new Object();
+    private boolean webOperationInProgress;
 	private javax.swing.JCheckBoxMenuItem webServerToggle;
 	private javax.swing.JMenuItem openWebItem;
 
@@ -743,10 +746,12 @@ public class MainWindow extends JFrame implements MenuBarPanel.MenuListener {
 			protected void done() {
 				try {
 					PollStats st = get();
-					statusLabel.setText(String.format("Polled: scanned=%d, created=%d, modified=%d, deleted=%d | %d ms",
-							st.scannedFiles, st.created, st.modified, st.deleted, st.durationMs));
-					if (lastQuery != null && !lastQuery.trim().isEmpty())
-						doSearch();
+					String pollMessage = manualPollStatus(st);
+					pollStatusWarning = st.accepted && st.successful ? null : pollMessage;
+					statusLabel.setText(pollMessage);
+					if (st.created > 0 || st.modified > 0 || st.deleted > 0) {
+						onIndexCommit();
+					}
 				} catch (Exception ex) {
 					JOptionPane.showMessageDialog(MainWindow.this, "Poll failed:\n" + ex.getMessage(), "Error",
 							JOptionPane.ERROR_MESSAGE);
@@ -758,6 +763,14 @@ public class MainWindow extends JFrame implements MenuBarPanel.MenuListener {
 				}
 			}
 		}.execute();
+	}
+
+	static String manualPollStatus(PollStats st) {
+		if (!st.accepted) return "Poll not started: another poll is already running.";
+		if (st.cancelled) return "Poll cancelled; any committed changes remain available.";
+		if (!st.successful) return "Poll incomplete: " + st.failedRoots + " source(s) failed; committed changes remain available.";
+		return String.format("Polled: scanned=%d, created=%d, modified=%d, deleted=%d | %d ms",
+				st.scannedFiles, st.created, st.modified, st.deleted, st.durationMs);
 	}
 
 	/**
@@ -842,7 +855,12 @@ public class MainWindow extends JFrame implements MenuBarPanel.MenuListener {
 						try { existing.close(); } catch (Exception ignore) {}
 					}
 					org.abitware.docfinder.watch.LiveIndexService service = new org.abitware.docfinder.watch.LiveIndexService(sm.getIndexDir(), s, localRoots, MainWindow.this::onIndexCommit);
-					service.start();
+					try {
+						service.start();
+					} catch (Exception failure) {
+						try { service.close(); } catch (Exception cleanupFailure) { failure.addSuppressed(cleanupFailure); }
+						throw failure;
+					}
 					newService = service;
 					return localRoots.size();
 				} catch (Exception ex) {
@@ -2396,6 +2414,9 @@ public class MainWindow extends JFrame implements MenuBarPanel.MenuListener {
 		if (!automaticRefresh) {
 			addToHistory(query);
 		}
+		if (pollStatusWarning != null) {
+			statusLabel.setText(statusLabel.getText() + " | " + pollStatusWarning);
+		}
 
 	}
 
@@ -3045,7 +3066,7 @@ public class MainWindow extends JFrame implements MenuBarPanel.MenuListener {
                 + "<li><b>Ctrl+C</b> — copy full path; <b>Ctrl+Shift+C</b> — copy file name</li>"
                 + "<li><b>Alt+↓</b> — open query history dropdown</li>"
                 + "<li><b>Ctrl+Shift+Delete</b> — Clear Search History…</li>"
-                + "<li>Click a result column header to sort ascending → descending → default order; <b>Restore default sort</b> (above the preview, top-right) returns to the engine order without re-searching. A new search always resets to the default order.</li>"
+                + "<li>Click a result column header to sort ascending → descending → default order; <b>Restore default sort</b> (above the preview, top-right) returns to the engine order without re-searching. A new search resets sorting; background updates of the same query preserve sorting, selection and your input draft.</li>"
                 + "<li>Right-click a result row: <i>Open / Reveal in Explorer / Copy</i></li>" + "</ul>" +
 
                 "<h3>Privacy & Safety</h3>" + "<ul>"
@@ -3088,12 +3109,7 @@ public class MainWindow extends JFrame implements MenuBarPanel.MenuListener {
                 netPollToggle.setSelected(false);
                 toggleNetPolling();
             }
-            // The JVM shutdown hook in App only knows the original instance —
-            // a port-changed replacement is stopped here before exit.
-            if (webServer != null) {
-                webServer.stop();
-                webServer = null;
-            }
+            shutdownWebServer();
         } catch (Exception ignore) {
         }
 
@@ -3206,7 +3222,13 @@ public class MainWindow extends JFrame implements MenuBarPanel.MenuListener {
      * Call this from App after the web server is (conditionally) created.
      */
     public void setWebServer(org.abitware.docfinder.web.WebServer ws) {
-        this.webServer = ws;
+        synchronized (webLifecycleLock) {
+            if (windowClosed) {
+                if (ws != null) ws.stop();
+                return;
+            }
+            this.webServer = ws;
+        }
         SwingUtilities.invokeLater(() -> {
             boolean running = (ws != null && ws.isRunning());
             if (webServerToggle != null) webServerToggle.setSelected(running);
@@ -3214,58 +3236,70 @@ public class MainWindow extends JFrame implements MenuBarPanel.MenuListener {
         });
     }
 
+    /** Stop the current instance, including a port-change replacement. */
+    public void shutdownWebServer() {
+        synchronized (webLifecycleLock) {
+            org.abitware.docfinder.web.WebServer current = webServer;
+            webServer = null;
+            if (current != null) current.stop();
+        }
+    }
+
+    private void finishWebOperation() {
+        webOperationInProgress = false;
+        if (windowClosed) return;
+        boolean running = webServer != null && webServer.isRunning();
+        if (webServerToggle != null) {
+            webServerToggle.setEnabled(true);
+            webServerToggle.setSelected(running);
+        }
+        if (openWebItem != null) openWebItem.setEnabled(running);
+    }
+
     private void toggleWebServer() {
+        if (windowClosed || webOperationInProgress) return;
         final boolean enable = webServerToggle != null && webServerToggle.isSelected();
+        webOperationInProgress = true;
         if (webServerToggle != null) webServerToggle.setEnabled(false);
         statusLabel.setText(enable ? "Starting web server…" : "Stopping web server…");
-
-        new javax.swing.SwingWorker<Void, Void>() {
-            private String message;
-            private boolean success = false;
-            private String url;
-
+        new javax.swing.SwingWorker<String, Void>() {
             @Override
-            protected Void doInBackground() {
-                try {
+            protected String doInBackground() throws Exception {
+                synchronized (webLifecycleLock) {
+                    if (windowClosed) return null;
                     org.abitware.docfinder.index.ConfigManager cm = new org.abitware.docfinder.index.ConfigManager();
                     if (enable) {
-                        if (webServer == null) {
-                            webServer = new org.abitware.docfinder.web.WebServer(
-                                    cm.getWebPort(), cm.getWebBindAddress());
-                            // pass current search service if already available
-                            if (searchService != null) webServer.setSearchService(searchService);
+                        org.abitware.docfinder.web.WebServer candidate = webServer;
+                        if (candidate == null || candidate.getPort() != cm.getWebPort()
+                                || !candidate.getBindAddress().equals(cm.getWebBindAddress())) {
+                            candidate = new org.abitware.docfinder.web.WebServer(cm.getWebPort(), cm.getWebBindAddress());
                         }
-                        webServer.start();
+                        candidate.setSearchService(searchService);
+                        candidate.start();
+                        if (windowClosed) { candidate.stop(); return null; }
+                        webServer = candidate;
+                        candidate.setSearchService(searchService);
                         cm.setWebEnabled(true);
-                        url = webServer.getBaseUrl() + "/";
-                    } else {
-                        if (webServer != null) webServer.stop();
-                        cm.setWebEnabled(false);
+                        return candidate.getBaseUrl() + "/";
                     }
-                    success = true;
-                } catch (Exception ex) {
-                    message = (enable ? "Failed to start web server:\n" : "Failed to stop web server:\n")
-                            + ex.getMessage();
+                    shutdownWebServer();
+                    cm.setWebEnabled(false);
+                    return null;
                 }
-                return null;
             }
-
             @Override
             protected void done() {
-                if (webServerToggle != null) webServerToggle.setEnabled(true);
-                if (!success) {
-                    if (webServerToggle != null) webServerToggle.setSelected(!enable);
-                    if (message != null) {
-                        JOptionPane.showMessageDialog(MainWindow.this, message,
-                                enable ? "Web Server" : "Web Server", JOptionPane.ERROR_MESSAGE);
-                    }
-                } else {
-                    if (openWebItem != null) openWebItem.setEnabled(enable);
-                    if (enable) {
-                        statusLabel.setText("Web server started: " + url);
-                    } else {
-                        statusLabel.setText("Web server stopped.");
-                    }
+                finishWebOperation();
+                if (windowClosed) return;
+                try {
+                    String url = get();
+                    statusLabel.setText(enable ? "Web server started: " + url : "Web server stopped.");
+                } catch (Exception failure) {
+                    statusLabel.setText("Web server operation failed.");
+                    JOptionPane.showMessageDialog(MainWindow.this,
+                            "Could not " + (enable ? "start" : "stop") + " the web server.\n"
+                                    + (failure.getCause() == null ? failure : failure.getCause()).getMessage(),
+                            "Web Server", JOptionPane.ERROR_MESSAGE);
                 }
             }
         }.execute();
@@ -3312,6 +3346,31 @@ public class MainWindow extends JFrame implements MenuBarPanel.MenuListener {
         }
     }
 
+    /** A failed new bind leaves the old listener and saved port untouched. */
+    static org.abitware.docfinder.web.WebServer reconfigureWebServer(
+            org.abitware.docfinder.web.WebServer current, int newPort, String bind,
+            SearchService service, java.util.function.IntConsumer savePort) throws java.io.IOException {
+        if (current != null && current.isRunning() && current.getPort() == newPort
+                && current.getBindAddress().equals(bind)) return current;
+        boolean running = current != null && current.isRunning();
+        org.abitware.docfinder.web.WebServer replacement =
+                new org.abitware.docfinder.web.WebServer(newPort, bind);
+        replacement.setSearchService(service);
+        if (running) {
+            replacement.start(); // the real bind is the occupancy check
+        } else if (!isWebPortAvailable(bind, newPort)) {
+            throw new java.net.BindException("Port " + newPort + " is already in use.");
+        }
+        try {
+            savePort.accept(newPort);
+        } catch (RuntimeException failure) {
+            replacement.stop();
+            throw failure;
+        }
+        if (current != null) current.stop();
+        return replacement;
+    }
+
     /**
      * Menu → "Web Server Port…". Validates the entry, refuses ports that
      * are already bound, then — when the server is running — restarts it
@@ -3320,6 +3379,7 @@ public class MainWindow extends JFrame implements MenuBarPanel.MenuListener {
      * persisted port.
      */
     private void showWebPortSettings() {
+        if (windowClosed || webOperationInProgress) return;
         final org.abitware.docfinder.index.ConfigManager cm =
                 new org.abitware.docfinder.index.ConfigManager();
         final int oldPort = cm.getWebPort();
@@ -3356,77 +3416,40 @@ public class MainWindow extends JFrame implements MenuBarPanel.MenuListener {
             return; // unchanged — nothing to do
         }
 
+        if (webOperationInProgress || windowClosed) return;
+        webOperationInProgress = true;
+        if (webServerToggle != null) webServerToggle.setEnabled(false);
         new javax.swing.SwingWorker<String, Void>() {
-            /** -1 = port occupied; -2 = restart failed; else new port. */
-            private int outcome;
-
             @Override
-            protected String doInBackground() {
-                // Probe first: an occupied port must not disturb a running
-                // server or touch persisted config.
-                if (!isWebPortAvailable(bind, newPort)) {
-                    outcome = -1;
-                    return null;
-                }
-                org.abitware.docfinder.web.WebServer running =
-                        (webServer != null && webServer.isRunning()) ? webServer : null;
-                if (running == null) {
-                    // Server off — just persist; applies on next start.
-                    cm.setWebPort(newPort);
-                    outcome = newPort;
-                    return null;
-                }
-                org.abitware.docfinder.web.WebServer replacement =
-                        new org.abitware.docfinder.web.WebServer(newPort, bind);
-                if (searchService != null) {
+            protected String doInBackground() throws Exception {
+                synchronized (webLifecycleLock) {
+                    if (windowClosed) return null;
+                    org.abitware.docfinder.web.WebServer replacement = reconfigureWebServer(
+                            webServer, newPort, bind, searchService, cm::setWebPort);
+                    if (windowClosed) { replacement.stop(); return null; }
+                    webServer = replacement;
                     replacement.setSearchService(searchService);
+                    return replacement.isRunning() ? replacement.getBaseUrl() + "/" : null;
                 }
-                try {
-                    replacement.start();
-                } catch (Exception ex) {
-                    outcome = -2;
-                    return ex.getMessage();
-                }
-                // New instance is up: drop the old one and publish.
-                running.stop();
-                webServer = replacement;
-                cm.setWebPort(newPort);
-                outcome = newPort;
-                return replacement.getBaseUrl() + "/";
             }
-
             @Override
             protected void done() {
-                if (outcome == -1) {
-                    JOptionPane.showMessageDialog(MainWindow.this,
-                            "Port " + newPort + " is already in use. The port was not changed.",
-                            "Web Server Port", JOptionPane.WARNING_MESSAGE);
-                    return;
-                }
-                if (outcome == -2) {
-                    String msg;
-                    try {
-                        msg = "Restart on port " + newPort + " failed"
-                                + (get() != null ? ":\n" + get() : "");
-                    } catch (Exception ex) {
-                        msg = "Restart on port " + newPort + " failed.";
-                    }
-                    JOptionPane.showMessageDialog(MainWindow.this, msg,
-                            "Web Server Port", JOptionPane.ERROR_MESSAGE);
-                    return;
-                }
-                boolean running = webServer != null && webServer.isRunning();
-                if (openWebItem != null) openWebItem.setEnabled(running);
-                if (!running) {
-                    // Server was off — port saved for the next start.
-                    statusLabel.setText("Web server port saved: " + newPort
-                            + " (applies on next start)");
-                    return;
-                }
+                finishWebOperation();
+                if (windowClosed) return;
                 final String url;
                 try {
                     url = get();
-                } catch (Exception ex) {
+                } catch (Exception failure) {
+                    Throwable cause = failure.getCause() == null ? failure : failure.getCause();
+                    JOptionPane.showMessageDialog(MainWindow.this,
+                            cause instanceof java.net.BindException
+                                    ? "Port " + newPort + " is already in use. The port was not changed."
+                                    : "Could not change the web server port. The previous server remains available.\n" + cause.getMessage(),
+                            "Web Server Port", JOptionPane.ERROR_MESSAGE);
+                    return;
+                }
+                if (url == null) {
+                    statusLabel.setText("Web server port saved: " + newPort + " (applies on next start)");
                     return;
                 }
                 statusLabel.setText("Web server restarted: " + url);
@@ -3587,6 +3610,9 @@ public class MainWindow extends JFrame implements MenuBarPanel.MenuListener {
 	@Override
 	public void dispose() {
 		windowClosed = true;
+        Thread webStop = new Thread(this::shutdownWebServer, "docfinder-web-close");
+        webStop.setDaemon(true);
+        webStop.start();
 		liveWatchDesired = false;
 		resultsRefreshPending = false;
 		searchSequence++;

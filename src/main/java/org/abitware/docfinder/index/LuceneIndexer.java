@@ -1,6 +1,7 @@
 package org.abitware.docfinder.index;
 
 import org.abitware.docfinder.util.AppPaths;
+import org.abitware.docfinder.util.IsolatedFileAccess;
 import org.abitware.docfinder.util.PathScope;
 import org.abitware.docfinder.util.Utils;
 import org.apache.lucene.analysis.Analyzer;
@@ -17,22 +18,16 @@ import org.apache.lucene.index.IndexWriterConfig;
 import org.apache.lucene.index.TieredMergePolicy;
 import org.apache.lucene.index.Term;
 import org.apache.lucene.store.FSDirectory;
-import org.apache.tika.metadata.Metadata;
-import org.apache.tika.parser.AutoDetectParser;
-import org.apache.tika.parser.ParseContext;
-import org.apache.tika.sax.BodyContentHandler;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
 import java.io.IOException;
-import java.io.InputStream;
 import java.nio.file.DirectoryIteratorException;
 import java.nio.file.DirectoryStream;
 import java.nio.file.FileSystems;
 import java.nio.file.Files;
 import java.nio.file.Path;
 import java.nio.file.PathMatcher;
-import java.nio.file.StandardOpenOption;
 import java.nio.file.attribute.BasicFileAttributes;
 import java.util.Arrays;
 import java.util.HashMap;
@@ -41,9 +36,6 @@ import java.util.List;
 import java.util.Locale;
 import java.util.Map;
 import java.util.Set;
-import java.util.concurrent.ExecutorService;
-import java.util.concurrent.Executors;
-import java.util.concurrent.Future;
 import java.util.concurrent.TimeUnit;
 import java.util.concurrent.atomic.AtomicInteger;
 import java.util.concurrent.ConcurrentHashMap;
@@ -94,7 +86,7 @@ public class LuceneIndexer implements AutoCloseable {
     private static final Map<String, FailedFileState> FAILED_CONTENT_CACHE = new ConcurrentHashMap<>();
 
     /**
-     * Bounded registry of recent successful upserts: normalized path →
+     * Bounded registry of recent successful mutations: normalized path →
      * System.nanoTime of the write. Lets a queued cleanup verify that the
      * index record it is about to delete is still the same generation —
      * a stale verdict must never delete a doc that was re-indexed after
@@ -108,7 +100,7 @@ public class LuceneIndexer implements AutoCloseable {
      * evicted" (watermark above the baseline → the verdict is unverifiable
      * and must be re-checked or deferred, never deleted on sight).
      */
-    private static volatile long maxEvictedUpsertNs;
+    private static volatile long maxEvictedUpsertNs = Long.MIN_VALUE;
     /**
      * Hard-bounded access-order LRU: size() can NEVER exceed the cap, and
      * put/get are O(1) — no per-upsert table scans. Eviction drops the
@@ -138,7 +130,7 @@ public class LuceneIndexer implements AutoCloseable {
     }
 
     /**
-     * nanoTime of the last successful upsert for {@code pathStr}, or -1
+     * nanoTime of the last successful upsert/deletion for {@code pathStr}, or -1
      * when unknown. Accepts either stored (index-normalized) or raw OS
      * form — callers hold whichever form their queue carried.
      */
@@ -159,6 +151,15 @@ public class LuceneIndexer implements AutoCloseable {
      */
     public static long maxEvictedUpsertNs() {
         return maxEvictedUpsertNs;
+    }
+
+    /** Missing LRU evidence is conservative only for verdicts older than its eviction. */
+    public static boolean hasNewerUpsert(String path, long baseline) {
+        String key = Utils.normalizeForIndex(java.nio.file.Paths.get(path));
+        synchronized (RECENT_UPSERTS) {
+            Long known = RECENT_UPSERTS.get(key);
+            return known != null ? known > baseline : maxEvictedUpsertNs > baseline;
+        }
     }
 
     /* ----------------- 锁外预构建 / 锁内代次保护应用 ----------------- */
@@ -183,19 +184,12 @@ public class LuceneIndexer implements AutoCloseable {
     }
 
     /**
-     * Whether {@code path} should be indexed for the given index dir:
-     * exists on disk and is not excluded. Lock-free — safe to call from
+     * Whether {@code path} is lexically eligible for the given index dir.
+     * This deliberately does not stat the source. Safe to call from
      * scan/diff phases before committing to a prepare.
      */
     public static boolean shouldIndexPath(Path path, Path indexDir, IndexSettings settings) {
         if (path == null) {
-            return false;
-        }
-        try {
-            if (!Files.exists(path)) {
-                return false;
-            }
-        } catch (Throwable t) {
             return false;
         }
         // Exclude the app's own data dir only — never the whole working dir:
@@ -229,8 +223,8 @@ public class LuceneIndexer implements AutoCloseable {
      * the expensive part (attrs read, Tika extraction) happens here so the
      * shared writer is held only for the {@link #applyPrepared} term swap.
      * Returns {@code null} when the path is excluded or of a type never
-     * indexed — callers then converge to a delete. {@link NoSuchFileException}
-     * propagates: a known absence after CREATE/MODIFY converges to deletion.
+     * indexed — callers then converge to a delete. Unknown source I/O
+     * propagates without interpreting a timeout or denied read as deletion.
      */
     public static PreparedUpsert prepareUpsert(Path path, Path indexDir, IndexSettings settings)
             throws IOException {
@@ -240,10 +234,8 @@ public class LuceneIndexer implements AutoCloseable {
         // Baseline BEFORE the file I/O: any upsert during preparation is
         // newer than this prepare and must supersede it at apply time.
         long preparedAt = System.nanoTime();
-        BasicFileAttributes attrs = Files.readAttributes(path, BasicFileAttributes.class);
-        if (isExcluded(path, indexDir, settings, AppPaths.getBaseDir())) {
-            return null;
-        }
+        if (!shouldIndexPath(path, indexDir, settings)) return null;
+        BasicFileAttributes attrs = sourceAttributes(path);
         Document doc = attrs.isDirectory()
                 ? buildDirDoc(path, attrs)
                 : buildFileDoc(path, attrs, settings);
@@ -263,13 +255,18 @@ public class LuceneIndexer implements AutoCloseable {
         if (prepared == null) {
             return false;
         }
-        if (upsertedAt(prepared.pathKey) > prepared.preparedAt) {
+        if (hasNewerUpsert(prepared.pathKey, prepared.preparedAt)) {
             return false;
         }
-        writer.updateDocument(new Term("path", prepared.pathKey), prepared.document);
-        Tombstones.remove(prepared.pathKey);
-        recordUpsert(prepared.pathKey);
-        return true;
+        try {
+            writer.updateDocument(new Term("path", prepared.pathKey), prepared.document);
+            noteRestored(prepared.pathKey);
+            recordUpsert(prepared.pathKey);
+            return true;
+        } catch (IOException | RuntimeException e) {
+            abortOnClose = true;
+            throw e;
+        }
     }
 
     /**
@@ -283,38 +280,18 @@ public class LuceneIndexer implements AutoCloseable {
         }
         try {
             String pathStr = Utils.normalizeForIndex(path);
+            // Recovery evidence must exist before a deletion can reach a durable main commit.
+            if (shouldIndexPath(path, indexDir, settings)) Tombstones.record(pathStr);
+            pendingRestored.remove(pathStr);
             writer.deleteDocuments(new Term("path", pathStr));
-            Tombstones.record(pathStr);
+            // A prepared read older than this deletion must not resurrect it.
+            recordUpsert(pathStr);
             return true;
         } catch (Throwable t) {
+            abortOnClose = true;
             log.warn("Delete path error: {}, exception: {}", path, t.getMessage());
             return false;
         }
-    }
-
-    /**
-     * Shared bounded pool for Tika extraction. At most PARSER_THREADS workers
-     * exist for the whole JVM and the submission queue is bounded — a parse
-     * that ignores interruption can occupy one slot, but slots never spawn
-     * replacements the way per-file single-thread executors did. Idle workers
-     * expire so the thread count provably returns to zero after indexing.
-     * Saturated pool → the file is recorded as failed and indexed without
-     * content instead of queueing unboundedly.
-     */
-    private static final int PARSER_THREADS = 2;
-    private static final int PARSER_QUEUE = 64;
-    private static final java.util.concurrent.ThreadPoolExecutor PARSER_POOL =
-            new java.util.concurrent.ThreadPoolExecutor(
-                    PARSER_THREADS, PARSER_THREADS,
-                    60L, TimeUnit.SECONDS,
-                    new java.util.concurrent.ArrayBlockingQueue<Runnable>(PARSER_QUEUE),
-                    r -> {
-                        Thread t = new Thread(r, "tika-extract");
-                        t.setDaemon(true);
-                        return t;
-                    });
-    static {
-        PARSER_POOL.allowCoreThreadTimeOut(true);
     }
 
     /**
@@ -348,10 +325,6 @@ public class LuceneIndexer implements AutoCloseable {
         }
     }
 
-    /** Tika 解析器（自动探测）— shared: AutoDetectParser is thread-safe and
-     *  the static prepare path must parse without an indexer instance. */
-    private static final AutoDetectParser tikaParser = new AutoDetectParser();
-
     /** 索引目录、配置 */
     private final Path indexDir;
     private final IndexSettings settings;
@@ -362,6 +335,16 @@ public class LuceneIndexer implements AutoCloseable {
 
     /** 共享的 IndexWriter 实例 */
     private final IndexWriter writer;
+    private final FSDirectory directory;
+    private final Set<String> pendingRestored = new HashSet<>();
+    private static final int RESTORED_BATCH_LIMIT = 256;
+    private boolean abortOnClose;
+    private boolean closed;
+
+    private void noteRestored(String path) {
+        // Extra evidence is safe: a later bounded resurrection pass clears it.
+        if (pendingRestored.size() < RESTORED_BATCH_LIMIT && Tombstones.contains(path)) pendingRestored.add(path);
+    }
 
     public LuceneIndexer(Path indexDir, IndexSettings settings) throws IOException {
         this.indexDir = indexDir;
@@ -386,71 +369,89 @@ public class LuceneIndexer implements AutoCloseable {
         mergePolicy.setSegmentsPerTier(10);
         IndexWriterConfig cfg = new IndexWriterConfig(perFieldAnalyzer)
                 .setOpenMode(IndexWriterConfig.OpenMode.CREATE_OR_APPEND)
-                .setRAMBufferSizeMB(256)
+                .setRAMBufferSizeMB(32)
                 .setMergePolicy(mergePolicy);
-        this.writer = new IndexWriter(FSDirectory.open(indexDir), cfg);
+        FSDirectory opened = FSDirectory.open(indexDir);
+        try {
+            this.writer = new IndexWriter(opened, cfg);
+            this.directory = opened;
+        } catch (IOException | RuntimeException e) {
+            opened.close();
+            perFieldAnalyzer.close();
+            throw e;
+        }
     }
 
     /* --------------------------- 增/改/删 --------------------------- */
 
     /**
-     * 单文件 upsert（新增或修改）；若文件不存在则等价 delete。
+     * 单文件 upsert（新增或修改）；删除须由确认缺失的路径单独提交。
      */
     public void upsertFile(Path file) {
-        if (file == null) return;
         try {
-            if (!Files.exists(file)) {
-                deletePath(file);
-                return;
-            }
-            if (isExcluded(file)) {
-                deletePath(file);
-                return;
-            }
-
-            BasicFileAttributes attrs = Files.readAttributes(file, BasicFileAttributes.class);
-            if (attrs.isDirectory()) {
-                indexDirectory(this.writer, file, attrs);
-            } else {
-                indexFile(this.writer, file, attrs);
-            }
-        } catch (Throwable t) {
-            log.warn("Upsert file error: {}, exception: {}", file, t.getMessage());
+            tryUpsertFile(file);
+        } catch (IOException | RuntimeException e) {
+            log.warn("Upsert file error: {}, exception: {}", file, e.getMessage());
         }
+    }
+
+    /** Strict callers retain recovery evidence and retry when preparation fails. */
+    public boolean tryUpsertFile(Path file) throws IOException {
+        if (file == null) return false;
+        PreparedUpsert prepared = prepareUpsert(file, indexDir, settings);
+        return prepared == null ? tryDeletePath(file) : applyPrepared(prepared);
     }
 
     /**
      * 删除一个绝对路径对应的文档（按规范化 path 匹配）。
      */
     public void deletePath(Path file) {
-        if (file == null) return;
-        try {
-            String pathStr = Utils.normalizeForIndex(file);
-            this.writer.deleteDocuments(new Term("path", pathStr));
-            // Every deletion leaves a tombstone so a file that later comes
-            // back (restored, remounted) can be resurrected by re-indexing —
-            // even when no watcher or poller covers its root.
-            Tombstones.record(pathStr);
-        } catch (Throwable t) {
-            log.warn("Delete path error: {}, exception: {}", file, t.getMessage());
-        }
+        tryDeletePath(file);
     }
 
-    /**
-     * 提交所有挂起的索引更改。
-     */
+    /** Recovery deletions are durable before main commit; restorations clear only afterwards. */
     public void commit() throws IOException {
-        writer.commit();
+        if (abortOnClose) throw new IOException("Index transaction was aborted");
+        try {
+            Tombstones.flush();
+            writer.commit();
+        } catch (IOException | RuntimeException e) {
+            abortOnClose = true;
+            if (e instanceof IOException) throw (IOException) e;
+            throw new IOException("Recovery registry commit failed", e);
+        }
+        // A registry failure here can leave redundant recovery work, never lose the main document.
+        try {
+            Tombstones.removeBatch(pendingRestored);
+            Tombstones.flush();
+            pendingRestored.clear();
+        } catch (RuntimeException e) {
+            throw new IOException("Could not acknowledge restored documents", e);
+        }
     }
 
     @Override
     public void close() throws IOException {
-        if (writer != null) {
-            writer.close();
-        }
-        if (perFieldAnalyzer != null) {
+        if (closed) return;
+        closed = true;
+        IOException failure = null;
+        try {
+            if (!writer.isOpen()) {
+                // A caller/test may already have rolled back this transaction.
+            } else if (abortOnClose) writer.rollback();
+            else {
+                try { commit(); }
+                catch (IOException e) { failure = e; }
+                if (abortOnClose) writer.rollback();
+                else writer.close();
+            }
+        } catch (IOException e) {
+            if (failure == null) failure = e; else failure.addSuppressed(e);
+        } finally {
             perFieldAnalyzer.close();
+            directory.close();
         }
+        if (failure != null) throw failure;
     }
 
     /* --------------------------- 批量索引 --------------------------- */
@@ -463,7 +464,7 @@ public class LuceneIndexer implements AutoCloseable {
         extractionBreakerOpen = false;
         AtomicInteger count = new AtomicInteger(0);
         walkOneRoot(this.writer, root, count);
-        writer.commit();
+        commit();
         return count.get();
     }
 
@@ -489,7 +490,7 @@ public class LuceneIndexer implements AutoCloseable {
                 walkOneRoot(this.writer, root, count);
             }
         }
-        writer.commit();
+        commit();
         return count.get();
     }
 
@@ -577,9 +578,10 @@ public class LuceneIndexer implements AutoCloseable {
         try {
             String pathStr = Utils.normalizeForIndex(dir);
             writer.updateDocument(new Term("path", pathStr), buildDirDoc(dir, attrs));
-            Tombstones.remove(pathStr);
+            noteRestored(pathStr);
             recordUpsert(pathStr);
         } catch (Throwable t) {
+            abortOnClose = true;
             log.warn("Index directory error: {}, exception: {}", dir, t.getMessage());
         }
     }
@@ -633,9 +635,12 @@ public class LuceneIndexer implements AutoCloseable {
             if (shouldParseContent(file, name, attrs.size(), settings)
                     && !extractionBreakerOpen
                     && !shouldSkipContentExtraction(file, attrs)) {
-                content = extractTextReadOnly(file, attrs, settings);
+                IsolatedFileAccess.Extraction extracted = extractTextReadOnly(file, attrs, settings);
+                if (extracted != null) {
+                    content = extracted.getText();
+                    mime = extracted.getMimeType();
+                }
             }
-            mime = Files.probeContentType(file);
         } catch (Throwable e) {
             log.warn("Get mime/content error: {}, exception: {}", file, e.getMessage());
         }
@@ -655,9 +660,10 @@ public class LuceneIndexer implements AutoCloseable {
             if (doc == null) return;
             String pathStr = Utils.normalizeForIndex(file);
             writer.updateDocument(new Term("path", pathStr), doc);
-            Tombstones.remove(pathStr);
+            noteRestored(pathStr);
             recordUpsert(pathStr);
         } catch (Throwable t) {
+            abortOnClose = true;
             log.warn("Index file error: {}, exception: {}", file, t.getMessage());
         }
     }
@@ -706,80 +712,38 @@ public class LuceneIndexer implements AutoCloseable {
         return (i > 0) ? name.substring(i + 1).toLowerCase(Locale.ROOT) : "";
     }
 
-    private static String extractTextReadOnly(Path file, BasicFileAttributes attrs, IndexSettings settings) {
-        Future<String> fut;
+    private static IsolatedFileAccess.Extraction extractTextReadOnly(Path file, BasicFileAttributes attrs, IndexSettings settings) {
         try {
-            fut = PARSER_POOL.submit(() -> {
-                try (InputStream is = Files.newInputStream(file, StandardOpenOption.READ)) {
-                    Metadata md = new Metadata();
-                    md.set(org.apache.tika.metadata.TikaCoreProperties.RESOURCE_NAME_KEY, file.getFileName().toString());
-                    int maxChars = settings.maxExtractChars > 0 ? settings.maxExtractChars : DEFAULT_MAX_CHARS;
-                    BodyContentHandler handler = new BodyContentHandler(maxChars);
-                    ParseContext ctx = new ParseContext();
-                    try {
-                        tikaParser.parse(is, handler, md, ctx);
-                        clearFailedExtraction(file);
-                        return handler.toString();
-                    } catch (Throwable e) {
-                        String msg = e.getMessage() == null ? "" : e.getMessage();
-                        if (isWriteLimitReached(msg)) {
-                            clearFailedExtraction(file);
-                            log.info("Tika extract truncated by index.maxExtractChars={} for {}", maxChars, file);
-                            return handler.toString();
-                        }
-                        if (isSevereExtractionError(msg)) {
-                            rememberFailedExtraction(file, attrs);
-                        }
-                        log.warn("Tika parse failed for {}: {}", file, msg);
-                        return "";
-                    }
-                }
-            });
-        } catch (java.util.concurrent.RejectedExecutionException rex) {
-            // Pool saturated — index without content rather than queueing
-            // unboundedly. NOT recorded in FAILED_CONTENT_CACHE: saturation is
-            // transient, so the file must be retried on the next index pass
-            // instead of being skipped forever on unchanged size/mtime.
-            log.warn("Tika parser pool saturated; content skipped for {}", file);
-            return "";
-        }
-        try {
-            String extracted = fut.get(settings.parseTimeoutSec, TimeUnit.SECONDS);
-            // The provider responded (empty string from a fast parse failure
-            // also lands here): the stall streak is broken.
+            int maxChars = settings.maxExtractChars > 0 ? Math.min(settings.maxExtractChars, DEFAULT_MAX_CHARS) : DEFAULT_MAX_CHARS;
+            long timeout = Math.max(1L, settings.parseTimeoutSec) * 1000L;
+            IsolatedFileAccess.Extraction extracted = IsolatedFileAccess.extract(file, maxChars, (int) Math.min(Integer.MAX_VALUE, timeout));
             CONSECUTIVE_EXTRACT_TIMEOUTS.set(0);
+            if (extracted.isSuccessful()) clearFailedExtraction(file);
+            else rememberFailedExtraction(file, attrs);
             return extracted;
-        } catch (java.util.concurrent.TimeoutException te) {
-            // Cancel first: an unstarted task is removed from the queue; a
-            // running one gets interrupted. A native read parked on a stalled
-            // cloud file-provider cannot be interrupted — the tika thread stays
-            // pinned until the OS eventually answers, bounded only by the pool cap.
-            fut.cancel(true);
-            PARSER_POOL.purge();
-            int streak = CONSECUTIVE_EXTRACT_TIMEOUTS.incrementAndGet();
-            if (!extractionBreakerOpen && streak >= EXTRACT_TIMEOUT_BREAKER_LIMIT) {
-                extractionBreakerOpen = true;
-                log.warn("Extraction timed out {} times in a row — degrading to "
-                        + "name-only indexing for the rest of this run. Likely a "
-                        + "stalled cloud file-provider (on-demand placeholder reads "
-                        + "park in the kernel and cannot be interrupted). File names "
-                        + "keep indexing; content coverage for these files resumes on "
-                        + "a later index pass or after pinning the folder locally.", streak);
-            }
-            log.warn("Extract text timeout or error: {}, exception: {}", file, te.getMessage());
-            // A timeout is usually a slow share, not a corrupt file — skip
-            // re-parsing for a bounded window via the failed cache so a hang
-            // does not repeat every scan, but keep the retry path alive.
+        } catch (IOException e) {
+            if (e.getCause() instanceof java.util.concurrent.TimeoutException) {
+                if (CONSECUTIVE_EXTRACT_TIMEOUTS.incrementAndGet() >= EXTRACT_TIMEOUT_BREAKER_LIMIT) extractionBreakerOpen = true;
+            } else CONSECUTIVE_EXTRACT_TIMEOUTS.set(0);
             rememberFailedExtraction(file, attrs);
-            return "";
-        } catch (Throwable t) {
-            CONSECUTIVE_EXTRACT_TIMEOUTS.set(0);
-            fut.cancel(true);
-            PARSER_POOL.purge();
-            log.warn("Extract text timeout or error: {}, exception: {}", file, t.getMessage());
-            rememberFailedExtraction(file, attrs);
-            return "";
+            log.warn("Isolated extraction failed for {}: {}", file, e.getMessage());
+            return null;
         }
+    }
+
+    private static BasicFileAttributes sourceAttributes(Path path) throws IOException {
+        final IsolatedFileAccess.Attributes attrs = IsolatedFileAccess.attributes(path, 5000);
+        return new BasicFileAttributes() {
+            public java.nio.file.attribute.FileTime lastModifiedTime() { return java.nio.file.attribute.FileTime.fromMillis(attrs.getLastModifiedTime()); }
+            public java.nio.file.attribute.FileTime lastAccessTime() { return java.nio.file.attribute.FileTime.fromMillis(attrs.getLastAccessTime()); }
+            public java.nio.file.attribute.FileTime creationTime() { return java.nio.file.attribute.FileTime.fromMillis(attrs.getCreationTime()); }
+            public boolean isRegularFile() { return attrs.isRegularFile(); }
+            public boolean isDirectory() { return attrs.isDirectory(); }
+            public boolean isSymbolicLink() { return false; }
+            public boolean isOther() { return !isRegularFile() && !isDirectory(); }
+            public long size() { return attrs.getSize(); }
+            public Object fileKey() { return null; }
+        };
     }
 
     private static boolean shouldSkipContentExtraction(Path file, BasicFileAttributes attrs) {
@@ -815,18 +779,6 @@ public class LuceneIndexer implements AutoCloseable {
         return Utils.normalizeForIndex(file);
     }
 
-    private static boolean isWriteLimitReached(String msg) {
-        String lower = msg.toLowerCase(Locale.ROOT);
-        return lower.contains("limit has been reached") || lower.contains("more than") && lower.contains("characters");
-    }
-
-    private static boolean isSevereExtractionError(String msg) {
-        if (msg == null || msg.isEmpty()) {
-            return true;
-        }
-        return !isWriteLimitReached(msg);
-    }
-
     private static boolean shouldParseContent(Path file, String name, long sizeBytes, IndexSettings settings) {
         if (sizeBytes <= 0 || sizeBytes > settings.maxFileMB * 1024L * 1024L) return false;
         String ext = getExt(name);
@@ -839,47 +791,11 @@ public class LuceneIndexer implements AutoCloseable {
         }
 
         if (settings.textExts != null && settings.textExts.contains(ext)) return true;
-        if (isTextMime(file)) return true;
-        return looksLikeText(file);
-    }
-
-    private static boolean isTextMime(Path file) {
         try {
-            String mime = Files.probeContentType(file);
-            if (mime == null) return false;
-            mime = mime.toLowerCase(Locale.ROOT);
-            return mime.startsWith("text/")
-                    || mime.equals("application/json")
-                    || mime.equals("application/xml")
-                    || mime.equals("application/x-yaml")
-                    || mime.equals("application/yaml")
-                    || mime.equals("application/javascript")
-                    || mime.equals("application/x-javascript")
-                    || mime.equals("application/x-sh")
-                    || mime.equals("application/x-java-source");
-        } catch (Throwable e) {
-            log.warn("MIME probe failed for {}: {}", file, e.getMessage());
+            return IsolatedFileAccess.isTextLike(file, 1000);
+        } catch (IOException e) {
             return false;
         }
     }
 
-    private static boolean looksLikeText(Path file) {
-        byte[] buf = new byte[4096];
-        try (InputStream is = Files.newInputStream(file, StandardOpenOption.READ)) {
-            int n = is.read(buf);
-            if (n <= 0) return false;
-            int printable = 0;
-            for (int i = 0; i < n; i++) {
-                int b = buf[i] & 0xFF;
-                if (b == 0x00) return false;
-                if (b == 0x09 || b == 0x0A || b == 0x0D) printable++;
-                else if (b >= 0x20 && b <= 0x7E) printable++;
-            }
-            double ratio = printable / (double) n;
-            return ratio >= 0.85;
-        } catch (Throwable e) {
-            log.warn("Text sniffing failed for {}: {}", file, e.getMessage());
-            return false;
-        }
-    }
 }

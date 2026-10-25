@@ -29,6 +29,18 @@ class IsolatedFileAccessTest {
     @TempDir Path directory;
 
     @Test
+    void shouldStartColdWorkerBeforeApplyingSourceStatDeadline() throws Exception {
+        Path source = Files.write(directory.resolve("cold-worker.txt"), new byte[] { 1 });
+        try (IsolatedFileAccess.Pool pool = new IsolatedFileAccess.Pool(FileAccessWorker.class.getName(), false, 30000)) {
+            IsolatedFileAccess.Response response = assertTimeoutPreemptively(java.time.Duration.ofSeconds(8),
+                    () -> pool.call(IsolatedFileAccess.CLASSIFY, source.toString(),
+                            PathScope.normalizeIndexedPath(directory), 0, 250));
+            assertEquals(IsolatedFileAccess.Classification.ALIVE, response.classification,
+                    "cold JVM startup must not falsely hide a healthy local result");
+        }
+    }
+
+    @Test
     void shouldProvideProcessIsolationBoundary() {
         assertDoesNotThrow(() -> Class.forName("org.abitware.docfinder.util.IsolatedFileAccess"));
     }
@@ -129,6 +141,41 @@ class IsolatedFileAccessTest {
         assertThrows(IOException.class, () -> IsolatedFileAccess.extract(file, Integer.MAX_VALUE, 10000));
     }
 
+    @Test
+    void shouldProbeUnknownExtensionsWithoutReadingThemInTheParent() throws Exception {
+        Path text = directory.resolve("source.unusual");
+        Files.write(text, "ordinary ASCII source text".getBytes(StandardCharsets.UTF_8));
+        Path binary = directory.resolve("binary.unusual");
+        Files.write(binary, new byte[]{ 0, 1, 2, 3 });
+        assertTrue(IsolatedFileAccess.isTextLike(text, 10000));
+        assertFalse(IsolatedFileAccess.isTextLike(binary, 10000));
+    }
+
+    @Test
+    void shouldKeepAWarmingHelperWhenTheFirstCallerTimesOut() throws Exception {
+        try (IsolatedFileAccess.Pool pool = new IsolatedFileAccess.Pool(SlowStartingWorker.class.getName(), false, 30000)) {
+            assertThrows(IOException.class, () -> pool.call(IsolatedFileAccess.ATTRIBUTES, "normal", "", 0, 200));
+            long deadline = System.nanoTime() + TimeUnit.SECONDS.toNanos(5);
+            List<Process> warming = liveProcesses(pool);
+            while (warming.isEmpty() && System.nanoTime() < deadline) {
+                Thread.sleep(10);
+                warming = liveProcesses(pool);
+            }
+            assertFalse(warming.isEmpty());
+            Process first = warming.get(0);
+            pool.call(IsolatedFileAccess.ATTRIBUTES, "normal", "", 0, 10000);
+            pool.call(IsolatedFileAccess.ATTRIBUTES, "normal", "", 0, 10000);
+            assertTrue(first.isAlive(), "An abandoned pre-I/O request must not repeatedly kill cold helpers");
+        }
+    }
+
+    public static class SlowStartingWorker {
+        public static void main(String[] args) throws Exception {
+            Thread.sleep(1000);
+            ControlledWorker.main(args);
+        }
+    }
+
     private static IsolatedFileAccess.Pool controlledPool(int idleMs) {
         return new IsolatedFileAccess.Pool(ControlledWorker.class.getName(), false, idleMs);
     }
@@ -151,6 +198,8 @@ class IsolatedFileAccessTest {
         public static void main(String[] args) throws Exception {
             DataInputStream input = new DataInputStream(System.in);
             DataOutputStream output = new DataOutputStream(new FileOutputStream(FileDescriptor.out));
+            output.writeInt(IsolatedFileAccess.MAGIC);
+            output.flush();
             while (true) {
                 try { input.readInt(); } catch (IOException e) { return; }
                 byte operation = input.readByte();

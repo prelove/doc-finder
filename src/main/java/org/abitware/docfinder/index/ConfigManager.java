@@ -130,7 +130,23 @@ public class ConfigManager {
 	public void setWebPort(int port) {
 	    java.util.Properties p = loadAll();
 	    p.setProperty("web.port", String.valueOf(Math.max(1024, Math.min(65535, port))));
-	    saveAll(p);
+	    Path pending = null;
+	    try {
+	        Files.createDirectories(dir);
+	        pending = Files.createTempFile(dir, "web-port-", ".tmp");
+	        try (OutputStream out = Files.newOutputStream(pending)) {
+	            p.store(out, "DocFinder settings");
+	        }
+	        try {
+	            Files.move(pending, file, StandardCopyOption.ATOMIC_MOVE, StandardCopyOption.REPLACE_EXISTING);
+	        } catch (AtomicMoveNotSupportedException unsupported) {
+	            Files.move(pending, file, StandardCopyOption.REPLACE_EXISTING);
+	        }
+	    } catch (IOException failure) {
+	        throw new UncheckedIOException("Could not save web server port", failure);
+	    } finally {
+	        if (pending != null) try { Files.deleteIfExists(pending); } catch (IOException ignore) { }
+	    }
 	}
 	public String getWebBindAddress() {
 	    return loadAll().getProperty("web.bindAddress", "127.0.0.1");

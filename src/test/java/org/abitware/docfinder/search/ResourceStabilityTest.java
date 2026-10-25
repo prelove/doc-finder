@@ -63,7 +63,8 @@ class ResourceStabilityTest {
             ThreadInfo info = bean.getThreadInfo(id);
             if (info == null) continue;
             String name = info.getThreadName();
-            if (name != null && (name.startsWith("docfinder-") || name.startsWith("tika-extract"))) {
+            if (name != null && (name.startsWith("docfinder-") || name.startsWith("tika-extract")
+                    || name.startsWith("file-access-"))) {
                 n++;
             }
         }
@@ -157,55 +158,6 @@ class ResourceStabilityTest {
                 "start/stop cycles must release threads (growth=" + (threadsAfter - threadsBefore) + ")");
     }
 
-    @Test
-    void shouldNotAccumulateExistenceThreadsAcrossRestartsUnderSlowIo() throws Exception {
-        // RG-05 probe shape: stats that never answer promptly, service
-        // reopened repeatedly. With a per-service pool this grew ~2 threads
-        // per restart; the shared JVM pool must stay at its cap.
-        write(source.resolve("slow.txt"), "lorem");
-        try (LuceneIndexer idx = new LuceneIndexer(index, settings)) {
-            idx.indexFolder(source);
-        }
-        SourceRootProvider provider = () -> Collections.singletonList(source);
-
-        // Saturate the shared pool so every stat blocks like a hung share.
-        java.util.concurrent.CountDownLatch release = new java.util.concurrent.CountDownLatch(1);
-        for (int i = 0; i < 4; i++) {
-            LuceneSearchService.EXISTENCE_POOL.execute(() -> {
-                try {
-                    release.await(30, java.util.concurrent.TimeUnit.SECONDS);
-                } catch (InterruptedException e) {
-                    Thread.currentThread().interrupt();
-                }
-            });
-        }
-        try {
-            int existenceBefore = countThreads("docfinder-existence");
-            for (int i = 0; i < 4; i++) {
-                LuceneSearchService s = new LuceneSearchService(index, settings, provider);
-                s.searchDetailed(new SearchRequest("slow", 10, null, SearchScope.ALL, MatchMode.FUZZY));
-                s.close();
-            }
-            int existenceAfter = countThreads("docfinder-existence");
-            System.out.printf("[ResourceStability] existenceBefore=%d existenceAfter=%d%n",
-                    existenceBefore, existenceAfter);
-            assertTrue(existenceAfter <= existenceBefore,
-                    "closed services must not leave extra existence workers "
-                            + "(before=" + existenceBefore + " after=" + existenceAfter + ")");
-        } finally {
-            release.countDown();
-        }
-    }
-
-    private static int countThreads(String prefix) {
-        ThreadMXBean bean = ManagementFactory.getThreadMXBean();
-        int n = 0;
-        for (long id : bean.getAllThreadIds()) {
-            ThreadInfo info = bean.getThreadInfo(id);
-            if (info != null && info.getThreadName() != null && info.getThreadName().startsWith(prefix)) {
-                n++;
-            }
-        }
-        return n;
-    }
+    // Killable source-worker timeout/restart bounds are exercised by
+    // IsolatedFileAccessTest, including real child exit and bounded replacement.
 }

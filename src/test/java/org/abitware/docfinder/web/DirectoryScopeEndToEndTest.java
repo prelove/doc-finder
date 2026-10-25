@@ -268,12 +268,11 @@ class DirectoryScopeEndToEndTest {
             org.junit.jupiter.api.Assumptions.assumeTrue(original != null,
                     "ACL attribute view unsupported on this filesystem");
             try {
-                // The ACL denial fails the commit's segment write; Lucene
-                // surfaces that as AlreadyClosedException (writer shuts down
-                // on the write tragedy) — a real propagated failure either
-                // way, never silently swallowed.
-                org.apache.lucene.store.AlreadyClosedException boom = assertThrows(
-                        org.apache.lucene.store.AlreadyClosedException.class,
+                // ACL denial aborts the transaction. The indexer now exposes
+                // the failure as IOException and rolls back on close, rather
+                // than leaking Lucene's AlreadyClosedException to callers.
+                IOException boom = assertThrows(
+                        IOException.class,
                         () -> indexer.indexFolder(sourceB),
                         "the second commit must really fail, not be swallowed");
                 assertNotNull(boom);

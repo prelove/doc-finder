@@ -35,6 +35,8 @@ public final class FileAccessWorker {
         // Third-party parsers sometimes print directly. Keep wire stdout exclusive from startup onward.
         System.setOut(System.err);
         DataInputStream input = new DataInputStream(System.in);
+        output.writeInt(IsolatedFileAccess.MAGIC);
+        output.flush();
         while (true) {
             int magic;
             try { magic = input.readInt(); } catch (EOFException e) { return; }
@@ -67,6 +69,8 @@ public final class FileAccessWorker {
                 output.writeLong(value.getLastAccessTime());
                 output.writeBoolean(value.isDirectory());
                 output.writeBoolean(value.isRegularFile());
+            } else if (operation == IsolatedFileAccess.PROBE_TEXT) {
+                output.writeBoolean(response.textLike);
             } else {
                 IsolatedFileAccess.Extraction value = response.extraction;
                 IsolatedFileAccess.writeString(output, value.getText(), maxChars * 4);
@@ -91,10 +95,35 @@ public final class FileAccessWorker {
         } else if (operation == IsolatedFileAccess.EXTRACT && maxChars > 0
                 && maxChars <= IsolatedFileAccess.MAX_TEXT_CHARS) {
             response.extraction = extract(path, maxChars);
+        } else if (operation == IsolatedFileAccess.PROBE_TEXT) {
+            response.textLike = isTextLike(path);
         } else {
             throw new IOException("Unsupported operation");
         }
         return response;
+    }
+
+    private static boolean isTextLike(Path path) throws IOException {
+        String mime = Files.probeContentType(path);
+        if (mime != null) {
+            mime = mime.toLowerCase(java.util.Locale.ROOT);
+            if (mime.startsWith("text/") || mime.equals("application/json") || mime.equals("application/xml")
+                    || mime.equals("application/x-yaml") || mime.equals("application/yaml")
+                    || mime.equals("application/javascript") || mime.equals("application/x-javascript")
+                    || mime.equals("application/x-sh") || mime.equals("application/x-java-source")) return true;
+        }
+        byte[] bytes = new byte[4096];
+        try (InputStream stream = Files.newInputStream(path)) {
+            int count = stream.read(bytes);
+            if (count <= 0) return false;
+            int printable = 0;
+            for (int i = 0; i < count; i++) {
+                int value = bytes[i] & 0xff;
+                if (value == 0) return false;
+                if (value == 9 || value == 10 || value == 13 || value >= 32 && value <= 126) printable++;
+            }
+            return printable / (double) count >= 0.85;
+        }
     }
 
     private static IsolatedFileAccess.Classification classify(Path path, Path root) {

@@ -96,10 +96,16 @@ public class LocalRecursiveWatcher implements AutoCloseable {
     /** Directory registration task carrying its dir so a rejection can be attributed. */
     private final class BootstrapTask implements Runnable {
         final Path dir;
-        BootstrapTask(Path dir) { this.dir = dir; }
+        final boolean reconcileAfter;
+        BootstrapTask(Path dir) { this(dir, true); }
+        BootstrapTask(Path dir, boolean reconcileAfter) { this.dir = dir; this.reconcileAfter = reconcileAfter; }
         @Override
         public void run() {
             registerExistingSubDirs(dir);
+            // A directory moved into the root may already contain files; no
+            // CREATE event exists for those files on the newly registered
+            // child keys. One coalesced root reconciliation closes that gap.
+            if (running && reconcileAfter) fireOverflow(dir);
         }
     }
 
@@ -134,7 +140,7 @@ public class LocalRecursiveWatcher implements AutoCloseable {
                 // execute (not submit): submit wraps the task in a FutureTask,
                 // which would defeat the BootstrapTask check in the rejection
                 // handler and silently drop registrations on a full queue.
-                bootstrap.execute(new BootstrapTask(root));
+                bootstrap.execute(new BootstrapTask(root, false));
             } catch (Throwable t) {
                 log.warn("Watch startup register root error: {}, exception: {}", root, t.getMessage());
             }

@@ -18,7 +18,13 @@ import java.util.Map;
 import java.util.concurrent.Future;
 import java.util.concurrent.TimeUnit;
 import java.util.concurrent.atomic.AtomicInteger;
+import java.util.concurrent.atomic.AtomicReference;
+import java.util.concurrent.locks.ReentrantLock;
 import org.abitware.docfinder.index.LuceneIndexer;
+import org.abitware.docfinder.util.Utils;
+import org.apache.lucene.index.Term;
+import org.apache.lucene.search.IndexSearcher;
+import org.apache.lucene.search.TermQuery;
 
 import static org.junit.jupiter.api.Assertions.*;
 
@@ -119,6 +125,50 @@ class PollPipelineRecoveryTest {
             assertTrue(new SnapshotStore().load(source).isEmpty());
             assertTrue(poller.pollNowAsync().get(30, TimeUnit.SECONDS).successful);
         }
+    }
+
+    @Test
+    void shouldRetainNewerUpsertWhenDeletionScanWaitsForWriter() throws Exception {
+        Path source = Files.createDirectory(temp.resolve("restored-source"));
+        Path file = Files.write(source.resolve("restored.txt"), new byte[] { 1 });
+        Path index = temp.resolve("restored-index");
+        IndexSettings settings = new IndexSettings();
+        settings.includeExt = Collections.emptyList();
+        settings.parseTextLike = false;
+        try (NetPollerService poller = new NetPollerService(index, settings, Collections.singletonList(source))) {
+            assertTrue(poller.pollNowAsync().get(30, TimeUnit.SECONDS).successful);
+            Files.delete(file);
+            AtomicReference<Future<NetPollerService.PollStats>> stalePoll = new AtomicReference<>();
+            IndexWriteCoordinator.call(() -> {
+                stalePoll.set(poller.pollNowAsync());
+                awaitQueuedWriter();
+                Files.write(file, new byte[] { 2 });
+                try (LuceneIndexer writer = new LuceneIndexer(index, settings)) {
+                    writer.upsertFile(file);
+                    writer.commit();
+                }
+                return null;
+            });
+            NetPollerService.PollStats stale = stalePoll.get().get(30, TimeUnit.SECONDS);
+            assertFalse(stale.successful, "a stale deletion must retain its baseline for a fresh scan");
+            assertEquals(1, stale.failedRoots);
+            try (FSDirectory directory = FSDirectory.open(index); DirectoryReader reader = DirectoryReader.open(directory)) {
+                assertEquals(1, new IndexSearcher(reader).count(new TermQuery(new Term("path", Utils.normalizeForIndex(file)))),
+                        "a file restored and indexed after the scan must survive its old missing verdict");
+            }
+            assertTrue(new SnapshotStore().load(source).containsKey(Utils.normalizeForIndex(file)),
+                    "the stale scan must not publish the snapshot that omitted the restored file");
+            assertTrue(poller.pollNowAsync().get(30, TimeUnit.SECONDS).successful);
+        }
+    }
+
+    private static void awaitQueuedWriter() throws Exception {
+        Field field = IndexWriteCoordinator.class.getDeclaredField("WRITE_LOCK");
+        field.setAccessible(true);
+        ReentrantLock lock = (ReentrantLock) field.get(null);
+        long deadline = System.nanoTime() + TimeUnit.SECONDS.toNanos(20);
+        while (!lock.hasQueuedThreads() && System.nanoTime() < deadline) Thread.sleep(10);
+        assertTrue(lock.hasQueuedThreads(), "the completed scan must be waiting at the held write coordinator");
     }
 
     private static int docCount(Path index) throws Exception {

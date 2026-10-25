@@ -3,15 +3,16 @@ package org.abitware.docfinder.watch;
 import org.abitware.docfinder.index.IndexSettings;
 import org.abitware.docfinder.index.IndexWriteCoordinator;
 import org.abitware.docfinder.index.LuceneIndexer;
+import org.abitware.docfinder.util.IsolatedFileAccess;
+import org.abitware.docfinder.util.PathScope;
+import org.abitware.docfinder.util.Utils;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
 import java.io.IOException;
 import java.io.InterruptedIOException;
-import java.nio.file.Files;
 import java.nio.file.NoSuchFileException;
 import java.nio.file.Path;
-import java.nio.file.attribute.BasicFileAttributes;
 import java.util.*;
 import java.util.concurrent.*;
 import java.util.concurrent.atomic.AtomicBoolean;
@@ -58,6 +59,12 @@ public class LiveIndexService implements AutoCloseable {
                 @Override public void onOverflow(Path dir) { LiveIndexService.this.onOverflow(dir); }
             });
             watcher.start();
+            // Watch registration only sees future events. Reuse the bounded
+            // reconciliation queue to repair creates/deletes missed while the
+            // application (or this service) was stopped.
+            synchronized (pendingLock) {
+                for (Path root : roots) if (root != null) reconcileRoots.add(root);
+            }
             flusher.scheduleWithFixedDelay(this::flushPendingSafe, FLUSH_INTERVAL_MS, FLUSH_INTERVAL_MS, TimeUnit.MILLISECONDS);
         }
     }
@@ -136,8 +143,19 @@ public class LiveIndexService implements AutoCloseable {
             for (Map.Entry<Path, ChangeType> entry : new ArrayList<>(remaining.entrySet())) {
                 requireValid(token);
                 Path path = entry.getKey();
+                long preparedAt = System.nanoTime();
                 LuceneIndexer.PreparedUpsert document = null;
-                if (entry.getValue() != ChangeType.DELETE) {
+                if (entry.getValue() == ChangeType.DELETE) {
+                    Path root = containingRoot(path);
+                    if (root == null) throw new IOException("Watch deletion outside configured roots: " + path);
+                    IsolatedFileAccess.Classification verdict = IsolatedFileAccess.classify(path.toString(),
+                            PathScope.normalizeIndexedPath(root), 2000);
+                    if (verdict == IsolatedFileAccess.Classification.ALIVE) {
+                        document = LuceneIndexer.prepareUpsert(path, indexDir, settings);
+                    } else if (verdict != IsolatedFileAccess.Classification.GHOST) {
+                        throw new IOException("Watch deletion is not confirmed: " + path);
+                    }
+                } else {
                     try {
                         if (LuceneIndexer.shouldIndexPath(path, indexDir, settings)) waitStable(path, 2000);
                         document = LuceneIndexer.prepareUpsert(path, indexDir, settings);
@@ -145,7 +163,7 @@ public class LiveIndexService implements AutoCloseable {
                         // A known absence after CREATE/MODIFY converges to deletion; access errors remain retryable.
                     }
                 }
-                prepared.add(new PreparedChange(path, document));
+                prepared.add(new PreparedChange(path, document, preparedAt));
                 if (prepared.size() == WRITE_BATCH_SIZE) {
                     applyPrepared(prepared, token);
                     for (PreparedChange change : prepared) remaining.remove(change.path);
@@ -169,6 +187,10 @@ public class LiveIndexService implements AutoCloseable {
                 try (LuceneIndexer indexer = new LuceneIndexer(indexDir, settings)) {
                     for (PreparedChange change : changes) {
                         requireValid(token);
+                        if (change.document == null && LuceneIndexer.hasNewerUpsert(
+                                Utils.normalizeForIndex(change.path), change.preparedAt)) {
+                            throw new IOException("Watch deletion superseded by a newer write: " + change.path);
+                        }
                         boolean applied = change.document == null ? indexer.tryDeletePath(change.path) : indexer.applyPrepared(change.document);
                         if (!applied) throw new IOException("Prepared change superseded: " + change.path);
                     }
@@ -184,7 +206,19 @@ public class LiveIndexService implements AutoCloseable {
     private static final class PreparedChange {
         final Path path;
         final LuceneIndexer.PreparedUpsert document;
-        PreparedChange(Path path, LuceneIndexer.PreparedUpsert document) { this.path = path; this.document = document; }
+        final long preparedAt;
+        PreparedChange(Path path, LuceneIndexer.PreparedUpsert document, long preparedAt) {
+            this.path = path; this.document = document; this.preparedAt = preparedAt;
+        }
+    }
+    private Path containingRoot(Path path) {
+        Path normalized = path.toAbsolutePath().normalize();
+        Path selected = null;
+        for (Path root : roots) {
+            if (root != null && normalized.startsWith(root.toAbsolutePath().normalize())
+                    && (selected == null || root.getNameCount() > selected.getNameCount())) selected = root;
+        }
+        return selected;
     }
     private void restore(Map<Path, ChangeType> remaining) {
         synchronized (pendingLock) {
@@ -230,9 +264,9 @@ public class LiveIndexService implements AutoCloseable {
         long size = -1, modified = -1;
         while (System.nanoTime() < deadline) {
             if (closed || Thread.currentThread().isInterrupted()) throw new InterruptedIOException("Stability check cancelled");
-            BasicFileAttributes attrs = Files.readAttributes(path, BasicFileAttributes.class);
-            if (attrs.isDirectory() || attrs.size() == size && attrs.lastModifiedTime().toMillis() == modified) return;
-            size = attrs.size(); modified = attrs.lastModifiedTime().toMillis();
+            IsolatedFileAccess.Attributes attrs = IsolatedFileAccess.attributes(path, 2000);
+            if (attrs.isDirectory() || attrs.getSize() == size && attrs.getLastModifiedTime() == modified) return;
+            size = attrs.getSize(); modified = attrs.getLastModifiedTime();
             try { Thread.sleep(300); }
             catch (InterruptedException e) { Thread.currentThread().interrupt(); throw new InterruptedIOException("Stability check interrupted"); }
         }

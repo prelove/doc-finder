@@ -189,6 +189,7 @@ public class NetPollerService implements AutoCloseable {
 
     private RootStats processRoot(Path root, Round round) {
         RootStats stats = new RootStats();
+        long scanStartedAt = System.nanoTime();
         try (SnapshotStore.Cursor old = round.indexedBaseline ? indexedSnapshot(root) : store.open(root);
              SnapshotStore.Builder builder = store.newBuilder()) {
             requireValid(round);
@@ -223,7 +224,7 @@ public class NetPollerService implements AutoCloseable {
                 }
             });
             try (SnapshotStore.Staged snapshot = builder.finish()) {
-                try (SnapshotStore.Cursor current = snapshot.cursor()) { mergeAndApply(old, current, round, stats); }
+                try (SnapshotStore.Cursor current = snapshot.cursor()) { mergeAndApply(old, current, round, stats, scanStartedAt); }
                 old.close();
                 // stop/cancel and publication share this lock; no skipped apply can publish a baseline.
                 synchronized (lifecycle) {
@@ -258,23 +259,24 @@ public class NetPollerService implements AutoCloseable {
         }
     }
 
-    private void mergeAndApply(SnapshotStore.Cursor old, SnapshotStore.Cursor current, Round round, RootStats stats) throws Exception {
+    private void mergeAndApply(SnapshotStore.Cursor old, SnapshotStore.Cursor current, Round round, RootStats stats,
+                               long scanStartedAt) throws Exception {
         SnapshotStore.Record before = old.next(), after = current.next();
         List<Change> changes = new ArrayList<>(WRITE_BATCH_SIZE);
         while (before != null || after != null) {
             requireValid(round);
             int order = before == null ? 1 : after == null ? -1 : before.path.compareTo(after.path);
             if (order < 0) {
-                changes.add(new Change(Paths.get(before.path), null, -1)); before = old.next();
+                changes.add(new Change(Paths.get(before.path), null, -1, scanStartedAt)); before = old.next();
             } else if (order > 0) {
                 Path path = Paths.get(after.path);
-                changes.add(new Change(path, LuceneIndexer.prepareUpsert(path, indexDir, settings), 1)); after = current.next();
+                changes.add(new Change(path, LuceneIndexer.prepareUpsert(path, indexDir, settings), 1, scanStartedAt)); after = current.next();
             } else {
                 Path path = Paths.get(after.path);
                 SnapshotStore.Entry a = before.entry, b = after.entry;
                 if (a.size != b.size || a.mtime != b.mtime || a.directory != b.directory
                         || !b.directory && LuceneIndexer.contentRetryDue(path, b.size, b.mtime)) {
-                    changes.add(new Change(path, LuceneIndexer.prepareUpsert(path, indexDir, settings), 0));
+                    changes.add(new Change(path, LuceneIndexer.prepareUpsert(path, indexDir, settings), 0, scanStartedAt));
                 }
                 before = old.next(); after = current.next();
             }
@@ -291,6 +293,14 @@ public class NetPollerService implements AutoCloseable {
                 try (LuceneIndexer indexer = new LuceneIndexer(indexDir, settings)) {
                     for (Change change : changes) {
                         requireValid(round);
+                        // A scan can wait behind a newer watch/manual upsert. Its old
+                        // absence is no longer evidence for deleting that document.
+                        // Abort publication as well: the next scan must compare the
+                        // retained baseline, rather than certify the missing entry.
+                        if (change.prepared == null && LuceneIndexer.hasNewerUpsert(
+                                Utils.normalizeForIndex(change.path), change.scanStartedAt)) {
+                            throw new IOException("Concurrent update superseded scanned deletion: " + change.path);
+                        }
                         boolean applied = change.prepared == null ? indexer.tryDeletePath(change.path) : indexer.applyPrepared(change.prepared);
                         if (!applied) throw new IOException("Concurrent update superseded prepared change: " + change.path);
                     }
@@ -309,7 +319,10 @@ public class NetPollerService implements AutoCloseable {
         final Path path;
         final LuceneIndexer.PreparedUpsert prepared;
         final int kind;
-        Change(Path path, LuceneIndexer.PreparedUpsert prepared, int kind) { this.path = path; this.prepared = prepared; this.kind = kind; }
+        final long scanStartedAt;
+        Change(Path path, LuceneIndexer.PreparedUpsert prepared, int kind, long scanStartedAt) {
+            this.path = path; this.prepared = prepared; this.kind = kind; this.scanStartedAt = scanStartedAt;
+        }
     }
 
     /** Compatibility helper for existing map-based callers; production always uses the streaming merge. */
@@ -356,7 +369,14 @@ public class NetPollerService implements AutoCloseable {
             try { super.run(); } finally { bodyFinished(round); }
         }
         @Override protected void done() { synchronized (this) { if (!started) bodyFinished(round); } }
-        @Override public boolean cancel(boolean interrupt) { cancelRound(round); return super.cancel(interrupt); }
+        @Override public boolean cancel(boolean interrupt) {
+            // Publish this Future's cancellation first. Cancelling its child
+            // tasks can let runRound finish immediately; doing that first
+            // raced a real cancellation into a false "already completed".
+            boolean cancelled = super.cancel(interrupt);
+            if (cancelled) cancelRound(round);
+            return cancelled;
+        }
     }
     private final class RootTask extends FutureTask<RootStats> {
         final Round round;

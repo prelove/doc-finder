@@ -9,173 +9,101 @@ import org.junit.jupiter.api.io.TempDir;
 import org.junit.jupiter.api.parallel.Execution;
 import org.junit.jupiter.api.parallel.ExecutionMode;
 
+import java.io.IOException;
 import java.nio.file.Files;
 import java.nio.file.Path;
 import java.util.Collections;
-import java.util.List;
 import java.util.concurrent.CountDownLatch;
 import java.util.concurrent.TimeUnit;
 import java.util.concurrent.atomic.AtomicReference;
 
 import static org.junit.jupiter.api.Assertions.*;
 
-/**
- * RG-04 regression: cancellation must be scoped to the caller session.
- * A newer search may only supersede in-flight work of the SAME client —
- * a different client (another web caller, or desktop vs web) must never
- * abort a concurrent request, and a real cancel must not be reported as
- * a fabricated complete page (UNKNOWN, not FALSE).
- */
+/** Cancellation is scoped to the caller, independently of source I/O scheduling. */
 @Execution(ExecutionMode.SAME_THREAD)
 class SessionScopedCancellationTest {
-
-    @TempDir
-    Path fixtureRoot;
-
-    private Path source;
-    private Path index;
-    private IndexSettings settings;
+    @TempDir Path fixtureRoot;
     private LuceneSearchService service;
+    private final CountDownLatch entered = new CountDownLatch(1);
+    private final CountDownLatch release = new CountDownLatch(1);
 
     @BeforeEach
     void setUp() throws Exception {
-        source = fixtureRoot.resolve("source");
-        index = fixtureRoot.resolve("index");
-        Files.createDirectories(source);
-        settings = new IndexSettings();
+        Path source = Files.createDirectory(fixtureRoot.resolve("source"));
+        Path index = fixtureRoot.resolve("index");
+        IndexSettings settings = new IndexSettings();
+        settings.includeExt = Collections.emptyList();
+        settings.parseTextLike = false;
+        Path file = Files.write(source.resolve("lorem.txt"), new byte[] { 1 });
+        try (LuceneIndexer writer = new LuceneIndexer(index, settings)) { writer.indexFolder(source); }
+        Files.delete(file);
+        // Keep JVM startup latency outside the cancellation assertion: this
+        // fixture tests caller sequencing, not the metadata worker deadline.
+        for (int i = 0; i < 2; i++) {
+            assertEquals(org.abitware.docfinder.util.IsolatedFileAccess.Classification.GHOST,
+                    org.abitware.docfinder.util.IsolatedFileAccess.classify(file.toString(),
+                            org.abitware.docfinder.util.PathScope.normalizeIndexedPath(source), 10000));
+        }
+        service = new LuceneSearchService(index, settings, () -> {
+            // The constructor and successor proceed; only the named old caller waits.
+            if ("blocked-search".equals(Thread.currentThread().getName())) {
+                entered.countDown();
+                try {
+                    if (!release.await(30, TimeUnit.SECONDS)) throw new IOException("Test source gate timed out");
+                } catch (InterruptedException e) {
+                    Thread.currentThread().interrupt();
+                    throw new IOException("Test source gate interrupted", e);
+                }
+            }
+            return Collections.singletonList(source);
+        });
     }
 
     @AfterEach
     void tearDown() {
-        if (service != null) {
-            service.close();
-        }
-    }
-
-    private static void write(Path p, String content) throws Exception {
-        Files.write(p, content.getBytes("UTF-8"));
-    }
-
-    private void indexAndOpen(String... names) throws Exception {
-        try (LuceneIndexer idx = new LuceneIndexer(index, settings)) {
-            idx.indexFolder(source);
-            for (String n : names) {
-                idx.upsertFile(source.resolve(n));
-            }
-        }
-        service = new LuceneSearchService(index, settings,
-                () -> Collections.singletonList(source));
-    }
-
-    private static SearchRequest req(String tag) {
-        return new SearchRequest("lorem", 50, null, SearchScope.ALL,
-                MatchMode.FUZZY, null, tag);
-    }
-
-    /**
-     * Occupies all EXISTENCE_POOL workers so every classifyPath stat blocks
-     * and times out (~250ms each) — giving a multi-candidate search a long,
-     * deterministic in-flight window without touching the filesystem.
-     */
-    private static CountDownLatch blockExistencePool() {
-        CountDownLatch release = new CountDownLatch(1);
-        for (int i = 0; i < 4; i++) {
-            LuceneSearchService.EXISTENCE_POOL.execute(() -> {
-                try {
-                    release.await(30, TimeUnit.SECONDS);
-                } catch (InterruptedException e) {
-                    Thread.currentThread().interrupt();
-                }
-            });
-        }
-        return release;
+        release.countDown();
+        if (service != null) service.close();
     }
 
     @Test
     void shouldNotCancelAcrossDifferentSessions() throws Exception {
-        write(source.resolve("a1.txt"), "lorem");
-        write(source.resolve("a2.txt"), "lorem");
-        write(source.resolve("a3.txt"), "lorem");
-        indexAndOpen();
-        Files.delete(source.resolve("a1.txt"));
-        Files.delete(source.resolve("a2.txt"));
-        Files.delete(source.resolve("a3.txt"));
-
-        CountDownLatch release = blockExistencePool();
-        AtomicReference<SearchOutcome> aOut = new AtomicReference<>();
-        try {
-            Thread a = new Thread(() -> aOut.set(service.searchDetailed(req("client-A"))));
-            a.start();
-            Thread.sleep(150); // let A enter its refill loop (~250ms per stat)
-
-            SearchOutcome b = service.searchDetailed(req("client-B"));
-            a.join(30_000);
-
-            assertEquals(TriState.FALSE, b.hasMore,
-                    "client B examined its ghost branch to the tail");
-            assertNotNull(aOut.get());
-            assertEquals(TriState.FALSE, aOut.get().hasMore,
-                    "client A must NOT be cancelled by B's request — it "
-                    + "reached the tail on its own");
-        } finally {
-            release.countDown();
-        }
+        assertConcurrentOutcome("client-A", "client-B", TriState.FALSE);
     }
 
     @Test
     void shouldCancelWithinSameSessionWithoutFakingComplete() throws Exception {
-        write(source.resolve("s1.txt"), "lorem");
-        write(source.resolve("s2.txt"), "lorem");
-        write(source.resolve("s3.txt"), "lorem");
-        indexAndOpen();
-        Files.delete(source.resolve("s1.txt"));
-        Files.delete(source.resolve("s2.txt"));
-        Files.delete(source.resolve("s3.txt"));
-
-        CountDownLatch release = blockExistencePool();
-        AtomicReference<SearchOutcome> aOut = new AtomicReference<>();
-        try {
-            Thread a = new Thread(() -> aOut.set(service.searchDetailed(req("client-A"))));
-            a.start();
-            Thread.sleep(150); // A is mid-refill when its successor arrives
-
-            service.searchDetailed(req("client-A")); // supersedes A
-            a.join(30_000);
-
-            assertNotNull(aOut.get());
-            assertEquals(TriState.UNKNOWN, aOut.get().hasMore,
-                    "a genuinely cancelled request must not pretend the "
-                    + "page is complete (FALSE)");
-        } finally {
-            release.countDown();
-        }
+        assertConcurrentOutcome("client-A", "client-A", TriState.UNKNOWN);
     }
 
     @Test
     void shouldGiveNullTagRequestsPrivateSessions() throws Exception {
-        write(source.resolve("n1.txt"), "lorem");
-        write(source.resolve("n2.txt"), "lorem");
-        indexAndOpen();
-        Files.delete(source.resolve("n1.txt"));
-        Files.delete(source.resolve("n2.txt"));
+        assertConcurrentOutcome(null, null, TriState.FALSE);
+    }
 
-        CountDownLatch release = blockExistencePool();
-        AtomicReference<SearchOutcome> aOut = new AtomicReference<>();
+    private void assertConcurrentOutcome(String oldTag, String successorTag, TriState expected) throws Exception {
+        AtomicReference<SearchOutcome> oldOutcome = new AtomicReference<>();
+        AtomicReference<Throwable> failure = new AtomicReference<>();
+        Thread old = new Thread(() -> {
+            try { oldOutcome.set(service.searchDetailed(request(oldTag))); }
+            catch (Throwable e) { failure.set(e); }
+        }, "blocked-search");
+        old.start();
         try {
-            Thread a = new Thread(() -> aOut.set(
-                    service.searchDetailed(new SearchRequest("lorem", 50, null))));
-            a.start();
-            Thread.sleep(150);
-
-            service.searchDetailed(new SearchRequest("lorem", 50, null));
-            a.join(30_000);
-
-            assertNotNull(aOut.get());
-            assertEquals(TriState.FALSE, aOut.get().hasMore,
-                    "a null-tag request has a private session and is never "
-                    + "superseded — it reached the tail");
+            assertTrue(entered.await(20, TimeUnit.SECONDS), "old request must be in progress before its successor starts");
+            SearchOutcome successor = service.searchDetailed(request(successorTag));
+            assertEquals(TriState.FALSE, successor.hasMore, "successor examines the missing name hit to its tail");
         } finally {
             release.countDown();
+            old.join(30_000);
         }
+        assertFalse(old.isAlive(), "old request must finish after its gate opens");
+        assertNull(failure.get(), "old request must finish normally");
+        assertNotNull(oldOutcome.get());
+        assertEquals(expected, oldOutcome.get().hasMore,
+                "only a successor with the same non-null session may invalidate an in-flight request");
+    }
+
+    private static SearchRequest request(String tag) {
+        return new SearchRequest("lorem", 50, null, SearchScope.NAME, MatchMode.FUZZY, null, tag);
     }
 }
