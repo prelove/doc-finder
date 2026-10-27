@@ -191,66 +191,36 @@ DocFinder is a desktop utility that lets you search **file names and file conten
 mvn clean package
 ```
 
+This command compiles the application, runs the Maven test suite, and creates
+the executable shaded JAR in `target/`. To run the tests without packaging:
+
+```bash
+mvn test
+```
+
+Maven runs the tests with their working and home directories under `target/`
+to isolate test data from your normal DocFinder data.
+
+Some tests are platform-specific or require a graphical display and may be
+skipped when their prerequisites are unavailable. For desktop tests in a
+headless Linux environment, use a Java installation with graphical support,
+an X server such as Xvfb, and a window manager such as Openbox; run Maven with
+`DISPLAY` set to that server. A virtual display supports automated tests but
+does not by itself provide an interactive remote desktop.
+
 ### Run
 ```bash
-# Shaded/assembly JAR (depending on your packaging)
+# Executable shaded JAR
 java -jar target/docfinder-1.0.0.jar
 ```
 
 > Or launch from IDE. The app uses `./.docfinder` for its runtime data.
 
-### Maven (key dependencies)
-```xml
-<dependencies>
-  <!-- Lucene core + queryparser + analyzers -->
-  <dependency>
-    <groupId>org.apache.lucene</groupId>
-    <artifactId>lucene-core</artifactId>
-    <version>${lucene.version}</version>
-  </dependency>
-  <dependency>
-    <groupId>org.apache.lucene</groupId>
-    <artifactId>lucene-queryparser</artifactId>
-    <version>${lucene.version}</version>
-  </dependency>
-  <dependency>
-    <groupId>org.apache.lucene</groupId>
-    <artifactId>lucene-analyzers-common</artifactId>
-    <version>${lucene.version}</version>
-  </dependency>
-  <dependency>
-    <groupId>org.apache.lucene</groupId>
-    <artifactId>lucene-analyzers-smartcn</artifactId>
-    <version>${lucene.version}</version>
-  </dependency>
-  <dependency>
-    <groupId>org.apache.lucene</groupId>
-    <artifactId>lucene-analyzers-kuromoji</artifactId>
-    <version>${lucene.version}</version>
-  </dependency>
+### Maven dependencies
 
-  <!-- Apache Tika -->
-  <dependency>
-    <groupId>org.apache.tika</groupId>
-    <artifactId>tika-core</artifactId>
-    <version>${tika.version}</version>
-  </dependency>
-  <dependency>
-    <groupId>org.apache.tika</groupId>
-    <artifactId>tika-parsers-standard-package</artifactId>
-    <version>${tika.version}</version>
-  </dependency>
-
-  <!-- Global hotkey -->
-  <dependency>
-    <groupId>com.github.kwhat</groupId>
-    <artifactId>jnativehook</artifactId>
-    <version>2.2.2</version>
-  </dependency>
-</dependencies>
-```
-
-> Ensure Lucene/Tika versions are mutually compatible for your chosen major versions.
+The project uses Lucene for search, Tika for content extraction, FlatLaf for the
+UI, and JNativeHook for the global hotkey. See [pom.xml](pom.xml) for the
+complete dependency list and exact versions.
 
 ---
 

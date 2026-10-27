@@ -184,78 +184,33 @@ DocFinder 是一款桌面实用程序，提供类似 Everything 风格的响应�
 mvn clean package
 ```
 
+该命令会编译应用、运行 Maven 测试，并在 `target/` 中生成可执行的 shaded JAR。
+如只需运行测试：
+
+```bash
+mvn test
+```
+
+Maven 将测试的工作目录和用户主目录放在 `target/` 下，使测试数据与正常的
+DocFinder 数据隔离。
+
+部分测试针对特定操作系统或需要图形显示；缺少相应条件时会被跳过。在无图形界面的
+Linux 环境中运行桌面测试时，需要具备图形支持的 Java、Xvfb 等 X 服务器，以及
+Openbox 等窗口管理器，并在运行 Maven 时将 `DISPLAY` 指向该服务器。虚拟显示可用于
+自动化测试，但本身不提供可交互的远程桌面。
+
 ### 运行
 ```bash
-# 打包的 JAR（取决于打包方式）
+# 可执行的 shaded JAR
 java -jar target/docfinder-1.0.0.jar
 ```
 
 > 或从 IDE 启动。应用使用 `./.docfinder` 作为运行时数据目录。
 
 ### Maven 主要依赖
-```xml
-<dependencies>
-  <!-- Lucene core + queryparser + analyzers -->
-  <dependency>
-    <groupId>org.apache.lucene</groupId>
-    <artifactId>lucene-core</artifactId>
-    <version>${lucene.version}</version>
-  </dependency>
-  <dependency>
-    <groupId>org.apache.lucene</groupId>
-    <artifactId>lucene-queryparser</artifactId>
-    <version>${lucene.version}</version>
-  </dependency>
-  <dependency>
-    <groupId>org.apache.lucene</groupId>
-    <artifactId>lucene-analyzers-common</artifactId>
-    <version>${lucene.version}</version>
-  </dependency>
-  <dependency>
-    <groupId>org.apache.lucene</groupId>
-    <artifactId>lucene-analyzers-smartcn</artifactId>
-    <version>${lucene.version}</version>
-  </dependency>
-  <dependency>
-    <groupId>org.apache.lucene</groupId>
-    <artifactId>lucene-analyzers-kuromoji</artifactId>
-    <version>${lucene.version}</version>
-  </dependency>
 
-  <!-- Apache Tika -->
-  <dependency>
-    <groupId>org.apache.tika</groupId>
-    <artifactId>tika-core</artifactId>
-    <version>${tika.version}</version>
-  </dependency>
-  <dependency>
-    <groupId>org.apache.tika</groupId>
-    <artifactId>tika-parsers-standard-package</artifactId>
-    <version>${tika.version}</version>
-  </dependency>
-
-  <!-- Global hotkey -->
-  <dependency>
-    <groupId>com.github.kwhat</groupId>
-    <artifactId>jnativehook</artifactId>
-    <version>2.2.2</version>
-  </dependency>
-  
-  <!-- FlatLaf 主题 -->
-  <dependency>
-    <groupId>com.formdev</groupId>
-    <artifactId>flatlaf</artifactId>
-    <version>3.6.2</version>
-  </dependency>
-  <dependency>
-    <groupId>com.formdev</groupId>
-    <artifactId>flatlaf-intellij-themes</artifactId>
-    <version>3.6.2</version>
-  </dependency>
-</dependencies>
-```
-
-> 确保 Lucene/Tika 版本在所选主要版本中相互兼容。
+项目使用 Lucene 实现搜索、Tika 提取内容、FlatLaf 提供界面主题，
+并使用 JNativeHook 实现全局热键。完整依赖及确切版本请参阅 [pom.xml](pom.xml)。
 
 --- 
 
