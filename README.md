@@ -211,8 +211,18 @@ does not by itself provide an interactive remote desktop.
 ### Run
 ```bash
 # Executable shaded JAR
-java -jar target/docfinder-1.0.0.jar
+java -jar target/docfinder-3.0.0.jar
 ```
+
+### Native image (optional)
+Requires GraalVM 21+ with `native-image` (set `GRAALVM_HOME` / `JAVA_HOME`):
+
+```bash
+mvn -Pnative package
+```
+
+The binary is written to `target/docfinder` (`target/docfinder.exe` on Windows).
+This profile has not been validated on all platforms.
 
 > Or launch from IDE. The app uses `./.docfinder` for its runtime data.
 
@@ -281,7 +291,7 @@ Paths are relative to the JVM working directory (`user.dir`), which may differ f
 - B: `improve-name-search-experience` accepted on 2026-10-25 and archived; its implementation and subsequent fixes are integrated into `main`.
 - C: deleted-result filtering/refill, persistent restoration, automatic desktop refresh, default Local Watch, streaming polling and configurable Web port are implemented. See [current integration status](docs/analysis/2026-10-25-main-closeout.md) for verification and remaining platform limits. Automatic refresh preserves desktop sort/selection/drafts; a new query resets sorting.
 - C2: independently queued content enrichment and persisted parse-status presentation remain future work; failed extraction currently retries on later indexing rounds.
-- D: selected Java8-compatible dependency upgrades implemented; supported newer-Java stacks and native validation remain separate.
+- D: the Java 21 stack (Lucene 10.6, Tika 4.2, FlatLaf 3.7, Logback 1.6) is implemented in 3.0; the optional GraalVM `native` profile exists but its validation remains separate.
 - [Product sequence](docs/roadmap.md) and [delivery status](openspec/changes/archive/2026-10-24-add-directory-scoped-search/delivery-status.yaml) define current gates.
 
 ---

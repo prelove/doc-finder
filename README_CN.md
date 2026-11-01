@@ -2,7 +2,7 @@
 
 _本地文件名与内容搜索工具，支持 Windows / macOS / Linux。快速响应的 UI，只读索引，多语言搜索，通配符文件名查询，实时更新。_
 
-> UI 界面为**英文**，代码注释为**中文**。最低运行环境：**Java 8**。使用 **Maven** 构建。
+> UI 界面为**英文**，代码注释为**中文**。最低运行环境：**Java 21**。使用 **Maven** 构建。
 
 --- 
 
@@ -176,7 +176,7 @@ DocFinder 是一款桌面实用程序，提供类似 Everything 风格的响应�
 ## 构建与运行
 
 ### 环境要求
-- Java **8+**
+- 构建需 JDK **21+**，运行需 Java **21+**
 - Maven **3.6+**
 
 ### 构建
@@ -202,8 +202,17 @@ Openbox 等窗口管理器，并在运行 Maven 时将 `DISPLAY` 指向该服务
 ### 运行
 ```bash
 # 可执行的 shaded JAR
-java -jar target/docfinder-1.0.0.jar
+java -jar target/docfinder-3.0.0.jar
 ```
+
+### 原生镜像（可选）
+需要带 `native-image` 的 GraalVM 21+（设置 `GRAALVM_HOME` / `JAVA_HOME`）：
+
+```bash
+mvn -Pnative package
+```
+
+产物位于 `target/docfinder`（Windows 为 `target/docfinder.exe`）。该 profile 尚未在所有平台验证。
 
 > 或从 IDE 启动。应用使用 `./.docfinder` 作为运行时数据目录。
 
@@ -245,7 +254,7 @@ java -jar target/docfinder-1.0.0.jar
 
 ## 性能说明
 - 启动脚本为 `-Xms256m -Xmx2048m`，宜使用64位JVM；资源受限时降低上限。提高Xmx不保证修复native mmap失败，需核对系统提交内存/分页文件。
-- 旧索引先Index All Sources；残留旧记录仍阻断时，检查来源可达性，维护时段备份后再Full Rebuild。它先清空后重建、非原子，期间不可搜索。
+- 旧索引先Index All Sources；残留旧记录仍阻断时，检查来源可达性，维护时段备份后再Full Rebuild。重建期间界面暂停搜索；主索引提交成功前保留原有已提交索引。
 - 通配符 `*.ext` 通过 `ext` MUST 子句加速
 - 前缀提升提高简短文件名标记的相关性
 - 索引写入器 RAM 缓冲区上限为 32 MB；属性检查和正文提取使用可复用、有时限的辅助 JVM。
@@ -258,14 +267,14 @@ java -jar target/docfinder-1.0.0.jar
 - B：improve-name-search-experience 已实现名称子串、多词AND、防抖、截断提示和排序复位；独立自动验证已完成，用户于2026-10-25试用接受并已归档。
 - C：删除过滤与结果补足、持久化恢复、桌面自动刷新、默认 Local Watch、流式轮询及 Web 端口配置已实现并整合至 main；验证和平台边界见[当前整合记录](docs/analysis/2026-10-25-main-closeout.md)。桌面同一查询自动刷新保留排序、选择和编辑草稿，主动新查询恢复默认排序。
 - C2：独立排队补正文和持久化解析状态仍为后续工作；当前正文失败在后续索引轮次按策略重试。
-- D：Java8约束下的指定依赖升级已实施，新Java栈/native另行评估。
+- D：Java 21 技术栈（Lucene 10.6、Tika 4.2、FlatLaf 3.7、Logback 1.6）已在 3.0 实现；可选的 GraalVM `native` profile 已提供，验证另行进行。
 - 以 [产品路线图](docs/roadmap.md) 和 [当前状态](openspec/changes/archive/2026-10-24-add-directory-scoped-search/delivery-status.yaml) 为准。
 
 --- 
 
 ## 贡献指南
 1. 从 `main` Fork & 创建分支
-2. 构建：`mvn clean package`（Java 8+）
+2. 构建：`mvn clean package`（JDK 21+）
 3. 代码风格：UI 字符串保持**英文**，注释使用**中文**；避免 UI 阻塞（对繁重任务使用 `SwingWorker`）
 4. 提交 PR 并附上清晰描述；如果涉及 UI 更改，请提供截图
 
@@ -273,6 +282,25 @@ java -jar target/docfinder-1.0.0.jar
 
 ## 许可证
 _待定_（MIT/Apache‑2.0/专有 — 选择一个并添加许可证文件）
+
+---
+
+## 升级到 DocFinder 3.0（Java 21）
+
+DocFinder 3.0 需要 Java 21。首次启动时会检查已配置的搜索索引和 `deleted-paths-index` 恢复登记库。
+不兼容的 Lucene 8 索引会被重命名为 `<name>.lucene8.bak-<时间戳>` 保留；程序会明确提示
+执行**强制重建**（或 **Index All Sources**）。搜索和实时监控需要兼容的重建后索引。
+若出现真实的写锁冲突，操作会停止；程序不会删除锁文件来绕过其他写入者。
+
+强制重建在索引协调器内运行，从 `deleteAll` 到主索引最终提交处于同一个原子事务中。
+重建期间界面会暂停搜索；提交成功前，之前已提交的索引保持完整。主索引提交前取消或失败
+会保留之前的提交。恢复记录在提交后重置；此阶段确认失败不会回滚已提交的索引。
+备份不会自动删除；确认重建后的索引无误后，可手动删除 `.lucene8.bak-*` 目录。
+
+3.0 写入的 Lucene 10 索引无法被 Java 8 版本打开。如需降级，请使用独立的数据目录，
+或在两个版本都停止时恢复 Lucene 8 备份。决定继续使用 3.0 之前请保留备份。
+纯 ASCII 预览现在报告为 UTF-8。通过 `/api/file` 提供的文本会转码为 UTF-8，
+包括旧版中文、日文和韩文文件。
 
 ---
 
@@ -304,15 +332,17 @@ _待定_（MIT/Apache‑2.0/专有 — 选择一个并添加许可证文件）
 ## 技术栈
 
 ### 核心技术
-- **Java 8+** - 基础运行环境
-- **Apache Lucene 8.11.2** - 索引和搜索引擎
-- **Apache Tika 2.9.4** - 内容提取和解析
+- **Java 21+** - 基础运行环境
+- **Apache Lucene 10.6.0** - 索引和搜索引擎
+- **Apache Tika 4.2.0** - 内容提取和解析
+- **SLF4J 2.0 + Logback 1.6** - 日志（含 log4j-to-slf4j 桥接）
+- **GraalVM native-maven-plugin 1.1.18** - 可选原生镜像（`-Pnative`）
 - **Apache Maven 3.6+** - 项目构建工具
 
 ### UI 框架
 - **Java Swing** - 主要 UI 框架
-- **FlatLaf 3.6.2** - 现代 Look and Feel
-- **FlatLaf IntelliJ Themes 3.6.2** - IntelliJ 风格主题
+- **FlatLaf 3.7.2** - 现代 Look and Feel
+- **FlatLaf IntelliJ Themes 3.7.2** - IntelliJ 风格主题
 
 ### 多语言支持
 - **SmartChineseAnalyzer** - 中文分词
