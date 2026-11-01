@@ -42,7 +42,7 @@ class PollPipelineRecoveryTest {
                 awaitWorkersWaiting(poller, 1);
                 poller.stop();
             });
-            awaitNoPending(poller);
+            awaitNoPending(poller, "cancelled roots must drain before restart");
             assertTrue(new SnapshotStore().load(source).isEmpty(), "stop must not advance a baseline whose diff never ran");
             assertFalse(Files.exists(temp.resolve("index")), "a stopped blocked writer must never open the index");
         } finally {
@@ -65,7 +65,7 @@ class PollPipelineRecoveryTest {
                 awaitWorkersWaiting(poller, 5);
                 poller.stop();
             });
-            awaitNoPending(poller);
+            awaitNoPending(poller, "cancelled roots must drain before restart");
             poller.start(60);
             NetPollerService.PollStats stats = poller.pollNowAsync().get(30, TimeUnit.SECONDS);
             assertEquals(5, stats.scannedFiles, "queued cancellation must release the round gate for a later start");
@@ -121,7 +121,7 @@ class PollPipelineRecoveryTest {
                 awaitWorkersWaiting(poller, 1);
                 assertTrue(future.cancel(true));
             });
-            awaitNoPending(poller);
+            awaitNoPending(poller, "cancelled running round must release its roots");
             assertTrue(new SnapshotStore().load(source).isEmpty());
             assertTrue(poller.pollNowAsync().get(30, TimeUnit.SECONDS).successful);
         }
@@ -137,6 +137,8 @@ class PollPipelineRecoveryTest {
         settings.parseTextLike = false;
         try (NetPollerService poller = new NetPollerService(index, settings, Collections.singletonList(source))) {
             assertTrue(poller.pollNowAsync().get(30, TimeUnit.SECONDS).successful);
+            // FutureTask 会先发布结果再调用 done()；pending 已移入 callable finally，
+            // 正常 get() 现在包含根任务记账，无须等待 run() finally 的调度窗口。
             Files.delete(file);
             AtomicReference<Future<NetPollerService.PollStats>> stalePoll = new AtomicReference<>();
             IndexWriteCoordinator.call(() -> {
@@ -159,6 +161,22 @@ class PollPipelineRecoveryTest {
             assertTrue(new SnapshotStore().load(source).containsKey(Utils.normalizeForIndex(file)),
                     "the stale scan must not publish the snapshot that omitted the restored file");
             assertTrue(poller.pollNowAsync().get(30, TimeUnit.SECONDS).successful);
+        }
+    }
+
+    @Test
+    void shouldAcceptBackToBackPollsImmediatelyAfterFutureGet() throws Exception {
+        Path source = Files.createDirectory(temp.resolve("back-to-back"));
+        IndexSettings settings = new IndexSettings();
+        settings.parseTextLike = false;
+        try (NetPollerService poller = new NetPollerService(temp.resolve("back-to-back-index"),
+                settings, Collections.singletonList(source))) {
+            for (int round = 0; round < 200; round++) {
+                NetPollerService.PollStats stats = poller.pollNowAsync().get(30, TimeUnit.SECONDS);
+                assertTrue(stats.accepted, "Future.get must release the round before poll " + round);
+                assertTrue(stats.successful, "poll " + round);
+                assertEquals(0, pending(poller).get(), "Future.get must include root accounting");
+            }
         }
     }
 
@@ -194,9 +212,9 @@ class PollPipelineRecoveryTest {
         }
     }
 
-    private static void awaitNoPending(NetPollerService poller) throws Exception {
+    private static void awaitNoPending(NetPollerService poller, String message) throws Exception {
         long deadline = System.nanoTime() + TimeUnit.SECONDS.toNanos(5);
         while (pending(poller).get() != 0 && System.nanoTime() < deadline) Thread.sleep(10);
-        assertEquals(0, pending(poller).get(), "cancelled queued root futures must release pending count");
+        assertEquals(0, pending(poller).get(), message);
     }
 }

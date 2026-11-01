@@ -189,7 +189,8 @@ class TombstonesTest {
 
     @Test
     void shouldRetryFailedCommitWithoutLosingPendingAddsOrRemovals() throws Exception {
-        synchronized (lock()) {
+        lock().lock();
+        try {
             Tombstones.record(key("removed.txt"));
             Tombstones.flush();
             Tombstones.remove(key("removed.txt"));
@@ -209,6 +210,8 @@ class TombstonesTest {
                     Files.deleteIfExists(blocker);
                 }
             }
+        } finally {
+            lock().unlock();
         }
         // No second mutation or explicit flush: the periodic task must retry.
         assertTimeoutPreemptively(Duration.ofSeconds(15), () -> {
@@ -249,13 +252,16 @@ class TombstonesTest {
         CountDownLatch locked = new CountDownLatch(1);
         CountDownLatch release = new CountDownLatch(1);
         Thread holder = new Thread(() -> {
-            synchronized (lock()) {
+            lock().lock();
+            try {
                 locked.countDown();
                 try {
                     release.await(5, TimeUnit.SECONDS);
                 } catch (InterruptedException e) {
                     Thread.currentThread().interrupt();
                 }
+            } finally {
+                lock().unlock();
             }
         });
         holder.start();
@@ -288,11 +294,12 @@ class TombstonesTest {
         Tombstones.close();
     }
 
-    private static Object lock() {
+    // 测试接缝：持有与 Tombstones 内部相同的存储锁（已迁移为 ReentrantLock）。
+    private static java.util.concurrent.locks.ReentrantLock lock() {
         try {
-            Field lock = Tombstones.class.getDeclaredField("LOCK");
+            Field lock = Tombstones.class.getDeclaredField("STORE_LOCK");
             lock.setAccessible(true);
-            return lock.get(null);
+            return (java.util.concurrent.locks.ReentrantLock) lock.get(null);
         } catch (ReflectiveOperationException e) {
             throw new AssertionError(e);
         }

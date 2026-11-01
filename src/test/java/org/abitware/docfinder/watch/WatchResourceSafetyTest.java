@@ -204,6 +204,10 @@ class WatchResourceSafetyTest {
         // NOTE: no poller.start() — the manual entry alone must work.
         NetPollerService.PollStats stats = poller.pollNowAsync().get(30, TimeUnit.SECONDS);
 
+        assertTrue(stats.accepted);
+        NetPollerService.PollStats unchanged = poller.pollNowAsync().get(30, TimeUnit.SECONDS);
+        assertTrue(unchanged.accepted, "a completed manual Future must immediately accept another round");
+        assertTrue(unchanged.successful);
         assertTrue(stats.scannedFiles >= 2, "manual poll must actually scan");
         assertTrue(stats.created >= 2, "manual poll must write, not scan-only");
         assertTrue(docCount(index) >= 2,
@@ -212,6 +216,8 @@ class WatchResourceSafetyTest {
         // a second manual round observes the baseline it saved and deletes
         Files.delete(source.resolve("a.txt"));
         NetPollerService.PollStats second = poller.pollNowAsync().get(30, TimeUnit.SECONDS);
+        assertTrue(second.accepted);
+        assertTrue(second.successful);
         assertEquals(1L, second.deleted,
                 "manual poll must delete proven-absent paths too");
     }

@@ -9,13 +9,14 @@ import java.nio.file.*;
 import java.security.MessageDigest;
 import java.security.NoSuchAlgorithmException;
 import java.util.*;
+import java.util.concurrent.locks.ReentrantLock;
 
 /**
  * Manages file share tokens persisted to {@code ~/.docfinder/shares.properties}.
  * Each share has a UUID token, an absolute file path, optional expiry, optional
  * password (SHA-256 hashed), and an optional max-download cap.
  *
- * <p>Thread-safety: all public methods are {@code synchronized} so the instance
+ * <p>Thread-safety: all public methods hold {@link #sharesLock} so the instance
  * is safe to use from concurrent HTTP handler threads.
  */
 public class ShareManager {
@@ -40,6 +41,11 @@ public class ShareManager {
     // ---- State --------------------------------------------------------------
 
     private final Path sharesFile;
+    // 写路径（createShare/recordDownload/revokeShare/cleanExpired）持锁 save
+    // 到磁盘；读路径虽主要是内存操作，也必须与写方共用同一把锁。虚拟线程
+    // 在 monitor 内阻塞 I/O 会固定载体线程，故用 ReentrantLock；锁可重入，
+    // isValid/requiresPassword 内嵌套 getShare 不会死锁。
+    private final ReentrantLock sharesLock = new ReentrantLock();
     // token → entry; linked so list order is insertion order
     private final Map<String, ShareEntry> shares = new LinkedHashMap<>();
 
@@ -65,8 +71,10 @@ public class ShareManager {
      * @param maxDownloads  maximum number of downloads; {@code <= 0} = unlimited
      * @return the created entry
      */
-    public synchronized ShareEntry createShare(String filePath, int expiryHours,
+    public ShareEntry createShare(String filePath, int expiryHours,
                                                String password, int maxDownloads) {
+        sharesLock.lock();
+        try {
         ShareEntry e = new ShareEntry();
         e.token = UUID.randomUUID().toString().replace("-", "");
         e.filePath = filePath;
@@ -78,18 +86,28 @@ public class ShareManager {
         shares.put(e.token, e);
         save();
         return e;
+        } finally {
+            sharesLock.unlock();
+        }
     }
 
     /** Returns the entry for {@code token}, or {@code null} if unknown. */
-    public synchronized ShareEntry getShare(String token) {
+    public ShareEntry getShare(String token) {
+        sharesLock.lock();
+        try {
         return token == null ? null : shares.get(token);
+        } finally {
+            sharesLock.unlock();
+        }
     }
 
     /**
      * Returns {@code true} when the share is valid: exists, not expired, download
      * cap not exceeded, and password (if any) matches.
      */
-    public synchronized boolean isValid(String token, String candidatePassword) {
+    public boolean isValid(String token, String candidatePassword) {
+        sharesLock.lock();
+        try {
         ShareEntry e = getShare(token);
         if (e == null) return false;
         if (isExpired(e)) return false;
@@ -99,37 +117,65 @@ public class ShareManager {
             if (!e.passwordHash.equals(sha256(candidatePassword))) return false;
         }
         return true;
+        } finally {
+            sharesLock.unlock();
+        }
     }
 
     /** Returns {@code true} if the share requires a password. */
-    public synchronized boolean requiresPassword(String token) {
+    public boolean requiresPassword(String token) {
+        sharesLock.lock();
+        try {
         ShareEntry e = getShare(token);
         return e != null && e.passwordHash != null;
+        } finally {
+            sharesLock.unlock();
+        }
     }
 
     /** Records one download hit and saves. */
-    public synchronized void recordDownload(String token) {
+    public void recordDownload(String token) {
+        sharesLock.lock();
+        try {
         ShareEntry e = shares.get(token);
         if (e != null) {
             e.downloadCount++;
             save();
         }
+        } finally {
+            sharesLock.unlock();
+        }
     }
 
     /** Removes the share. */
-    public synchronized void revokeShare(String token) {
+    public void revokeShare(String token) {
+        sharesLock.lock();
+        try {
         if (shares.remove(token) != null) save();
+        } finally {
+            sharesLock.unlock();
+        }
     }
 
     /** Returns a snapshot list of all shares (copies). */
-    public synchronized List<ShareEntry> listShares() {
+    public List<ShareEntry> listShares() {
+        sharesLock.lock();
+        try {
         return new ArrayList<>(shares.values());
+        } finally {
+            sharesLock.unlock();
+        }
     }
 
     /** Purges expired entries and saves if anything was removed. */
-    public synchronized void cleanExpired() {
+    public void cleanExpired() {
+        sharesLock.lock();
+        try {
         boolean changed = shares.values().removeIf(this::isExpired);
         if (changed) save();
+        } finally {
+            sharesLock.unlock();
+        }
     }
 
     // ---- Helpers ------------------------------------------------------------

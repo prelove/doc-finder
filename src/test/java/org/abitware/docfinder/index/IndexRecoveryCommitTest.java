@@ -107,7 +107,7 @@ class IndexRecoveryCommitTest {
         }
         try (FSDirectory directory = FSDirectory.open(index); DirectoryReader reader = DirectoryReader.open(directory)) {
             assertEquals(1, reader.numDocs());
-            assertNull(reader.document(reader.maxDoc() - 1).get("stale-marker"));
+            assertNull(reader.storedFields().document(reader.maxDoc() - 1).get("stale-marker"));
         }
     }
 

@@ -2,7 +2,7 @@
 
 _Local file name & content search for Windows / macOS / Linux. Fast UI, read‑only indexing, multilingual search, wildcard filename queries, and live updates._
 
-> UI text is **English**. Code comments are **Chinese**. Minimum runtime: **Java 8**. Build with **Maven**.
+> UI text is **English**. Code comments are **Chinese**. Minimum runtime: **Java 21**. Build with **Maven**.
 
 ---
 
@@ -183,7 +183,7 @@ DocFinder is a desktop utility that lets you search **file names and file conten
 ## Build & Run
 
 ### Requirements
-- Java **8+**
+- JDK **21+** to build; Java **21+** to run
 - Maven **3.6+**
 
 ### Build
@@ -268,7 +268,7 @@ Paths are relative to the JVM working directory (`user.dir`), which may differ f
 
 ## Performance Notes
 - The launcher sets `-Xms256m -Xmx2048m`; use a suitable 64-bit JVM and lower the ceiling on constrained systems. A larger heap does not fix native mmap/system commit exhaustion; check commit/pagefile capacity.
-- Old scoped indexes: try Index All Sources first. Deleted/removed/offline-source legacy records can still require a backed-up manual Full Rebuild, which is non-atomic and unavailable for search while running.
+- Old scoped indexes: try Index All Sources first. Deleted/removed/offline-source legacy records can still require a backed-up manual Full Rebuild. It runs inside the indexing coordinator, with `deleteAll` through the final main-index commit in one atomic transaction. The UI pauses search during rebuilding; the previous committed index remains intact until that commit succeeds.
 - Wildcard `*.ext` is accelerated with an `ext` MUST clause.
 - Prefix boosting improves relevance for short filename tokens.
 - Index writer RAM buffer is bounded at 32 MB; source metadata and content extraction use reusable helper JVMs with deadlines.
@@ -288,7 +288,7 @@ Paths are relative to the JVM working directory (`user.dir`), which may differ f
 
 ## Contributing
 1. Fork & branch from `main`.
-2. Build: `mvn clean package` (Java 8+).
+2. Build: `mvn clean package` (JDK 21+).
 3. Code style: keep UI strings **English**, comments **Chinese**; avoid UI blocking (use `SwingWorker` for heavy tasks).
 4. Submit PR with a clear description and screenshots if UI changes are involved.
 
@@ -299,3 +299,29 @@ _TBD_ (MIT/Apache‑2.0/Proprietary — choose one and add the license fil
 
 
 - **Logs**: unified runtime logs are written to `./.docfinder/logs/docfinder.log`, and can be opened from **Help → View Log**.
+
+
+## Upgrading to DocFinder 3.0 (Java 21)
+
+DocFinder 3.0 requires Java 21. On first launch it checks both the configured
+search index and `deleted-paths-index` recovery registry. Incompatible Lucene 8
+indexes are preserved by renaming their directories to
+`<name>.lucene8.bak-<timestamp>`; the application explicitly asks you to run
+**Full Rebuild** (or **Index All Sources**). Search and Live Watch require a
+compatible rebuilt index. A real writer-lock conflict stops the operation;
+the application never deletes a lock file to bypass another writer.
+
+Full Rebuild runs inside the indexing coordinator, with `deleteAll` through the
+final main-index commit in one atomic transaction. The UI pauses search during
+rebuilding; the previous committed index remains intact until that commit succeeds.
+Cancellation or failure before the main-index commit retains the previous commit.
+Recovery records are reset after that commit; an acknowledgment failure at this
+stage does not undo the committed index. Backups are not
+deleted automatically; once the rebuilt index has been verified, you may remove
+the `.lucene8.bak-*` directories manually.
+
+Lucene 10 indexes written by 3.0 cannot be opened by the Java 8 releases. To
+downgrade, use a separate data directory or restore the Lucene 8 backups while
+both versions are stopped. Keep the backups until you decide to stay on 3.0.
+Plain ASCII previews now report UTF-8. Text served via `/api/file` is transcoded
+to UTF-8, including legacy Chinese, Japanese and Korean files.

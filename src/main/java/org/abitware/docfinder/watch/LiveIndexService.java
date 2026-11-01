@@ -16,6 +16,7 @@ import java.nio.file.Path;
 import java.util.*;
 import java.util.concurrent.*;
 import java.util.concurrent.atomic.AtomicBoolean;
+import java.util.concurrent.locks.ReentrantLock;
 
 public class LiveIndexService implements AutoCloseable {
     private static final Logger log = LoggerFactory.getLogger(LiveIndexService.class);
@@ -30,8 +31,12 @@ public class LiveIndexService implements AutoCloseable {
     private final List<Path> roots;
     private final Runnable onAfterCommit;
     private final NetPollerService reconciler;
-    private final Object pendingLock = new Object();
-    private final Object lifecycle = new Object();
+    // 虚拟线程在 monitor 内阻塞会把载体线程固定住；pending 状态域含
+    // markReconcileLocked 的日志写（可能触达文件 appender），lifecycle 域
+    // 覆盖 watcher 构造与 applyPrepared 的 writer/commit/close 磁盘 I/O，
+    // 两个域各自整体迁移到 ReentrantLock，不能混用 monitor 与新锁。
+    private final ReentrantLock pendingLock = new ReentrantLock();
+    private final ReentrantLock lifecycleLock = new ReentrantLock();
     private final LinkedHashMap<Path, ChangeType> pendingChanges = new LinkedHashMap<>();
     private final Set<Path> reconcileRoots = new LinkedHashSet<>();
     private final AtomicBoolean drainActive = new AtomicBoolean();
@@ -51,7 +56,8 @@ public class LiveIndexService implements AutoCloseable {
         this.reconciler = new NetPollerService(indexDir, settings, roots, onAfterCommit);
     }
     public void start() throws Exception {
-        synchronized (lifecycle) {
+        lifecycleLock.lock();
+        try {
             if (closed) throw new IllegalStateException("Live indexing service closed");
             if (watcher != null) return;
             watcher = new LocalRecursiveWatcher(roots, new LocalRecursiveWatcher.Listener() {
@@ -62,16 +68,22 @@ public class LiveIndexService implements AutoCloseable {
             // Watch registration only sees future events. Reuse the bounded
             // reconciliation queue to repair creates/deletes missed while the
             // application (or this service) was stopped.
-            synchronized (pendingLock) {
+            pendingLock.lock();
+            try {
                 for (Path root : roots) if (root != null) reconcileRoots.add(root);
+            } finally {
+                pendingLock.unlock();
             }
             flusher.scheduleWithFixedDelay(this::flushPendingSafe, FLUSH_INTERVAL_MS, FLUSH_INTERVAL_MS, TimeUnit.MILLISECONDS);
+        } finally {
+            lifecycleLock.unlock();
         }
     }
     void onChange(String type, Path path) {
         if (path == null || closed) return;
         ChangeType incoming = toChangeType(type);
-        synchronized (pendingLock) {
+        pendingLock.lock();
+        try {
             if (closed) return;
             ChangeType current = pendingChanges.get(path);
             ChangeType merged = merge(current, incoming);
@@ -80,11 +92,18 @@ public class LiveIndexService implements AutoCloseable {
             else pendingChanges.put(path, merged);
             // A deleted directory no longer has attributes with which to identify its descendants.
             if (incoming == ChangeType.DELETE) markReconcileLocked(path);
+        } finally {
+            pendingLock.unlock();
         }
     }
     void onOverflow(Path dir) {
         if (dir == null || closed) return;
-        synchronized (pendingLock) { if (!closed) markReconcileLocked(dir); }
+        pendingLock.lock();
+        try {
+            if (!closed) markReconcileLocked(dir);
+        } finally {
+            pendingLock.unlock();
+        }
     }
     private void markReconcileLocked(Path path) {
         for (Path root : roots) if (root != null && path.toAbsolutePath().normalize().startsWith(root.toAbsolutePath().normalize())) {
@@ -93,7 +112,14 @@ public class LiveIndexService implements AutoCloseable {
         }
         log.warn("Watch overflow outside configured roots: {}", path);
     }
-    Set<Path> pendingReconcileRoots() { synchronized (pendingLock) { return new LinkedHashSet<>(reconcileRoots); } }
+    Set<Path> pendingReconcileRoots() {
+        pendingLock.lock();
+        try {
+            return new LinkedHashSet<>(reconcileRoots);
+        } finally {
+            pendingLock.unlock();
+        }
+    }
     private void flushPendingSafe() {
         try { flushPending(); } catch (RuntimeException e) { log.warn("Live watch flush failed", e); }
     }
@@ -105,14 +131,24 @@ public class LiveIndexService implements AutoCloseable {
     private void drainPending() {
         boolean retryLater = false;
         final long token;
-        synchronized (lifecycle) { token = generation; }
+        lifecycleLock.lock();
+        try {
+            token = generation;
+        } finally {
+            lifecycleLock.unlock();
+        }
         try {
             while (valid(token)) {
                 Path reconcile = pollReconcileRoot();
                 Map<Path, ChangeType> batch = takeBatch(MAX_BATCH_SIZE);
                 if (reconcile == null && batch.isEmpty()) return;
                 if (reconcile != null && !reconciler.reconcile(reconcile)) {
-                    synchronized (pendingLock) { if (!closed) reconcileRoots.add(reconcile); }
+                    pendingLock.lock();
+                    try {
+                        if (!closed) reconcileRoots.add(reconcile);
+                    } finally {
+                        pendingLock.unlock();
+                    }
                     retryLater = true;
                 }
                 if (!applyBatch(batch, token)) {
@@ -124,13 +160,21 @@ public class LiveIndexService implements AutoCloseable {
             }
         } finally {
             drainActive.set(false);
-            synchronized (pendingLock) {
+            pendingLock.lock();
+            try {
                 if (!retryLater && !closed && (!pendingChanges.isEmpty() || !reconcileRoots.isEmpty())) flushPending();
+            } finally {
+                pendingLock.unlock();
             }
         }
     }
     private boolean valid(long token) {
-        synchronized (lifecycle) { return !closed && generation == token && !Thread.currentThread().isInterrupted(); }
+        lifecycleLock.lock();
+        try {
+            return !closed && generation == token && !Thread.currentThread().isInterrupted();
+        } finally {
+            lifecycleLock.unlock();
+        }
     }
     private void requireValid(long token) throws IOException {
         if (!valid(token)) throw new InterruptedIOException("Live indexing cancelled");
@@ -182,7 +226,11 @@ public class LiveIndexService implements AutoCloseable {
     }
     private void applyPrepared(List<PreparedChange> changes, long token) throws Exception {
         IndexWriteCoordinator.call(() -> {
-            synchronized (lifecycle) {
+            // 锁序固定 WRITE_LOCK → lifecycleLock：本锁在 coordinator 内部获取，
+            // 持锁完成 writer 打开/写入/commit/close（明确跨磁盘 I/O，正是不能
+            // 留在 monitor 内的原因）。
+            lifecycleLock.lock();
+            try {
                 requireValid(token);
                 try (LuceneIndexer indexer = new LuceneIndexer(indexDir, settings)) {
                     for (PreparedChange change : changes) {
@@ -196,6 +244,8 @@ public class LiveIndexService implements AutoCloseable {
                     }
                     indexer.commit();
                 }
+            } finally {
+                lifecycleLock.unlock();
             }
             return null;
         });
@@ -221,7 +271,8 @@ public class LiveIndexService implements AutoCloseable {
         return selected;
     }
     private void restore(Map<Path, ChangeType> remaining) {
-        synchronized (pendingLock) {
+        pendingLock.lock();
+        try {
             if (closed) return;
             for (Map.Entry<Path, ChangeType> entry : remaining.entrySet()) {
                 // Events received during the failed write are newer and win over the retry.
@@ -229,17 +280,23 @@ public class LiveIndexService implements AutoCloseable {
                 if (pendingChanges.size() < MAX_PENDING_CHANGES) pendingChanges.put(entry.getKey(), entry.getValue());
                 else markReconcileLocked(entry.getKey());
             }
+        } finally {
+            pendingLock.unlock();
         }
     }
     private Path pollReconcileRoot() {
-        synchronized (pendingLock) {
+        pendingLock.lock();
+        try {
             Iterator<Path> iterator = reconcileRoots.iterator();
             if (!iterator.hasNext()) return null;
             Path root = iterator.next(); iterator.remove(); return root;
+        } finally {
+            pendingLock.unlock();
         }
     }
     private Map<Path, ChangeType> takeBatch(int limit) {
-        synchronized (pendingLock) {
+        pendingLock.lock();
+        try {
             Map<Path, ChangeType> batch = new LinkedHashMap<>();
             Iterator<Map.Entry<Path, ChangeType>> iterator = pendingChanges.entrySet().iterator();
             while (iterator.hasNext() && batch.size() < limit) {
@@ -247,6 +304,8 @@ public class LiveIndexService implements AutoCloseable {
                 batch.put(entry.getKey(), entry.getValue()); iterator.remove();
             }
             return batch;
+        } finally {
+            pendingLock.unlock();
         }
     }
     private static ChangeType merge(ChangeType current, ChangeType incoming) {
@@ -273,12 +332,22 @@ public class LiveIndexService implements AutoCloseable {
         throw new IOException("File still changing: " + path);
     }
     @Override public void close() {
-        synchronized (lifecycle) { closed = true; generation++; }
+        lifecycleLock.lock();
+        try {
+            closed = true; generation++;
+        } finally {
+            lifecycleLock.unlock();
+        }
         reconciler.close();
         try { if (watcher != null) watcher.close(); } catch (Exception e) { log.debug("Watcher close failed", e); }
         watcher = null;
         flusher.shutdownNow();
-        synchronized (pendingLock) { pendingChanges.clear(); reconcileRoots.clear(); }
+        pendingLock.lock();
+        try {
+            pendingChanges.clear(); reconcileRoots.clear();
+        } finally {
+            pendingLock.unlock();
+        }
         worker.shutdownNow();
     }
 }

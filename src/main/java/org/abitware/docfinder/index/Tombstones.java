@@ -43,6 +43,7 @@ import java.util.concurrent.Executors;
 import java.util.concurrent.ScheduledExecutorService;
 import java.util.concurrent.TimeUnit;
 import java.util.concurrent.atomic.AtomicBoolean;
+import java.util.concurrent.locks.ReentrantLock;
 
 /**
  * App-wide recovery registry. All paths remain on disk until explicitly removed
@@ -57,7 +58,10 @@ public final class Tombstones {
     private static final String SCOPE = "scope";
     private static final String MIGRATED = "legacy_migrated";
     private static final Sort PATH_SORT = new Sort(new SortField(PATH, SortField.Type.STRING));
-    private static final Object LOCK = new Object();
+    // 恢复证据的 record/remove/contains/flush/snapshotPage 都可能打开
+    // reader/writer、commit 或做磁盘 I/O；虚拟线程（如并行 noteRestored）
+    // 在 monitor 内等待会固定载体线程，故用静态 ReentrantLock 覆盖整个存储域。
+    private static final ReentrantLock STORE_LOCK = new ReentrantLock();
     private static final AtomicBoolean flushRequested = new AtomicBoolean();
     private static final ScheduledExecutorService flusher = Executors.newSingleThreadScheduledExecutor(task -> {
         Thread thread = new Thread(task, "docfinder-tombstone-flush");
@@ -88,12 +92,15 @@ public final class Tombstones {
         if (path == null || path.isEmpty()) {
             return;
         }
-        synchronized (LOCK) {
+        STORE_LOCK.lock();
+        try {
             try {
                 currentStore().record(path);
             } catch (IOException e) {
                 throw failure(e);
             }
+        } finally {
+            STORE_LOCK.unlock();
         }
     }
 
@@ -111,7 +118,8 @@ public final class Tombstones {
         if (path == null || path.isEmpty()) {
             return;
         }
-        synchronized (LOCK) {
+        STORE_LOCK.lock();
+        try {
             try {
                 Store current = currentStore();
                 current.writer.deleteDocuments(new Term(PATH, path));
@@ -119,6 +127,8 @@ public final class Tombstones {
             } catch (IOException e) {
                 throw failure(e);
             }
+        } finally {
+            STORE_LOCK.unlock();
         }
     }
 
@@ -135,12 +145,15 @@ public final class Tombstones {
         if (path == null || path.isEmpty()) {
             return false;
         }
-        synchronized (LOCK) {
+        STORE_LOCK.lock();
+        try {
             try (DirectoryReader reader = DirectoryReader.open(currentStore().writer)) {
                 return new IndexSearcher(reader).count(new TermQuery(new Term(PATH, path))) != 0;
             } catch (IOException e) {
                 throw failure(e);
             }
+        } finally {
+            STORE_LOCK.unlock();
         }
     }
 
@@ -162,18 +175,22 @@ public final class Tombstones {
     }
 
     public static boolean isEmpty() {
-        synchronized (LOCK) {
+        STORE_LOCK.lock();
+        try {
             try (DirectoryReader reader = DirectoryReader.open(currentStore().writer)) {
                 return reader.numDocs() == 0;
             } catch (IOException e) {
                 throw failure(e);
             }
+        } finally {
+            STORE_LOCK.unlock();
         }
     }
 
     /** Synchronous durable commit. Call on a background thread, never on the EDT. */
     public static void flush() {
-        synchronized (LOCK) {
+        STORE_LOCK.lock();
+        try {
             if (store != null) {
                 try {
                     store.flush();
@@ -181,6 +198,25 @@ public final class Tombstones {
                     throw failure(e);
                 }
             }
+        } finally {
+            STORE_LOCK.unlock();
+        }
+    }
+
+    /** Clears obsolete recovery evidence only after a full main-index commit. */
+    public static void resetForRebuild() {
+        STORE_LOCK.lock();
+        try {
+            try {
+                Store current = currentStore();
+                current.writer.deleteAll();
+                current.dirty = true;
+                current.flush();
+            } catch (IOException e) {
+                throw failure(e);
+            }
+        } finally {
+            STORE_LOCK.unlock();
         }
     }
 
@@ -199,7 +235,8 @@ public final class Tombstones {
 
     /** Commits and releases the app store. Call on a background shutdown thread. */
     public static void close() {
-        synchronized (LOCK) {
+        STORE_LOCK.lock();
+        try {
             if (store != null) {
                 try {
                     store.close();
@@ -208,6 +245,8 @@ public final class Tombstones {
                     throw failure(e);
                 }
             }
+        } finally {
+            STORE_LOCK.unlock();
         }
     }
 
@@ -220,10 +259,11 @@ public final class Tombstones {
     }
 
     private static List<String> snapshotPage(String afterKey, int limit, List<Path> roots) {
-        synchronized (LOCK) {
+        STORE_LOCK.lock();
+        try {
             try (DirectoryReader reader = DirectoryReader.open(currentStore().writer)) {
                 BooleanQuery.Builder query = new BooleanQuery.Builder();
-                query.add(afterKey == null ? new MatchAllDocsQuery()
+                query.add(afterKey == null ? MatchAllDocsQuery.INSTANCE
                         : new TermRangeQuery(PATH, new BytesRef(afterKey), null, false, false),
                         BooleanClause.Occur.FILTER);
                 if (roots != null) {
@@ -243,13 +283,16 @@ public final class Tombstones {
                 }
                 IndexSearcher searcher = new IndexSearcher(reader);
                 List<String> paths = new ArrayList<>();
+                org.apache.lucene.index.StoredFields storedFields = searcher.storedFields();
                 for (ScoreDoc hit : searcher.search(query.build(), limit, PATH_SORT).scoreDocs) {
-                    paths.add(searcher.doc(hit.doc).get(PATH));
+                    paths.add(storedFields.document(hit.doc).get(PATH));
                 }
                 return paths;
             } catch (IOException e) {
                 throw failure(e);
             }
+        } finally {
+            STORE_LOCK.unlock();
         }
     }
 

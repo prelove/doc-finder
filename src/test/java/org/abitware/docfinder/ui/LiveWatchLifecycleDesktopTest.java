@@ -93,7 +93,7 @@ class LiveWatchLifecycleDesktopTest {
     private boolean isIndexed(String name) throws Exception {
         try (FSDirectory directory = FSDirectory.open(index); DirectoryReader reader = DirectoryReader.open(directory)) {
             for (int i = 0; i < reader.maxDoc(); i++) {
-                if (reader.document(i).get("path").endsWith(name)) return true;
+                if (reader.storedFields().document(i).get("path").endsWith(name)) return true;
             }
         }
         return false;

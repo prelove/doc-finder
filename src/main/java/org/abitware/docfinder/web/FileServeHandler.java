@@ -4,14 +4,14 @@ import com.sun.net.httpserver.HttpExchange;
 import com.sun.net.httpserver.HttpHandler;
 
 import java.io.*;
-import java.net.URI;
 import java.nio.charset.Charset;
+import java.nio.charset.StandardCharsets;
 import java.nio.file.*;
 import java.util.Locale;
 import java.util.Map;
 
 /**
- * Serves raw file bytes at {@code GET /api/file?path=<encoded-abs-path>}.
+ * Serves binary files and UTF-8 text at {@code GET /api/file?path=<encoded-abs-path>}.
  *
  * <p>Used by the web search UI to feed files into the jit-viewer previewer.
  * The endpoint is intentionally available only when the web server is running;
@@ -59,33 +59,23 @@ class FileServeHandler implements HttpHandler {
     }
 
     /**
-     * Sends file bytes with an appropriate Content-Type and optional
+     * Sends binary bytes or UTF-8 text with an appropriate Content-Type and optional
      * Content-Disposition header.
      */
     static void serveFile(HttpExchange exchange, Path filePath, String downloadName) throws IOException {
         String mime = guessMime(filePath.getFileName().toString());
         long size = Files.size(filePath);
 
-        // For text MIME types without explicit charset, detect encoding and append it
-        if (mime.startsWith("text/") && !mime.contains("charset")) {
-            try {
-                int sampleSize = (int) Math.min(size, 64 * 1024);
-                byte[] sample = new byte[sampleSize];
-                int read = 0;
-                try (InputStream is = Files.newInputStream(filePath)) {
-                    while (read < sampleSize) {
-                        int n = is.read(sample, read, sampleSize - read);
-                        if (n < 0) break;
-                        read += n;
-                    }
-                }
-                if (read > 0) {
-                    Charset detected = TextServeHandler.detectCharset(sample, read);
-                    mime = mime + "; charset=" + detected.name().toLowerCase(Locale.ROOT);
-                }
-            } catch (Exception e) {
-                // detection failed; serve without charset (browser will guess)
+        boolean textContent = mime.startsWith("text/");
+        Charset detected = null;
+        if (textContent) {
+            byte[] sample;
+            try (InputStream in = Files.newInputStream(filePath)) {
+                sample = in.readNBytes(64 * 1024);
             }
+            detected = TextServeHandler.detectCharset(sample, sample.length);
+            // Java 字符集名未必是浏览器支持的标签；统一转为 UTF-8，响应头才能准确描述正文。
+            mime = mime.split(";", 2)[0] + "; charset=utf-8";
         }
 
         exchange.getResponseHeaders().add("Content-Type", mime);
@@ -94,7 +84,23 @@ class FileServeHandler implements HttpHandler {
                     "attachment; filename=\"" + downloadName.replace("\"", "'") + "\"");
         }
         exchange.getResponseHeaders().add("Cache-Control", "no-cache");
-        exchange.sendResponseHeaders(200, size);
+        exchange.sendResponseHeaders(200, textContent ? 0 : size);
+        if (textContent) {
+            // 流式转码避免把整个大文本文件载入内存；长度由 HTTP 分块传输确定。
+            try (Reader reader = new BufferedReader(new InputStreamReader(Files.newInputStream(filePath), detected));
+                 Writer writer = new BufferedWriter(new OutputStreamWriter(exchange.getResponseBody(), StandardCharsets.UTF_8))) {
+                int first = reader.read();
+                if (first >= 0 && first != '\uFEFF') {
+                    writer.write(first);
+                }
+                char[] buffer = new char[8192];
+                int count;
+                while ((count = reader.read(buffer)) != -1) {
+                    writer.write(buffer, 0, count);
+                }
+            }
+            return;
+        }
         try (OutputStream out = exchange.getResponseBody();
              InputStream in = Files.newInputStream(filePath)) {
             byte[] buf = new byte[8192];

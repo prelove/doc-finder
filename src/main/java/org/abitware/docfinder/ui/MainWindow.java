@@ -30,8 +30,8 @@ import org.apache.tika.parser.ParseContext;
 import org.apache.tika.io.TikaInputStream;
 import java.nio.charset.Charset;
 
-import org.apache.tika.parser.txt.CharsetDetector;
-import org.apache.tika.parser.txt.CharsetMatch;
+import org.abitware.docfinder.util.TikaServices;
+import org.apache.tika.detect.EncodingResult;
 
 import org.abitware.docfinder.ui.components.MenuBarPanel;
 
@@ -798,18 +798,16 @@ public class MainWindow extends JFrame implements MenuBarPanel.MenuListener {
 
 	/** A valid commit marks the index as built — the honest readiness gate. */
 	private static boolean indexReady(java.nio.file.Path indexDir) {
-		try {
-			if (!java.nio.file.Files.isDirectory(indexDir)) {
-				return false;
-			}
-			try (org.apache.lucene.store.FSDirectory d =
-					org.apache.lucene.store.FSDirectory.open(indexDir)) {
-				return org.apache.lucene.index.DirectoryReader.indexExists(d);
-			}
-		} catch (Exception e) {
-			return false;
-		}
-	}
+        return org.abitware.docfinder.index.IndexFormatGuard.isReady(indexDir);
+    }
+
+    public void showIndexRebuildRequired(String detail) {
+        statusLabel.setText("Index rebuild required. Run Full Rebuild or Index All Sources. " + detail);
+        JOptionPane.showMessageDialog(this,
+                "The index needs rebuilding for DocFinder 3.0.\n"
+                + "Run Full Rebuild or Index All Sources before searching.\n" + detail,
+                "Index rebuild required", JOptionPane.INFORMATION_MESSAGE);
+    }
 
 	/**
 	 * The single background activation path for Local Watch — used by the
@@ -1164,14 +1162,22 @@ public class MainWindow extends JFrame implements MenuBarPanel.MenuListener {
 			protected Integer doInBackground() throws Exception {
 				org.abitware.docfinder.index.ConfigManager cm = new org.abitware.docfinder.index.ConfigManager();
 				org.abitware.docfinder.index.IndexSettings s = cm.loadIndexSettings();
-				try (org.abitware.docfinder.index.LuceneIndexer idx = new org.abitware.docfinder.index.LuceneIndexer(
-						indexDir, s)) {
-					int total = 0;
-					for (java.nio.file.Path p : sources) {
-						total += idx.indexFolder(p);
+				// 手工索引必须走 coordinator：仅暂停 live watch 挡不住已在运行的
+				// poll、purge 或恢复任务。整个 writer 生命周期（构造→索引→commit/
+				// close/rollback）在 WRITE_LOCK 内完成，由本 SwingWorker 线程释放。
+				return org.abitware.docfinder.index.IndexWriteCoordinator.call(() -> {
+                    if (!indexReady(indexDir)) {
+                        return rebuildIndex(indexDir, sources, s);
+                    }
+					try (org.abitware.docfinder.index.LuceneIndexer idx = new org.abitware.docfinder.index.LuceneIndexer(
+							indexDir, s)) {
+						int total = 0;
+						for (java.nio.file.Path p : sources) {
+							total += idx.indexFolder(p);
+						}
+						return total;
 					}
-					return total;
-				}
+				});
 			}
 
 			@Override
@@ -1323,35 +1329,36 @@ public class MainWindow extends JFrame implements MenuBarPanel.MenuListener {
 
 
     // 只读抽取前 N 字符（复用我们已有的 Tika 逻辑，简化为局部方法以免循环依赖）
-	private PreviewLoadOutcome extractTextHead(java.nio.file.Path file, int maxChars) {
-		int timeoutSec = new org.abitware.docfinder.index.ConfigManager().loadIndexSettings().previewTimeoutSec;
-		java.util.concurrent.ExecutorService es = java.util.concurrent.Executors.newSingleThreadExecutor(r -> {
-			Thread t = new Thread(r, "docfinder-preview-parse");
-			t.setDaemon(true);
-			return t;
-		});
-		try {
-			java.util.concurrent.Future<String> fut = es.submit(() -> {
-				try (java.io.InputStream is = java.nio.file.Files.newInputStream(file, java.nio.file.StandardOpenOption.READ)) {
-					org.apache.tika.metadata.Metadata md = new org.apache.tika.metadata.Metadata();
-					md.set(org.apache.tika.metadata.TikaCoreProperties.RESOURCE_NAME_KEY, file.getFileName().toString());
-					org.apache.tika.parser.AutoDetectParser parser = new org.apache.tika.parser.AutoDetectParser();
-					org.apache.tika.sax.BodyContentHandler handler = new org.apache.tika.sax.BodyContentHandler(maxChars);
-					org.apache.tika.parser.ParseContext ctx = new org.apache.tika.parser.ParseContext();
-					parser.parse(is, handler, md, ctx);
-					return handler.toString();
-				}
-			});
-			String text = fut.get(timeoutSec, java.util.concurrent.TimeUnit.SECONDS);
-			return new PreviewLoadOutcome(text, null);
-		} catch (java.util.concurrent.TimeoutException e) {
-			return new PreviewLoadOutcome("", "Preview parse timed out.");
-		} catch (Throwable e) {
-			return new PreviewLoadOutcome("", null);
-		} finally {
-			es.shutdownNow();
-		}
-	}
+    private PreviewLoadOutcome extractTextHead(java.nio.file.Path file, int maxChars) {
+        int timeoutSec = new org.abitware.docfinder.index.ConfigManager().loadIndexSettings().previewTimeoutSec;
+        java.util.concurrent.ExecutorService es = java.util.concurrent.Executors.newSingleThreadExecutor(r -> {
+            Thread t = new Thread(r, "docfinder-preview-parse");
+            t.setDaemon(true);
+            return t;
+        });
+        try {
+            // 解析器首次构造会加载插件；在提交计时任务前完成，避免挤占文件解析的超时预算。
+            AutoDetectParser parser = TikaServices.previewParser();
+            java.util.concurrent.Future<String> fut = es.submit(() -> {
+                try (TikaInputStream stream = TikaInputStream.get(file)) {
+                    org.apache.tika.metadata.Metadata md = new org.apache.tika.metadata.Metadata();
+                    md.set(org.apache.tika.metadata.TikaCoreProperties.RESOURCE_NAME_KEY, file.getFileName().toString());
+                    org.apache.tika.sax.BodyContentHandler handler = new org.apache.tika.sax.BodyContentHandler(maxChars);
+                    org.apache.tika.parser.ParseContext ctx = new org.apache.tika.parser.ParseContext();
+                    parser.parse(stream, handler, md, ctx);
+                    return handler.toString();
+                }
+            });
+            String text = fut.get(timeoutSec, java.util.concurrent.TimeUnit.SECONDS);
+            return new PreviewLoadOutcome(text, null);
+        } catch (java.util.concurrent.TimeoutException e) {
+            return new PreviewLoadOutcome("", "Preview parse timed out.");
+        } catch (Throwable e) {
+            return new PreviewLoadOutcome("", null);
+        } finally {
+            es.shutdownNow();
+        }
+    }
 
 	private PreviewLoadOutcome loadPreviewText(java.nio.file.Path file, int maxChars) {
 		if (file == null || maxChars <= 0) {
@@ -1446,49 +1453,56 @@ public class MainWindow extends JFrame implements MenuBarPanel.MenuListener {
 		return sb.toString();
 	}
 
-	private java.util.List<java.nio.charset.Charset> detectCandidateCharsets(java.nio.file.Path file) {
-		java.util.LinkedHashSet<java.nio.charset.Charset> candidates = new java.util.LinkedHashSet<>();
-		java.nio.charset.Charset bom = detectBomCharset(file);
-		if (bom != null) {
-			candidates.add(bom);
-		}
-		try (java.io.InputStream is = java.nio.file.Files.newInputStream(file, java.nio.file.StandardOpenOption.READ)) {
-			CharsetDetector detector = new CharsetDetector();
-			detector.setText(is);
-			CharsetMatch[] matches = detector.detectAll();
-			if (matches != null) {
-				for (CharsetMatch match : matches) {
-					if (match == null || match.getConfidence() < 30) {
-						continue;
-					}
-					try {
-						candidates.add(java.nio.charset.Charset.forName(match.getName()));
-					} catch (Exception ignore) {
-					}
-				}
-			}
-		} catch (Exception ignore) {
-		}
+    // Tika 4 默认链为 Mojibuster + JunkFilter 仲裁，不包含 ICU4J。
+    // 胜出约为 1.0（统计）或 0.95（结构性 UTF-8）；0.1 是无依据兜底猜测。
+    // 阈值丢弃该猜测，保留检测候选顺序，再使用下方固定回退列表。
+    private static final float MIN_DETECTED_CONFIDENCE = 0.30f;
 
-		candidates.add(java.nio.charset.StandardCharsets.UTF_8);
-		candidates.add(java.nio.charset.StandardCharsets.UTF_16LE);
-		candidates.add(java.nio.charset.StandardCharsets.UTF_16BE);
-		addCharsetIfSupported(candidates, "windows-1252");
-		addCharsetIfSupported(candidates, "Shift_JIS");
-		addCharsetIfSupported(candidates, "Windows-31J");
-		addCharsetIfSupported(candidates, "EUC-JP");
-		addCharsetIfSupported(candidates, "GBK");
-		addCharsetIfSupported(candidates, "Big5");
-		addCharsetIfSupported(candidates, "EUC-KR");
-		return new java.util.ArrayList<>(candidates);
-	}
+    static java.util.List<java.nio.charset.Charset> detectCandidateCharsets(java.nio.file.Path file) {
+        return detectCandidateCharsets(file, TikaServices.encodingDetector());
+    }
 
-	private void addCharsetIfSupported(java.util.Set<java.nio.charset.Charset> candidates, String name) {
-		try {
-			candidates.add(java.nio.charset.Charset.forName(name));
-		} catch (Exception ignore) {
-		}
-	}
+    static java.util.List<java.nio.charset.Charset> detectCandidateCharsets(java.nio.file.Path file, EncodingDetector detector) {
+        java.util.LinkedHashSet<java.nio.charset.Charset> candidates = new java.util.LinkedHashSet<>();
+        java.nio.charset.Charset bom = detectBomCharset(file);
+        if (bom != null) {
+            candidates.add(bom);
+        }
+        try (TikaInputStream stream = TikaInputStream.get(file)) {
+            java.util.List<EncodingResult> matches = detector.detect(stream, new Metadata(), new ParseContext());
+            if (matches != null) {
+                for (EncodingResult match : matches) {
+                    if (match == null || match.getCharset() == null || match.getConfidence() < MIN_DETECTED_CONFIDENCE) {
+                        continue;
+                    }
+                    try {
+                        candidates.add(match.getDecodeAs());
+                    } catch (Exception ignore) {
+                    }
+                }
+            }
+        } catch (Exception ignore) {
+        }
+
+        candidates.add(java.nio.charset.StandardCharsets.UTF_8);
+        candidates.add(java.nio.charset.StandardCharsets.UTF_16LE);
+        candidates.add(java.nio.charset.StandardCharsets.UTF_16BE);
+        addCharsetIfSupported(candidates, "windows-1252");
+        addCharsetIfSupported(candidates, "Shift_JIS");
+        addCharsetIfSupported(candidates, "Windows-31J");
+        addCharsetIfSupported(candidates, "EUC-JP");
+        addCharsetIfSupported(candidates, "GBK");
+        addCharsetIfSupported(candidates, "Big5");
+        addCharsetIfSupported(candidates, "EUC-KR");
+        return new java.util.ArrayList<>(candidates);
+    }
+
+    private static void addCharsetIfSupported(java.util.Set<java.nio.charset.Charset> candidates, String name) {
+        try {
+            candidates.add(java.nio.charset.Charset.forName(name));
+        } catch (Exception ignore) {
+        }
+    }
 
 	private double scorePreviewText(String text) {
 		if (text == null || text.isEmpty()) {
@@ -1516,7 +1530,7 @@ public class MainWindow extends JFrame implements MenuBarPanel.MenuListener {
 		return (1d - replacementRatio) * 0.7d + printableRatio * 0.3d;
 	}
 
-	private java.nio.charset.Charset detectBomCharset(java.nio.file.Path file) {
+	private static java.nio.charset.Charset detectBomCharset(java.nio.file.Path file) {
 		if (file == null) {
 			return null;
 		}
@@ -1767,10 +1781,13 @@ public class MainWindow extends JFrame implements MenuBarPanel.MenuListener {
 			protected Integer doInBackground() throws Exception {
 				org.abitware.docfinder.index.ConfigManager cm = new org.abitware.docfinder.index.ConfigManager();
 				org.abitware.docfinder.index.IndexSettings s = cm.loadIndexSettings();
-				try (org.abitware.docfinder.index.LuceneIndexer idx = new org.abitware.docfinder.index.LuceneIndexer(
-						indexDir, s)) {
-					return idx.indexFolder(folder.toPath());
-				}
+				// 同上：单目录手工索引的整个 writer 生命周期也要在 WRITE_LOCK 内。
+				return org.abitware.docfinder.index.IndexWriteCoordinator.call(() -> {
+					try (org.abitware.docfinder.index.LuceneIndexer idx = new org.abitware.docfinder.index.LuceneIndexer(
+							indexDir, s)) {
+						return idx.indexFolder(folder.toPath());
+					}
+				});
 			}
 
 			@Override
@@ -1936,7 +1953,7 @@ public class MainWindow extends JFrame implements MenuBarPanel.MenuListener {
 		}
 	}
 
-	/** Rebuild index (full): delete old index, re-index all sources */
+	/** Atomically replace the committed index with all configured sources. */
 	private void rebuildAllSources() {
 		if (isIndexing) {
 			JOptionPane.showMessageDialog(this, "An indexing operation is already in progress.");
@@ -1975,14 +1992,7 @@ public class MainWindow extends JFrame implements MenuBarPanel.MenuListener {
 		new javax.swing.SwingWorker<Integer, Void>() {
 			@Override
 			protected Integer doInBackground() throws Exception {
-				if (hasWriteLock(indexDir)) {
-					log.warn("Detected index write lock at {}. Force unlock and reset index before rebuild.", indexDir);
-					forceUnlockAndResetIndex(indexDir);
-				}
-				try (org.abitware.docfinder.index.LuceneIndexer idx = new org.abitware.docfinder.index.LuceneIndexer(
-						indexDir, s)) {
-					return idx.indexFolders(sources, true); // full = true
-				}
+                return rebuildIndex(indexDir, sources, s);
 			}
 
 			@Override
@@ -1997,6 +2007,10 @@ public class MainWindow extends JFrame implements MenuBarPanel.MenuListener {
 				} catch (Exception ex) {
 					log.warn("Full rebuild failed: {}", String.valueOf(ex.getCause() != null ? ex.getCause() : ex));
 					handleFullRebuildFailure();
+                    Throwable cause = ex.getCause() == null ? ex : ex.getCause();
+                    if (cause instanceof org.apache.lucene.store.LockObtainFailedException) {
+                        statusLabel.setText("Rebuild stopped: another writer owns the index lock. Close it and retry.");
+                    }
 				} finally {
 					// Re-enable UI and clear indexing flag
 					isIndexing = false;
@@ -2011,8 +2025,8 @@ public class MainWindow extends JFrame implements MenuBarPanel.MenuListener {
 	}
 
 	/**
-	 * A failed full rebuild leaves the index unusable (old data was reset), so
-	 * the service is not republished: searches keep reporting INDEX_UNAVAILABLE
+	 * A failed full rebuild retains the previous commit. The UI conservatively keeps
+	 * the service unpublished: searches keep reporting INDEX_UNAVAILABLE
 	 * until a later successful rebuild/Index All reopens it.
 	 */
 	void handleFullRebuildFailure() {
@@ -2030,38 +2044,21 @@ public class MainWindow extends JFrame implements MenuBarPanel.MenuListener {
 		statusLabel.setText("Rebuild failed. Search is unavailable until the index is rebuilt. See the application log.");
 	}
 
-	private boolean hasWriteLock(java.nio.file.Path indexDir) {
-		java.nio.file.Path lockFile = indexDir.resolve(org.apache.lucene.index.IndexWriter.WRITE_LOCK_NAME);
-		return java.nio.file.Files.exists(lockFile);
-	}
-
-	private void forceUnlockAndResetIndex(java.nio.file.Path indexDir) throws java.io.IOException {
-		stopIndexServicesForLockRecovery();
-		if (!java.nio.file.Files.exists(indexDir)) {
-			java.nio.file.Files.createDirectories(indexDir);
-			return;
-		}
-		java.nio.file.Files.walkFileTree(indexDir, new java.nio.file.SimpleFileVisitor<java.nio.file.Path>() {
-			@Override
-			public java.nio.file.FileVisitResult visitFile(java.nio.file.Path file,
-					java.nio.file.attribute.BasicFileAttributes attrs) throws java.io.IOException {
-				java.nio.file.Files.deleteIfExists(file);
-				return java.nio.file.FileVisitResult.CONTINUE;
-			}
-
-			@Override
-			public java.nio.file.FileVisitResult postVisitDirectory(java.nio.file.Path dir, java.io.IOException exc)
-					throws java.io.IOException {
-				if (exc != null) {
-					throw exc;
-				}
-				if (!dir.equals(indexDir)) {
-					java.nio.file.Files.deleteIfExists(dir);
-				}
-				return java.nio.file.FileVisitResult.CONTINUE;
-			}
-		});
-	}
+    /** Shared by the desktop rebuild action and lock/rollback integration tests. */
+    static int rebuildIndex(java.nio.file.Path indexDir, java.util.List<java.nio.file.Path> sources,
+            org.abitware.docfinder.index.IndexSettings settings) throws Exception {
+        // coordinator 覆盖 writer 构造、deleteAll、提交和关闭；真实锁失败直接上报，绝不删锁。
+        return org.abitware.docfinder.index.IndexWriteCoordinator.call(() -> {
+            org.abitware.docfinder.index.IndexFormatGuard.prepare(indexDir,
+                    org.abitware.docfinder.util.AppPaths.getBaseDir());
+            try (org.abitware.docfinder.index.LuceneIndexer indexer =
+                    new org.abitware.docfinder.index.LuceneIndexer(indexDir, settings)) {
+                int count = indexer.indexFolders(sources, true);
+                org.abitware.docfinder.index.IndexFormatGuard.rebuildCompleted(indexDir);
+                return count;
+            }
+        });
+    }
 
 	private void stopIndexServicesForLockRecovery() {
 		try {
@@ -2084,7 +2081,7 @@ public class MainWindow extends JFrame implements MenuBarPanel.MenuListener {
 			openServiceSequence++; // invalidate any pending service open candidates
 			// Route through setSearchService so the web server also observes the
 			// service going away (INDEX_UNAVAILABLE), and so the close still
-			// completes before index files are deleted below.
+			// completes before any later rebuild or reopen touches the index.
 			if (javax.swing.SwingUtilities.isEventDispatchThread()) {
 				setSearchService(null);
 			} else {
@@ -3041,7 +3038,7 @@ public class MainWindow extends JFrame implements MenuBarPanel.MenuListener {
                 + "<li>The scope includes all subfolders and searches indexed content only. FOLDER mode can also match the selected directory itself.</li>"
                 + "<li>Path edits are a draft until Enter, source selection or Browse confirmation. Check <b>Applied</b> for the submitted scope; Clear returns to all sources.</li>"
                 + "<li>Right-click a result: <b>Search in this folder</b> or <b>Search in containing folder</b>.</li>"
-                + "<li>For old indexes, try <b>Index All Sources</b> first. Check offline sources and back up before a manual Full Rebuild if legacy records remain. Rebuild is non-atomic and search is unavailable during it.</li>"
+                + "<li>For old indexes, try <b>Index All Sources</b> first. Check offline sources and back up before a manual Full Rebuild if legacy records remain. Rebuild preserves the old commit until success; search is unavailable during it.</li>"
                 + "<li>Default (Fuzzy) search also matches filename middle fragments: <code>report</code> finds <code>AnnualReport2026.pdf</code>. Multiple words must all match the name. Name matches rank above content-only hits.</li>"
                 + "<li>Typing searches automatically after a short pause; Enter or a scope change searches immediately.</li>"
                 + "<li>EXACT includes analyzed phrase matching for the selected fields; it is not restricted to full filename equality.</li>"

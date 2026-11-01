@@ -1,6 +1,5 @@
 package org.abitware.docfinder.util;
 
-import java.io.BufferedInputStream;
 import java.io.DataInputStream;
 import java.io.DataOutputStream;
 import java.io.EOFException;
@@ -15,6 +14,7 @@ import java.nio.file.Paths;
 import java.nio.file.attribute.BasicFileAttributes;
 
 import org.apache.tika.exception.WriteLimitReachedException;
+import org.apache.tika.io.TikaInputStream;
 import org.apache.tika.metadata.HttpHeaders;
 import org.apache.tika.metadata.Metadata;
 import org.apache.tika.metadata.TikaCoreProperties;
@@ -153,7 +153,7 @@ public final class FileAccessWorker {
         metadata.set(TikaCoreProperties.RESOURCE_NAME_KEY, path.getFileName().toString());
         boolean successful = true;
         boolean truncated = false;
-        try (InputStream stream = new BufferedInputStream(Files.newInputStream(path), 16384)) {
+        try (TikaInputStream stream = TikaInputStream.get(path)) {
             try {
                 ParserHolder.PARSER.parse(stream, handler, metadata, new ParseContext());
             } catch (Exception e) {

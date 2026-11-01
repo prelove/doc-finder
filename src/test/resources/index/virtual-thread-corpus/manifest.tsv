@@ -1,0 +1,24 @@
+# relpath	kind	doc	token
+.	folder	1	
+docs	folder	1	
+docs/nested	folder	1	
+emptydir	folder	1	
+docs/english.txt	file	1	emberquill
+docs/chinese.txt	file	1	quanxen
+docs/japanese.txt	file	1	nipponix
+docs/report.pdf	file	1	quixoticlumen
+docs/spec.docx	file	1	zephyrmantle
+docs/page.html	file	1	verdantember
+docs/data.json	file	1	latticeglow
+docs/nested/deep.txt	file	1	deepcavern
+docs/unknown.wq	file	1	mysterium
+docs/empty.txt	file	1	
+bin	folder	1	
+bin/blob.dat	file	1	
+bin/tool.exe	file	0	
+bin/lib.dll	file	0	
+~$lock.docx	file	0	
+draft.tmp	file	0	
+node_modules	file	0	
+node_modules/pkg	file	0	
+node_modules/pkg/index.js	file	0	
