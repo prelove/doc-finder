@@ -30,12 +30,12 @@ public final class IndexFormatGuard {
             if (!Files.isDirectory(path)) {
                 continue;
             }
+            boolean migrate = false;
             try (FSDirectory directory = FSDirectory.open(path)) {
                 if (!isOld(directory)) {
                     continue;
                 }
                 // write.lock 会在正常关闭后保留；只有真实文件锁才能证明可以迁移。
-                // 锁保持到 rename 完成，竞争写者不能在检测与备份之间打开旧目录。
                 try (Lock lock = directory.obtainLock(IndexWriter.WRITE_LOCK_NAME)) {
                     lock.ensureValid();
                     // 等待锁期间旧 writer 可能已完成升级；在锁内复核，避免误备份新提交。
@@ -43,11 +43,16 @@ public final class IndexFormatGuard {
                     Path marker = marker(indexDir);
                     Files.createDirectories(marker.getParent());
                     Files.writeString(marker, "Lucene 8 backup requires Full Rebuild\n");
-                    Path backup = path.resolveSibling(path.getFileName() + ".lucene8.bak-"
-                            + Instant.now().toEpochMilli() + "-" + UUID.randomUUID());
-                    Files.move(path, backup);
-                    backups.add(backup);
+                    migrate = true;
                 }
+            }
+            // Windows 无法重命名含有已打开文件（write.lock 的 FileChannel）的目录，
+            // 因此必须在锁与目录都关闭之后再 rename。
+            if (migrate) {
+                Path backup = path.resolveSibling(path.getFileName() + ".lucene8.bak-"
+                        + Instant.now().toEpochMilli() + "-" + UUID.randomUUID());
+                Files.move(path, backup);
+                backups.add(backup);
             }
         }
         // 全新安装时 isReady 同样为 false；只有真实备份或已存在的重建标记才表示需要重建，
