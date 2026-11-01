@@ -34,10 +34,10 @@
 ## 5. 验收与发布（beauty 主导）
 
 - [x] 5.1 终验：JDK 21 全量测试对基线核对；固定语料索引等价性 + 索引耗时对比（串行基线 vs 并行）记录在案
-- [ ] 5.2 推送 upgrade/java21 开 PR，审查结论并入 PR 说明，合并至 main
-- [ ] 5.3 用户验收后 openspec archive 本变更（规格增量并入主规格库）
-- [ ] 5.4 发布 v3.0.0：tag + GitHub Release，附 docfinder-3.0.0.jar
-- [ ] 5.5 Java 8 归档发布：tag v2.0.1-java8-final + Release，附 JDK 8 构建的最终包
+- [x] 5.2 推送 upgrade/java21 开 PR，审查结论并入 PR 说明，合并至 main
+- [x] 5.3 用户验收后 openspec archive 本变更（规格增量并入主规格库）
+- [x] 5.4 发布 v3.0.0：tag + GitHub Release，附 docfinder-3.0.0.jar
+- [x] 5.5 Java 8 归档发布：tag v2.0.1-java8-final + Release，附 JDK 8 构建的最终包
 
 - [x] Fix round F1 (owner: Codex): validate and back up Lucene 8 main/recovery indexes, require rebuild, preserve real writer locks; verify binary fixture and upgrade instructions.
 - [x] Fix round F8/F12 (owner: Codex): smoke-test shaded Java 21 jar, MR manifest, PDF/charset paths; record fixed-corpus timing/RSS and JFR pinning evidence.
