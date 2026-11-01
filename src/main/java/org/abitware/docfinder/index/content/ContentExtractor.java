@@ -16,9 +16,11 @@ import org.apache.lucene.document.Document;
 import org.apache.lucene.document.Field;
 import org.apache.lucene.document.TextField;
 import org.apache.lucene.document.StringField;
+import org.apache.tika.io.TikaInputStream;
 import org.apache.tika.metadata.Metadata;
 import org.apache.tika.parser.AutoDetectParser;
 import org.apache.tika.parser.ParseContext;
+import org.apache.tika.parser.Parser;
 import org.apache.tika.sax.BodyContentHandler;
 
 /**
@@ -35,7 +37,7 @@ public class ContentExtractor {
     private static final int MAX_CHARS = 1_000_000;
     
     /** Tika parser for automatic content type detection */
-    private final AutoDetectParser tikaParser;
+    private final Parser tikaParser;
     
     /** Timeout in seconds for content extraction */
     private final int timeoutSeconds;
@@ -65,8 +67,13 @@ public class ContentExtractor {
      * @param maxFileSizeMB maximum file size in megabytes to process
      */
     public ContentExtractor(int timeoutSeconds, long maxFileSizeMB) {
+        this(timeoutSeconds, maxFileSizeMB, new AutoDetectParser());
+    }
+
+    /** 测试接缝：包内注入可控 Parser，不改变公共构造函数的默认 AutoDetectParser。 */
+    ContentExtractor(int timeoutSeconds, long maxFileSizeMB, Parser parser) {
         this.settings = null;
-        this.tikaParser = new AutoDetectParser();
+        this.tikaParser = parser;
         this.timeoutSeconds = timeoutSeconds;
         this.maxFileSizeBytes = maxFileSizeMB * 1024 * 1024;
     }
@@ -173,30 +180,35 @@ public class ContentExtractor {
      * @return the extracted text, or null if extraction failed
      */
     private String extractTextWithTimeout(Path file, String fileName) {
-        ExecutorService executor = Executors.newSingleThreadExecutor(r -> {
-            Thread t = new Thread(r, "tika-extract");
-            t.setDaemon(true);
-            return t;
-        });
-        
+        // 每任务一个虚拟线程：虚拟线程天然 daemon，线程名保持 tika-extract。
+        ExecutorService executor = Executors.newThreadPerTaskExecutor(
+                Thread.ofVirtual().name("tika-extract").factory());
+        Future<String> future = null;
         try {
-            Future<String> future = executor.submit(() -> {
-                try (InputStream is = Files.newInputStream(file, StandardOpenOption.READ)) {
+            future = executor.submit(() -> {
+                try (TikaInputStream stream = TikaInputStream.get(file)) {
                     Metadata metadata = new Metadata();
                     metadata.set(org.apache.tika.metadata.TikaCoreProperties.RESOURCE_NAME_KEY, fileName);
                     BodyContentHandler handler = new BodyContentHandler(MAX_CHARS);
                     ParseContext context = new ParseContext();
-                    tikaParser.parse(is, handler, metadata, context);
+                    tikaParser.parse(stream, handler, metadata, context);
                     return handler.toString();
                 } catch (Throwable e) {
                     return "";
                 }
             });
-            
             return future.get(timeoutSeconds, TimeUnit.SECONDS);
         } catch (Exception ex) {
+            // 原实现就吞掉 InterruptedException 并清除中断位；此处按原语义保留，
+            // 若要恢复中断位属于另一个行为变更，不混入本次等价替换。
             return null;
         } finally {
+            // 禁止 executor.close()/awaitTermination：Java 21 的 close() 会等待
+            // 终止，不响应中断的解析会破坏 timeout 的返回上界。cancel(true) 只
+            // 补足 Future 状态，配合 shutdownNow 的中断尝试，立即返回不等任务。
+            if (future != null && !future.isDone()) {
+                future.cancel(true);
+            }
             executor.shutdownNow();
         }
     }

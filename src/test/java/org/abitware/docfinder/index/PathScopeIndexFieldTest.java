@@ -53,7 +53,7 @@ class PathScopeIndexFieldTest {
             // 2 dirs (source root + SubDir) + 2 files
             assertEquals(4, r.numDocs());
             for (int i = 0; i < r.maxDoc(); i++) {
-                Document d = r.document(i);
+                Document d = r.storedFields().document(i);
                 String path = d.get("path");
                 assertNotNull(path);
                 // path_scope is indexed but not stored → searchable, absent from stored fields
@@ -67,7 +67,7 @@ class PathScopeIndexFieldTest {
             Document aDoc = s.search(new TermQuery(new Term("path_scope",
                     PathScope.normalizeIndexedPath(source.resolve("a.txt")))), 1)
                     .scoreDocs[0].doc >= 0
-                    ? r.document(s.search(new TermQuery(new Term("path_scope",
+                    ? r.storedFields().document(s.search(new TermQuery(new Term("path_scope",
                             PathScope.normalizeIndexedPath(source.resolve("a.txt")))), 1)
                             .scoreDocs[0].doc) : null;
             assertNotNull(aDoc);

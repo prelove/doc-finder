@@ -27,6 +27,7 @@ import org.apache.lucene.document.LongPoint;
 import org.apache.lucene.document.StoredField;
 import org.apache.lucene.document.StringField;
 import org.apache.lucene.document.TextField;
+import org.apache.lucene.index.StoredFields;
 import org.apache.lucene.index.DirectoryReader;
 import org.apache.lucene.index.IndexReader;
 import org.apache.lucene.index.Term;
@@ -92,6 +93,8 @@ public class LuceneSearchService implements SearchService {
      */
     private final Map<Object, Boolean> scopeSupportCache =
             new java.util.concurrent.ConcurrentHashMap<>();
+    // 保留 synchronizedSet：仅内存集合操作（add/remove/clear），无 I/O，
+    // 与 scopePublishLock 的既有顺序不变。
     private final java.util.Set<Object> scopeListenerKeys =
             java.util.Collections.synchronizedSet(new java.util.HashSet<>());
     /**
@@ -173,6 +176,8 @@ public class LuceneSearchService implements SearchService {
         if (tag == null) {
             return new java.util.concurrent.atomic.AtomicLong();
         }
+        // 保留 monitor：最多 64 项的内存 LRU 查表/淘汰，纯 O(1) 内存操作，
+        // 临界区不含任何 I/O，虚拟线程不会在此阻塞。
         synchronized (sessionGens) {
             java.util.concurrent.atomic.AtomicLong g = sessionGens.get(tag);
             if (g == null) {
@@ -424,11 +429,11 @@ public class LuceneSearchService implements SearchService {
         // Exact fallback: does any LIVE doc lack a path_scope term?
         try {
             BooleanQuery.Builder missing = new BooleanQuery.Builder();
-            missing.add(new MatchAllDocsQuery(), BooleanClause.Occur.MUST);
+            missing.add(MatchAllDocsQuery.INSTANCE, BooleanClause.Occur.MUST);
             missing.add(new PrefixQuery(new Term(FIELD_PATH_SCOPE, "")),
                     BooleanClause.Occur.MUST_NOT);
             TopDocs td = searcher.search(missing.build(), 1);
-            if (td.totalHits.value > 0) {
+            if (td.totalHits.value() > 0) {
                 throw new SearchException(SearchException.Code.INDEX_REBUILD_REQUIRED,
                         "index contains documents without path_scope; run Index All Sources or Full Rebuild");
             }
@@ -495,6 +500,8 @@ public class LuceneSearchService implements SearchService {
 
     private void publishScopeVerdict(IndexReader reader, Object key, boolean verdict) {
         onScopeVerdictComputed();
+        // 保留 monitor：锁内仅生命周期位、内存 cache 写入及 CacheHelper
+        // listener 注册；不在锁内打开/关闭 reader 或刷新 searcher。
         synchronized (scopePublishLock) {
             if (closed || key == null) {
                 return;
@@ -684,7 +691,7 @@ public class LuceneSearchService implements SearchService {
 
                 BooleanQuery.Builder root = new BooleanQuery.Builder();
                 if (userQuery == null || (userQuery instanceof BooleanQuery && ((BooleanQuery) userQuery).clauses().isEmpty())) {
-                    root.add(new MatchAllDocsQuery(), BooleanClause.Occur.MUST);
+                    root.add(MatchAllDocsQuery.INSTANCE, BooleanClause.Occur.MUST);
                 } else {
                     root.add(userQuery, BooleanClause.Occur.MUST);
                 }
@@ -1029,6 +1036,8 @@ public class LuceneSearchService implements SearchService {
         if (ghosts == null || ghosts.isEmpty() || closed) {
             return;
         }
+        // 保留 monitor：仅是有界内存入队（封顶 GHOST_BUFFER_CAP），purge
+        // 与文件检查都在锁外执行。
         synchronized (ghostDrainSet) {
             for (String g : ghosts) {
                 if (ghostDrainSet.size() >= GHOST_BUFFER_CAP) {
@@ -1055,6 +1064,7 @@ public class LuceneSearchService implements SearchService {
         try {
             while (true) {
                 List<String> batch = new ArrayList<>(GHOST_PURGE_BATCH);
+                // 保留 monitor：取批仍是有界内存操作。
                 synchronized (ghostDrainSet) {
                     java.util.Iterator<String> it = ghostDrainSet.iterator();
                     while (it.hasNext() && batch.size() < GHOST_PURGE_BATCH) {
@@ -1069,6 +1079,7 @@ public class LuceneSearchService implements SearchService {
             }
         } finally {
             ghostDrainActive.set(false);
+            // 保留 monitor：清空检查与再次调度的内存记账。
             synchronized (ghostDrainSet) {
                 if (!ghostDrainSet.isEmpty()) {
                     scheduleGhostDrain();
@@ -1318,11 +1329,12 @@ public class LuceneSearchService implements SearchService {
         List<SearchResult> slice = new ArrayList<>(top.scoreDocs.length);
         Query explainQuery = (userQuery != null || (nameClauses != null && !nameClauses.isEmpty()))
                 ? buildExplainQuery(userQuery, nameClauses) : null;
+        StoredFields storedFields = searcher.storedFields();
         for (ScoreDoc sd : top.scoreDocs) {
             if (st != null && isStale(st)) {
                 break; // a newer search superseded this one — stop spending I/O
             }
-            Document d = searcher.doc(sd.doc);
+            Document d = storedFields.document(sd.doc);
             boolean isFolder = KIND_FOLDER.equalsIgnoreCase(d.get(FIELD_KIND));
             String name = d.get(FIELD_NAME);
             String path = d.get(FIELD_PATH);
@@ -1537,6 +1549,7 @@ public class LuceneSearchService implements SearchService {
 
     @Override
     public void close() {
+        // 保留 monitor：仅发布 closed 位并清空内存集合，无 I/O。
         synchronized (scopePublishLock) {
             closed = true;
             scopeSupportCache.clear();
@@ -1546,6 +1559,7 @@ public class LuceneSearchService implements SearchService {
         // background cleaner. Awaiting an in-flight purge must never happen on the
         // EDT — the purge thread is a daemon and re-checks `closed` under the
         // write lock before every delete, so it exits on its own shortly.
+        // 保留 monitor：清空 backlog 为纯内存操作。
         synchronized (ghostDrainSet) {
             ghostDrainSet.clear();
         }

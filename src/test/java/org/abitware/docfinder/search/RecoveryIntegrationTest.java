@@ -32,13 +32,19 @@ class RecoveryIntegrationTest {
                 () -> Collections.singletonList(source));
         java.util.concurrent.ExecutorService caller = java.util.concurrent.Executors.newSingleThreadExecutor();
         try {
-            Field registryLock = Tombstones.class.getDeclaredField("LOCK");
+            Field registryLock = Tombstones.class.getDeclaredField("STORE_LOCK");
             registryLock.setAccessible(true);
-            synchronized (registryLock.get(null)) {
+            // 存储锁已迁移为 ReentrantLock，测试仍持有同一把锁验证不等待语义。
+            java.util.concurrent.locks.ReentrantLock storeLock =
+                    (java.util.concurrent.locks.ReentrantLock) registryLock.get(null);
+            storeLock.lock();
+            try {
                 java.util.concurrent.Future<SearchOutcome> result = caller.submit(() -> service.searchDetailed(
                         new SearchRequest("report", 10, null, SearchScope.FOLDER, MatchMode.FUZZY)));
                 assertEquals(1, result.get(2, java.util.concurrent.TimeUnit.SECONDS).results.size(),
                         "enqueueing optional recovery must never wait for its storage lock");
+            } finally {
+                storeLock.unlock();
             }
         } finally { caller.shutdownNow(); service.close(); }
     }

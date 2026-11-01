@@ -29,6 +29,15 @@ public final class IsolatedFileAccess {
     static final byte ATTRIBUTES = 2;
     static final byte EXTRACT = 3;
     static final byte PROBE_TEXT = 4;
+    // 解析池 4 进程/8 等待：索引在途上限 8 = 4×2，可覆盖 4 个正在解析加约 4 个
+    // 等待/构建/写入中的文件；池总容量 12，索引最多占 8，余量供实时索引等竞争，
+    // 只是余量而非优先级或保留配额。
+    static final int PARSING_WORKER_COUNT = 4;
+    static final int PARSING_QUEUE_CAPACITY = 8;
+    // 元数据池仅显式命名，数值保持 2/16：遍历元数据主要走直接 Files 调用，
+    // 没有理由随解析池一起翻倍。
+    static final int METADATA_WORKER_COUNT = 2;
+    static final int METADATA_QUEUE_CAPACITY = 16;
     private static final AtomicInteger THREAD_IDS = new AtomicInteger();
     // Wire helpers are also used inside children; they must not initialize parent process pools.
     private static final class Shared {
@@ -120,6 +129,10 @@ public final class IsolatedFileAccess {
         public String getMimeType() { return mimeType; }
         public boolean isTruncated() { return truncated; }
         public boolean isSuccessful() { return successful; }
+        /** 测试/接缝工厂：index 包的测试无法访问包内构造器。 */
+        public static Extraction of(String text, String mimeType, boolean truncated, boolean successful) {
+            return new Extraction(text, mimeType, truncated, successful);
+        }
     }
 
     static final class Response {
@@ -153,12 +166,17 @@ public final class IsolatedFileAccess {
         };
     }
 
-    /** Two exchange threads, two processes and sixteen waiting requests per JVM-wide pool. */
+    /**
+     * One exchange thread and one helper process per worker slot, plus a bounded
+     * queue of waiting requests per JVM-wide pool. Parsing pools run
+     * {@link #PARSING_WORKER_COUNT} workers / {@link #PARSING_QUEUE_CAPACITY}
+     * queued requests; metadata pools keep {@link #METADATA_WORKER_COUNT} /
+     * {@link #METADATA_QUEUE_CAPACITY}.
+     */
     static final class Pool implements AutoCloseable {
-        private final ThreadPoolExecutor executor = new ThreadPoolExecutor(2, 2, 30, TimeUnit.SECONDS,
-                new ArrayBlockingQueue<Runnable>(16), daemonFactory("file-access-"));
-        private final ArrayBlockingQueue<Worker> available = new ArrayBlockingQueue<>(2);
-        private final Worker[] workers = { new Worker(), new Worker() };
+        private final ThreadPoolExecutor executor;
+        private final ArrayBlockingQueue<Worker> available;
+        private final Worker[] workers;
         private final String workerClass;
         private final boolean parsing;
         private final int idleMs;
@@ -166,11 +184,30 @@ public final class IsolatedFileAccess {
         private volatile boolean closed;
 
         Pool(String workerClass, boolean parsing, int idleMs) {
+            this(workerClass, parsing, idleMs,
+                    parsing ? PARSING_WORKER_COUNT : METADATA_WORKER_COUNT,
+                    parsing ? PARSING_QUEUE_CAPACITY : METADATA_QUEUE_CAPACITY);
+        }
+
+        Pool(String workerClass, boolean parsing, int idleMs, int workerCount, int queueCapacity) {
             this.workerClass = workerClass; this.parsing = parsing; this.idleMs = idleMs;
+            executor = new ThreadPoolExecutor(workerCount, workerCount, 30, TimeUnit.SECONDS,
+                    new ArrayBlockingQueue<Runnable>(queueCapacity), daemonFactory("file-access-"));
             executor.allowCoreThreadTimeOut(true);
-            for (Worker worker : workers) available.add(worker);
+            available = new ArrayBlockingQueue<>(workerCount);
+            workers = new Worker[workerCount];
+            for (int i = 0; i < workerCount; i++) {
+                workers[i] = new Worker();
+                available.add(workers[i]);
+            }
             reapTask = Shared.REAPER.scheduleWithFixedDelay(this::reap, idleMs, idleMs, TimeUnit.MILLISECONDS);
         }
+
+        int workerCount() { return workers.length; }
+        int executorCorePoolSize() { return executor.getCorePoolSize(); }
+        int executorMaximumPoolSize() { return executor.getMaximumPoolSize(); }
+        int queueCapacity() { return executor.getQueue().size() + executor.getQueue().remainingCapacity(); }
+        int queueRemainingCapacity() { return executor.getQueue().remainingCapacity(); }
 
         Response call(byte operation, String path, String root, int maxChars, int timeoutMs) throws IOException {
             if (timeoutMs <= 0) throw new IOException("Source I/O deadline must be positive");
@@ -238,6 +275,8 @@ public final class IsolatedFileAccess {
                 boolean warmed = false;
                 boolean cleanFailure = false;
                 try {
+                    // 保留 monitor：busy 置位是纳秒级纯内存操作，且只运行在平台
+                    // exchange 线程上，不会把虚拟线程固定在载体上。
                     synchronized (worker) { worker.busy = true; }
                     if (cancelled.get() || closed) throw new IOException("Source I/O cancelled");
                     if (worker.invalid || worker.process == null || !worker.process.isAlive()) worker.start();
@@ -287,6 +326,7 @@ public final class IsolatedFileAccess {
                     ioStarted.countDown();
                     if (closed || cancelled.get() && exchanged) worker.destroy();
                     process = null;
+                    // 保留 monitor：同样是短内存状态更新（lastUsed/busy），锁内无 I/O。
                     synchronized (worker) { worker.lastUsed = System.nanoTime(); worker.busy = false; }
                     available.offer(worker);
                 }
@@ -345,6 +385,9 @@ public final class IsolatedFileAccess {
 
         private void reap() {
             for (Worker worker : workers) {
+                // 保留 monitor 且仅限平台线程：destroy() 内含 destroyForcibly/
+                // waitFor/管道关闭等阻塞操作，只允许平台 reaper 线程进入；
+                // 虚拟线程不得持有此锁等待进程退出。
                 synchronized (worker) {
                     if (!worker.busy && System.nanoTime() - worker.lastUsed >= TimeUnit.MILLISECONDS.toNanos(idleMs)) {
                         worker.destroy();
@@ -360,6 +403,8 @@ public final class IsolatedFileAccess {
             for (Worker worker : workers) {
                 Process current = worker.process;
                 if (current != null) current.destroyForcibly();
+                // 同上：close 由 JVM 关闭钩子的平台线程执行，destroy/waitFor/
+                // 关管道的阻塞 I/O 不能迁移到虚拟线程路径。
                 synchronized (worker) { if (!worker.busy) worker.destroy(); }
             }
         }

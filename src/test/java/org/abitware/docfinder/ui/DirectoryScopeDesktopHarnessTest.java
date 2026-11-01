@@ -755,7 +755,7 @@ class DirectoryScopeDesktopHarnessTest {
             throws java.io.IOException {
         java.util.Set<String> paths = new java.util.HashSet<>();
         for (int i = 0; i < r.maxDoc(); i++) {
-            org.apache.lucene.document.Document d = r.document(i);
+            org.apache.lucene.document.Document d = r.storedFields().document(i);
             if (d != null) {
                 paths.add(d.get("path"));
             }

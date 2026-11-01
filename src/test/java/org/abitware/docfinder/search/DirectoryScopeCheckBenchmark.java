@@ -115,7 +115,7 @@ class DirectoryScopeCheckBenchmark {
             missing.add(new org.apache.lucene.search.PrefixQuery(
                     new Term("path_scope", "")),
                     org.apache.lucene.search.BooleanClause.Occur.MUST_NOT);
-            assertEquals(0, s.search(missing.build(), 1).totalHits.value);
+            assertEquals(0, s.search(missing.build(), 1).totalHits.value());
             report.append(String.format("exact fallback query (no missing): %.2f ms%n",
                     (System.nanoTime() - t) / 1_000_000.0));
         }

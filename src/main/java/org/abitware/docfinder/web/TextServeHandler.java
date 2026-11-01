@@ -2,8 +2,12 @@ package org.abitware.docfinder.web;
 
 import com.sun.net.httpserver.HttpExchange;
 import com.sun.net.httpserver.HttpHandler;
-import org.apache.tika.parser.txt.CharsetDetector;
-import org.apache.tika.parser.txt.CharsetMatch;
+import org.abitware.docfinder.util.TikaServices;
+import org.apache.tika.detect.EncodingDetector;
+import org.apache.tika.detect.EncodingResult;
+import org.apache.tika.io.TikaInputStream;
+import org.apache.tika.metadata.Metadata;
+import org.apache.tika.parser.ParseContext;
 
 import java.io.*;
 import java.nio.charset.Charset;
@@ -14,10 +18,12 @@ import java.nio.file.Paths;
 import java.nio.file.StandardOpenOption;
 import java.util.LinkedHashSet;
 import java.util.Map;
+import java.util.List;
+import java.util.ArrayList;
 
 /**
  * Serves text file content at {@code GET /api/text?path=<encoded-abs-path>}
- * with reliable encoding detection via ICU4J (Tika {@link CharsetDetector}).
+ * with encoding detection through Tika's default detector chain.
  *
  * <p>The handler reads the raw bytes, detects the encoding using statistical
  * analysis (BOM, byte-pattern heuristics), converts the content to UTF-8,
@@ -29,6 +35,11 @@ import java.util.Map;
  * was larger than the limit.
  */
 class TextServeHandler implements HttpHandler {
+
+    // Tika 4 默认链使用 Mojibuster + JunkFilter 仲裁，不包含 ICU4J。
+    // 胜出结果通常为 1.0（统计）或 0.95（结构性 UTF-8）；0.1 是无依据的兜底猜测。
+    // 阈值用于丢弃该兜底猜测，让本类继续执行 UTF-8 校验和 Latin-1 回退。
+    private static final float MIN_DETECTED_CONFIDENCE = 0.20f;
 
     private static final int DEFAULT_LIMIT = 512 * 1024; // 512 KB
 
@@ -99,7 +110,7 @@ class TextServeHandler implements HttpHandler {
             return;
         }
 
-        // Detect charset using Tika's ICU4J-based CharsetDetector
+        // Detect the source charset before converting the response to UTF-8
         Charset detected = detectCharset(buf, totalRead);
         String text = new String(buf, 0, totalRead, detected);
 
@@ -122,9 +133,13 @@ class TextServeHandler implements HttpHandler {
 
     /**
      * Detects the charset of the given byte buffer using BOM detection first,
-     * then ICU4J statistical analysis, with sensible fallbacks.
+     * then Tika statistical analysis, with sensible fallbacks.
      */
     static Charset detectCharset(byte[] buf, int len) {
+        return detectCharset(buf, len, TikaServices.encodingDetector());
+    }
+
+    static Charset detectCharset(byte[] buf, int len, EncodingDetector detector) {
         // 1. BOM detection (highest priority)
         if (len >= 3 && (buf[0] & 0xFF) == 0xEF && (buf[1] & 0xFF) == 0xBB && (buf[2] & 0xFF) == 0xBF) {
             return StandardCharsets.UTF_8;
@@ -136,42 +151,17 @@ class TextServeHandler implements HttpHandler {
             return StandardCharsets.UTF_16BE;
         }
 
-        // 2. ICU4J / Tika statistical detection
+        // 2. Tika statistical detection, preserving detector candidate order
         try {
-            CharsetDetector detector = new CharsetDetector();
-            detector.setText(new ByteArrayInputStream(buf, 0, len));
-            CharsetMatch[] matches = detector.detectAll();
-            if (matches != null && matches.length > 0) {
-                // Collect candidates above confidence threshold
-                LinkedHashSet<String> candidates = new LinkedHashSet<>();
-                for (CharsetMatch match : matches) {
-                    if (match == null) continue;
-                    // Accept matches with confidence >= 20 (ICU4J's scale is 0-100)
-                    if (match.getConfidence() >= 20) {
-                        candidates.add(match.getName());
-                    }
+            List<Charset> candidates = detectCandidateCharsets(buf, len, detector);
+            for (Charset charset : candidates) {
+                String sample = new String(buf, 0, Math.min(len, 8192), charset);
+                if (!sample.contains("\uFFFD") || charset.equals(StandardCharsets.UTF_8)) {
+                    return charset;
                 }
-
-                // Try the best match first; if it decodes cleanly, use it
-                for (String csName : candidates) {
-                    try {
-                        Charset cs = Charset.forName(csName);
-                        // Quick validation: decode and re-encode to check for issues
-                        String sample = new String(buf, 0, Math.min(len, 8192), cs);
-                        if (!sample.contains("\uFFFD") || csName.equalsIgnoreCase("UTF-8")) {
-                            return cs;
-                        }
-                    } catch (Exception ignored) {
-                    }
-                }
-
-                // If we have any match at all, use the top one
-                if (!candidates.isEmpty()) {
-                    try {
-                        return Charset.forName(candidates.iterator().next());
-                    } catch (Exception ignored) {
-                    }
-                }
+            }
+            if (!candidates.isEmpty()) {
+                return candidates.get(0);
             }
         } catch (Exception ignored) {
         }
@@ -183,6 +173,23 @@ class TextServeHandler implements HttpHandler {
 
         // 4. Final fallback
         return StandardCharsets.ISO_8859_1;
+    }
+
+    static List<Charset> detectCandidateCharsets(byte[] buf, int len, EncodingDetector detector) throws IOException {
+        LinkedHashSet<Charset> candidates = new LinkedHashSet<>();
+        try (TikaInputStream stream = TikaInputStream.get(new ByteArrayInputStream(buf, 0, len))) {
+            List<EncodingResult> matches = detector.detect(stream, new Metadata(), new ParseContext());
+            if (matches != null) {
+                for (EncodingResult match : matches) {
+                    if (match != null && match.getCharset() != null
+                            && match.getConfidence() >= MIN_DETECTED_CONFIDENCE) {
+                        // Tika 的解码超集保留 CP932 等扩展字符，与索引正文解码保持一致。
+                        candidates.add(match.getDecodeAs());
+                    }
+                }
+            }
+        }
+        return new ArrayList<>(candidates);
     }
 
     /** Quick UTF-8 validity check by scanning byte sequences. */

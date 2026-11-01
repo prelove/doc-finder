@@ -26,7 +26,8 @@ import javax.swing.SwingWorker;
 import javax.swing.UIManager;
 import org.abitware.docfinder.search.SearchResult;
 import org.apache.tika.metadata.Metadata;
-import org.apache.tika.parser.AutoDetectParser;
+import org.abitware.docfinder.util.TikaServices;
+import org.apache.tika.io.TikaInputStream;
 import org.apache.tika.parser.ParseContext;
 import org.apache.tika.sax.BodyContentHandler;
 
@@ -153,13 +154,12 @@ public class PreviewPanel extends JScrollPane {
     
     // 可读提取头部 N 字符（复用我们已有的 Tika 逻辑，简化为局部方法以避免循环依赖）
     private String extractTextHead(Path file, int maxChars) {
-        try (InputStream is = Files.newInputStream(file, StandardOpenOption.READ)) {
+        try (TikaInputStream stream = TikaInputStream.get(file)) {
             Metadata md = new Metadata();
             md.set(org.apache.tika.metadata.TikaCoreProperties.RESOURCE_NAME_KEY, file.getFileName().toString());
-            org.apache.tika.parser.AutoDetectParser parser = new org.apache.tika.parser.AutoDetectParser();
-            org.apache.tika.sax.BodyContentHandler handler = new org.apache.tika.sax.BodyContentHandler(maxChars);
-            org.apache.tika.parser.ParseContext ctx = new org.apache.tika.parser.ParseContext();
-            parser.parse(is, handler, md, ctx);
+            BodyContentHandler handler = new BodyContentHandler(maxChars);
+            ParseContext ctx = new ParseContext();
+            TikaServices.previewParser().parse(stream, handler, md, ctx);
             return handler.toString();
         } catch (Throwable e) {
             return "";

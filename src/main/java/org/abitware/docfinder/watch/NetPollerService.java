@@ -8,6 +8,7 @@ import org.apache.lucene.document.Document;
 import org.apache.lucene.index.DirectoryReader;
 import org.apache.lucene.index.IndexNotFoundException;
 import org.apache.lucene.index.MultiBits;
+import org.apache.lucene.index.StoredFields;
 import org.apache.lucene.store.FSDirectory;
 import org.apache.lucene.util.Bits;
 import org.slf4j.Logger;
@@ -21,6 +22,7 @@ import java.util.*;
 import java.util.concurrent.*;
 import java.util.concurrent.atomic.AtomicBoolean;
 import java.util.concurrent.atomic.AtomicInteger;
+import java.util.concurrent.locks.ReentrantLock;
 
 public class NetPollerService implements AutoCloseable {
     private static final Logger log = LoggerFactory.getLogger(NetPollerService.class);
@@ -31,7 +33,10 @@ public class NetPollerService implements AutoCloseable {
     private final List<Path> roots;
     private final SnapshotStore store;
     private final Runnable onAfterCommit;
-    private final Object lifecycle = new Object();
+    // lifecycle 域的临界区覆盖快照发布（磁盘 I/O）、writer 打开/commit/close
+    // 及 done() 回调链路；虚拟线程在这些 monitor 内阻塞会固定载体线程，
+    // 故整个状态域统一迁移到可重入锁，不能保留任何旧 monitor 入口。
+    private final ReentrantLock lifecycleLock = new ReentrantLock();
     private final AtomicBoolean pollInFlight = new AtomicBoolean();
     private final AtomicInteger pendingRoots = new AtomicInteger();
     private volatile boolean running;
@@ -90,19 +95,23 @@ public class NetPollerService implements AutoCloseable {
 
     public void start(int minutes) {
         stop();
-        synchronized (lifecycle) {
+        lifecycleLock.lock();
+        try {
             closed = false;
             running = true;
             scanPool = newScanPool();
             onDemand = newOnDemand();
             scheduler = Executors.newSingleThreadScheduledExecutor(threads("docfinder-netpoller"));
             scheduler.scheduleWithFixedDelay(this::pollOnceSafe, 3, Math.max(1, minutes) * 60L, TimeUnit.SECONDS);
+        } finally {
+            lifecycleLock.unlock();
         }
     }
 
     /** Reservation happens at the entry point, so queued manual requests cannot impersonate completed polls. */
     public Future<PollStats> pollNowAsync() {
-        synchronized (lifecycle) {
+        lifecycleLock.lock();
+        try {
             Round round = reserve(roots, false);
             if (round == null) return CompletableFuture.completedFuture(rejected());
             RoundFuture task = new RoundFuture(round);
@@ -110,6 +119,8 @@ public class NetPollerService implements AutoCloseable {
             try { onDemand.execute(task); }
             catch (RejectedExecutionException e) { task.cancel(false); }
             return task;
+        } finally {
+            lifecycleLock.unlock();
         }
     }
     public void pollNow() { pollBlocking(roots, false); }
@@ -119,7 +130,12 @@ public class NetPollerService implements AutoCloseable {
 
     private PollStats pollBlocking(List<Path> selectedRoots, boolean indexedBaseline) {
         Round round;
-        synchronized (lifecycle) { round = reserve(selectedRoots, indexedBaseline); }
+        lifecycleLock.lock();
+        try {
+            round = reserve(selectedRoots, indexedBaseline);
+        } finally {
+            lifecycleLock.unlock();
+        }
         if (round == null) return rejected();
         try { return runRound(round); }
         finally { bodyFinished(round); }
@@ -140,8 +156,11 @@ public class NetPollerService implements AutoCloseable {
         return round;
     }
     private boolean valid(Round round) {
-        synchronized (lifecycle) {
+        lifecycleLock.lock();
+        try {
             return !closed && !round.cancelled && round.generation == generation && !Thread.currentThread().isInterrupted();
+        } finally {
+            lifecycleLock.unlock();
         }
     }
     private void requireValid(Round round) throws IOException {
@@ -157,13 +176,16 @@ public class NetPollerService implements AutoCloseable {
                 if (!valid(round)) break;
                 if (root == null) { stats.failedRoots++; continue; }
                 RootTask task = new RootTask(round, root);
-                synchronized (lifecycle) {
+                lifecycleLock.lock();
+                try {
                     if (!valid(round)) break;
                     pendingRoots.incrementAndGet();
                     round.tasks.add(task);
                     tasks.add(task);
                     try { round.pool.execute(task); }
                     catch (RejectedExecutionException e) { task.cancel(false); }
+                } finally {
+                    lifecycleLock.unlock();
                 }
             }
             for (RootTask task : tasks) {
@@ -227,10 +249,15 @@ public class NetPollerService implements AutoCloseable {
                 try (SnapshotStore.Cursor current = snapshot.cursor()) { mergeAndApply(old, current, round, stats, scanStartedAt); }
                 old.close();
                 // stop/cancel and publication share this lock; no skipped apply can publish a baseline.
-                synchronized (lifecycle) {
+                // 快照 publish 是原子移动文件的磁盘 I/O，不能移到锁外，也正是
+                // 本域必须换 ReentrantLock 而非保留 monitor 的原因。
+                lifecycleLock.lock();
+                try {
                     requireValid(round);
                     snapshot.publish(root);
                     stats.complete = true;
+                } finally {
+                    lifecycleLock.unlock();
                 }
             }
         } catch (Exception e) {
@@ -243,10 +270,12 @@ public class NetPollerService implements AutoCloseable {
         try (SnapshotStore.Builder builder = store.newBuilder()) {
             try (FSDirectory directory = FSDirectory.open(indexDir); DirectoryReader reader = DirectoryReader.open(directory)) {
                 Bits live = MultiBits.getLiveDocs(reader);
+                StoredFields storedFields = reader.storedFields();
+                Set<String> fields = new HashSet<>(Arrays.asList("path", "size", "mtime", "kind"));
                 for (int id = 0; id < reader.maxDoc(); id++) {
                     if (Thread.currentThread().isInterrupted()) throw new InterruptedIOException("Reconcile cancelled");
                     if (live != null && !live.get(id)) continue;
-                    Document doc = reader.document(id, new HashSet<>(Arrays.asList("path", "size", "mtime", "kind")));
+                    Document doc = storedFields.document(id, fields);
                     String path = doc.get("path");
                     if (path == null || !Paths.get(path).toAbsolutePath().normalize().startsWith(root.toAbsolutePath().normalize())) continue;
                     long size = doc.getField("size") == null ? 0 : doc.getField("size").numericValue().longValue();
@@ -288,7 +317,10 @@ public class NetPollerService implements AutoCloseable {
 
     private void apply(List<Change> changes, Round round, RootStats stats) throws Exception {
         IndexWriteCoordinator.call(() -> {
-            synchronized (lifecycle) {
+            // 锁序 WRITE_LOCK → lifecycleLock：本锁只在 coordinator 内获取，
+            // 持锁完成 writer 打开、批量写入与 commit/close 的磁盘 I/O。
+            lifecycleLock.lock();
+            try {
                 requireValid(round);
                 try (LuceneIndexer indexer = new LuceneIndexer(indexDir, settings)) {
                     for (Change change : changes) {
@@ -311,6 +343,8 @@ public class NetPollerService implements AutoCloseable {
                     else if (change.kind > 0) stats.created++;
                     else stats.modified++;
                 }
+            } finally {
+                lifecycleLock.unlock();
             }
             return null;
         });
@@ -360,15 +394,31 @@ public class NetPollerService implements AutoCloseable {
     private final class RoundFuture extends FutureTask<PollStats> {
         final Round round;
         private boolean started;
+        // done() 回调会经 bodyFinished 进入 lifecycleLock（可能等 I/O），
+        // started 记账不能留在 this monitor 里，否则 monitor 会包住锁等待。
+        private final ReentrantLock taskLock = new ReentrantLock();
         RoundFuture(Round round) {
             super(() -> { try { return runRound(round); } finally { bodyFinished(round); } });
             this.round = round;
         }
         @Override public void run() {
-            synchronized (this) { if (isCancelled()) return; started = true; }
+            taskLock.lock();
+            try {
+                if (isCancelled()) return;
+                started = true;
+            } finally {
+                taskLock.unlock();
+            }
             try { super.run(); } finally { bodyFinished(round); }
         }
-        @Override protected void done() { synchronized (this) { if (!started) bodyFinished(round); } }
+        @Override protected void done() {
+            taskLock.lock();
+            try {
+                if (!started) bodyFinished(round);
+            } finally {
+                taskLock.unlock();
+            }
+        }
         @Override public boolean cancel(boolean interrupt) {
             // Publish this Future's cancellation first. Cancelling its child
             // tasks can let runRound finish immediately; doing that first
@@ -381,20 +431,63 @@ public class NetPollerService implements AutoCloseable {
     private final class RootTask extends FutureTask<RootStats> {
         final Round round;
         private boolean started;
-        private final AtomicBoolean counted = new AtomicBoolean();
-        RootTask(Round round, Path root) { super(() -> processRoot(root, round)); this.round = round; }
+        private final AtomicBoolean counted;
+        // done()→finished() 会取 lifecycleLock，started 用可重入锁保护以免
+        // monitor 包住锁等待；counted 的 CAS 让取消与执行完成只结算一次。
+        private final ReentrantLock taskLock = new ReentrantLock();
+        RootTask(Round round, Path root) {
+            this(round, root, new AtomicBoolean());
+        }
+        private RootTask(Round round, Path root, AtomicBoolean counted) {
+            super(() -> {
+                try { return processRoot(root, round); }
+                // FutureTask 先 set 结果再唤醒 get 等待者；记账必须在 callable
+                // 退出前完成，不能依赖 set 之后的 done()/run() finally。
+                finally { rootFinished(round, counted); }
+            });
+            this.round = round;
+            this.counted = counted;
+        }
         @Override public void run() {
-            synchronized (this) { if (isCancelled()) return; started = true; }
+            taskLock.lock();
+            try {
+                if (isCancelled()) return;
+                started = true;
+            } finally {
+                taskLock.unlock();
+            }
+            // started=true 后、callable 入场前仍可能被取消；此时 callable
+            // finally 不会执行，必须由 run finally 补账，CAS 会过滤正常路径的重复调用。
             try { super.run(); } finally { finished(); }
         }
-        @Override protected void done() { synchronized (this) { if (!started || !isCancelled()) finished(); } }
+        @Override protected void done() {
+            taskLock.lock();
+            try {
+                if (!started) finished();
+            } finally {
+                taskLock.unlock();
+            }
+        }
         private void finished() {
-            if (!counted.compareAndSet(false, true)) return;
-            synchronized (lifecycle) { pendingRoots.decrementAndGet(); releaseIfDrained(round); }
+            rootFinished(round, counted);
+        }
+    }
+    private void rootFinished(Round round, AtomicBoolean counted) {
+        if (!counted.compareAndSet(false, true)) return;
+        lifecycleLock.lock();
+        try {
+            pendingRoots.decrementAndGet(); releaseIfDrained(round);
+        } finally {
+            lifecycleLock.unlock();
         }
     }
     private void bodyFinished(Round round) {
-        synchronized (lifecycle) { round.bodyDone = true; releaseIfDrained(round); }
+        lifecycleLock.lock();
+        try {
+            round.bodyDone = true; releaseIfDrained(round);
+        } finally {
+            lifecycleLock.unlock();
+        }
     }
     private void releaseIfDrained(Round round) {
         if (activeRound == round && round.bodyDone && pendingRoots.get() == 0) {
@@ -403,18 +496,26 @@ public class NetPollerService implements AutoCloseable {
     }
     private void cancelRound(Round round) {
         List<RootTask> tasks;
-        synchronized (lifecycle) { round.cancelled = true; tasks = new ArrayList<>(round.tasks); }
+        lifecycleLock.lock();
+        try {
+            round.cancelled = true; tasks = new ArrayList<>(round.tasks);
+        } finally {
+            lifecycleLock.unlock();
+        }
         for (RootTask task : tasks) task.cancel(true);
     }
     public void stop() {
         Round round;
         ExecutorService scheduled, manual, scans;
-        synchronized (lifecycle) {
+        lifecycleLock.lock();
+        try {
             running = false; closed = true; generation++;
             round = activeRound;
             if (round != null) round.cancelled = true;
             scheduled = scheduler; manual = onDemand; scans = scanPool;
             scheduler = null; onDemand = null; scanPool = null;
+        } finally {
+            lifecycleLock.unlock();
         }
         if (round != null) {
             cancelRound(round);

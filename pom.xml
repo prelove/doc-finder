@@ -6,14 +6,13 @@
 
   <groupId>org.abitware.docfinder</groupId>
   <artifactId>docfinder</artifactId>
-  <version>1.0.0</version>
+  <version>3.0.0</version>
   <name>DocFinder</name>
   <description>Local /LAN file name/content search tool</description>
 
   <properties>
     <project.build.sourceEncoding>UTF-8</project.build.sourceEncoding>
-    <maven.compiler.source>1.8</maven.compiler.source>
-    <maven.compiler.target>1.8</maven.compiler.target>
+    <maven.compiler.release>21</maven.compiler.release>
     <!-- Empty default so the Surefire argLine composition below can safely
          append the isolated user.home last. External -DargLine=... values
          override this property and are preserved before the isolation args. -->
@@ -24,19 +23,19 @@
 	  <dependency>
 	    <groupId>com.formdev</groupId>
 	    <artifactId>flatlaf</artifactId>
-	    <version>3.6.2</version>
+	    <version>3.7.2</version>
 	  </dependency>
 	  <!-- IntelliJ theme pack（包含大量 .theme.json 对应的 LAF 类） -->
 	  <dependency>
 	    <groupId>com.formdev</groupId>
 	    <artifactId>flatlaf-intellij-themes</artifactId>
-	    <version>3.6.2</version>
+	    <version>3.7.2</version>
 	  </dependency>
 	  <!-- 可选：切换主题时的平滑动画（没有也不影响功能） -->
 	  <dependency>
 	    <groupId>com.formdev</groupId>
 	    <artifactId>flatlaf-extras</artifactId>
-	    <version>3.6.2</version>
+	    <version>3.7.2</version>
 	    <optional>true</optional>
 	  </dependency>
 	  
@@ -50,80 +49,70 @@
 	  <dependency>
 	    <groupId>org.slf4j</groupId>
 	    <artifactId>slf4j-api</artifactId>
-	    <version>2.0.17</version>
+	    <version>2.0.20</version>
 	  </dependency>
 	  <dependency>
 	    <groupId>ch.qos.logback</groupId>
 	    <artifactId>logback-classic</artifactId>
-	    <version>1.3.16</version>
+	    <version>1.6.6</version>
 	  </dependency>
 	  <!-- Log4j2 to SLF4J bridge -->
 	  <dependency>
 	    <groupId>org.apache.logging.log4j</groupId>
 	    <artifactId>log4j-to-slf4j</artifactId>
-	    <version>2.23.1</version>
-	  </dependency>
-	  <dependency>
-	    <groupId>org.apache.logging.log4j</groupId>
-	    <artifactId>log4j-core</artifactId>
-	    <version>2.23.1</version>
+	    <version>2.26.1</version>
 	  </dependency>
 
 	  <dependency>
 	    <groupId>org.apache.lucene</groupId>
 	    <artifactId>lucene-core</artifactId>
-	    <version>8.11.2</version>
-	    <exclusions>
-	        <exclusion>
-	            <groupId>org.apache.logging.log4j</groupId>
-	            <artifactId>log4j-api</artifactId>
-	        </exclusion>
-	    </exclusions>
+	    <version>10.6.0</version>
 	  </dependency>
 	  <dependency>
 	    <groupId>org.apache.lucene</groupId>
-	    <artifactId>lucene-analyzers-common</artifactId>
-	    <version>8.11.2</version>
+	    <artifactId>lucene-analysis-common</artifactId>
+	    <version>10.6.0</version>
 	  </dependency>
 	  <dependency>
 	    <groupId>org.apache.lucene</groupId>
 	    <artifactId>lucene-queryparser</artifactId>
-	    <version>8.11.2</version>
+	    <version>10.6.0</version>
 	  </dependency>
 	  
 	  <dependency>
 	    <groupId>org.apache.tika</groupId>
 	    <artifactId>tika-core</artifactId>
-	    <version>2.9.4</version>
-	    <exclusions>
-	        <exclusion>
-	            <groupId>org.apache.logging.log4j</groupId>
-	            <artifactId>log4j-api</artifactId>
-	        </exclusion>
-	    </exclusions>
+	    <version>4.2.0</version>
 	  </dependency>
 	  <dependency>
 	    <groupId>org.apache.tika</groupId>
 	    <artifactId>tika-parsers-standard-package</artifactId>
-	    <version>2.9.4</version>
+	    <version>4.2.0</version>
+	    <type>pom</type>
+        <exclusions>
+          <exclusion>
+            <groupId>commons-logging</groupId>
+            <artifactId>commons-logging</artifactId>
+          </exclusion>
+        </exclusions>
 	  </dependency>
 
 	  <!-- Chinese analyzer -->
 	  <dependency>
 	    <groupId>org.apache.lucene</groupId>
-	    <artifactId>lucene-analyzers-smartcn</artifactId>
-	    <version>8.11.2</version>
+	    <artifactId>lucene-analysis-smartcn</artifactId>
+	    <version>10.6.0</version>
 	  </dependency>
 	  <!-- Japanese analyzer -->
 	  <dependency>
 	    <groupId>org.apache.lucene</groupId>
-	    <artifactId>lucene-analyzers-kuromoji</artifactId>
-	    <version>8.11.2</version>
+	    <artifactId>lucene-analysis-kuromoji</artifactId>
+	    <version>10.6.0</version>
 	  </dependency>
 	  <dependency>
 	    <groupId>org.junit.jupiter</groupId>
 	    <artifactId>junit-jupiter</artifactId>
-	    <version>5.11.4</version>
+	    <version>6.1.3</version>
 	    <scope>test</scope>
 	  </dependency>
   </dependencies>
@@ -138,22 +127,21 @@
     Build:
       mvn -Pnative package
     Output: target/docfinder (Linux/macOS) or target/docfinder.exe (Windows)
-    NOTE: The shaded-jar build still targets Java 8.
-          The native profile upgrades to Java 17 source/target for GraalVM compatibility.
+    NOTE: The shaded-jar build and the native profile both target Java 21.
   -->
   <profiles>
     <profile>
       <id>native</id>
       <properties>
-        <maven.compiler.source>17</maven.compiler.source>
-        <maven.compiler.target>17</maven.compiler.target>
+        <maven.compiler.source>21</maven.compiler.source>
+        <maven.compiler.target>21</maven.compiler.target>
       </properties>
       <build>
         <plugins>
           <plugin>
             <groupId>org.graalvm.buildtools</groupId>
             <artifactId>native-maven-plugin</artifactId>
-            <version>0.10.6</version>
+            <version>1.1.18</version>
             <extensions>true</extensions>
             <executions>
               <execution>
@@ -186,14 +174,14 @@
 
   <build>
 	  <plugins>
-	    <!-- Java 8 目标：你已有 -->
+	    <!-- Java 21 目标：release 同时约束语言级别与可见的 JDK API -->
 	    <plugin>
 	      <groupId>org.apache.maven.plugins</groupId>
 	      <artifactId>maven-compiler-plugin</artifactId>
-	      <version>3.14.1</version>
+	      <version>3.16.0</version>
 	      <configuration>
-	        <source>1.8</source>
-	        <target>1.8</target>
+	        <release>21</release>
+            <proc>none</proc>
 	      </configuration>
 	    </plugin>
 	
@@ -201,7 +189,7 @@
 	    <plugin>
 	      <groupId>org.apache.maven.plugins</groupId>
 	      <artifactId>maven-shade-plugin</artifactId>
-	      <version>3.6.1</version>
+	      <version>3.6.2</version>
 	      <executions>
 	        <execution>
 	          <phase>package</phase>
@@ -211,6 +199,10 @@
 	            <transformers>
 	              <transformer implementation="org.apache.maven.plugins.shade.resource.ManifestResourceTransformer">
 	                <mainClass>org.abitware.docfinder.App</mainClass>
+                    <manifestEntries>
+                      <Multi-Release>true</Multi-Release>
+                      <Enable-Native-Access>ALL-UNNAMED</Enable-Native-Access>
+                    </manifestEntries>
 	              </transformer>
 	              <!-- Tika/Lucene 的 SPI 发现需要合并 META-INF/services -->
 	              <transformer implementation="org.apache.maven.plugins.shade.resource.ServicesResourceTransformer"/>
@@ -236,7 +228,7 @@
 	    <plugin>
 	      <groupId>org.apache.maven.plugins</groupId>
 	      <artifactId>maven-surefire-plugin</artifactId>
-	      <version>3.5.5</version>
+	      <version>3.6.1</version>
 	      <configuration>
 	        <!-- Fixed test isolation: the forked JVM must run inside target so
 	             AppPaths (user.dir/.docfinder) and LegacyMigration (user.home)

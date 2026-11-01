@@ -80,7 +80,7 @@ _Local file name & content search. Fast, read‑only, and multilingual._
 ## 6) Building / Updating Index（建立与更新索引）
 
 - **Index All Sources**：对所有源进行索引/更新。
-- **Rebuild Index (Full)**：先清空再重建、非原子，期间不可搜索；先尝试Index All Sources补字段，仍有旧记录阻断时再备份并在维护时段手动执行。
+- **Rebuild Index (Full)**：在索引协调器内执行，从 `deleteAll` 到最终主索引提交为同一原子事务。重建期间 UI 暂停搜索，但最终提交成功前保留旧的已提交索引；先尝试 Index All Sources 补字段，仍有旧记录阻断时再备份并在维护时段手动执行。
 - **Indexing Settings…**：调整解析上限、超时和 include/exclude 规则（含 `maxExtractChars` 与 `textMaxBytes`）。
 - **Read‑only parsing**（只读解析）：使用 Apache Tika，带超时与大小上限；文本类文件通过扩展名、MIME 与启发式判定，未知扩展名但可识别为文本也会尝试索引。
 
@@ -224,3 +224,29 @@ _Enjoy lightning‑fast local search!_
 - 部分Index All失败可查已提交数据，不表示全部来源已完成；服务不可用时旧结果会清除。
 - 启动脚本上限2GB Java堆；native mmap失败应查hs_err、系统提交容量/分页文件，资源不足时降低堆上限，提高Xmx不能保证修复。
 - native、POSIX宿主、真实UNC整链路尚未验；词法UNC测试不等于真实共享测试。
+
+
+## Upgrading to DocFinder 3.0 (Java 21)
+
+DocFinder 3.0 requires Java 21. On first launch it checks both the configured
+search index and `deleted-paths-index` recovery registry. Incompatible Lucene 8
+indexes are preserved by renaming their directories to
+`<name>.lucene8.bak-<timestamp>`; the application explicitly asks you to run
+**Full Rebuild** (or **Index All Sources**). Search and Live Watch require a
+compatible rebuilt index. A real writer-lock conflict stops the operation;
+the application never deletes a lock file to bypass another writer.
+
+Full Rebuild runs inside the indexing coordinator, with `deleteAll` through the
+final main-index commit in one atomic transaction. The UI pauses search during
+rebuilding; the previous committed index remains intact until that commit succeeds.
+Cancellation or failure before the main-index commit retains the previous commit.
+Recovery records are reset after that commit; an acknowledgment failure at this
+stage does not undo the committed index. Backups are not
+deleted automatically; once the rebuilt index has been verified, you may remove
+the `.lucene8.bak-*` directories manually.
+
+Lucene 10 indexes written by 3.0 cannot be opened by the Java 8 releases. To
+downgrade, use a separate data directory or restore the Lucene 8 backups while
+both versions are stopped. Keep the backups until you decide to stay on 3.0.
+Plain ASCII previews now report UTF-8. Text served via `/api/file` is transcoded
+to UTF-8, including legacy Chinese, Japanese and Korean files.

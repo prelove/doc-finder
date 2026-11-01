@@ -46,15 +46,24 @@ public class App {
         SingleInstance instance = SingleInstance.tryAcquire(APP_ID, cmd -> bringToFront());
         if (instance == null) return; // 次实例：已通知老实例激活，直接退出
 
-        // 3) One-time legacy data migration (~/.docfinder → ./.docfinder) off the EDT
+        // 先完成旧数据搬迁再检查格式，避免后台迁移在守卫之后重新放入 Lucene 8 文件。
         if (LegacyMigration.needsMigration()) {
-            new Thread(() -> {
-                int count = LegacyMigration.migrate();
-                if (count > 0) {
-                    logger.info("Migrated {} file(s) from legacy ~/.docfinder to app data directory.", count);
-                }
-            }, "docfinder-migration").start();
+            int count = LegacyMigration.migrate();
+            if (count > 0) {
+                logger.info("Migrated {} legacy file(s) to app data directory.", count);
+            }
         }
+        org.abitware.docfinder.index.IndexFormatGuard.Result formatResult = null;
+        String formatFailure = null;
+        try {
+            formatResult = org.abitware.docfinder.index.IndexFormatGuard.prepare(
+                    new SourceManager().getIndexDir(), org.abitware.docfinder.util.AppPaths.getBaseDir());
+        } catch (IOException e) {
+            formatFailure = "Index format check failed (check writer conflicts): " + e.getMessage();
+            logger.error("Could not prepare index format safely", e);
+        }
+        final org.abitware.docfinder.index.IndexFormatGuard.Result startupFormat = formatResult;
+        final String startupFormatFailure = formatFailure;
 
         // 4) Optionally start web interface (before EDT to get config early)
         ConfigManager cfg = new ConfigManager();
@@ -88,7 +97,16 @@ public class App {
             // (background open, EDT publish, stale candidates closed — D8).
             java.nio.file.Path indexDir = new SourceManager().getIndexDir();
             org.abitware.docfinder.index.IndexSettings idxSettings = new ConfigManager().loadIndexSettings();
-            win.reopenSearchServiceAsync(indexDir, idxSettings);
+            if (startupFormatFailure != null || startupFormat == null
+                    || startupFormat.state() == org.abitware.docfinder.index.IndexFormatGuard.State.INDEX_REBUILD_REQUIRED) {
+                String detail = startupFormatFailure != null ? startupFormatFailure
+                        : startupFormat.backups().isEmpty()
+                        ? "A previously preserved Lucene 8 index still requires a rebuild."
+                        : "Incompatible indexes were preserved as backups: " + startupFormat.backups();
+                SwingUtilities.invokeLater(() -> win.showIndexRebuildRequired(detail));
+            } else {
+                win.reopenSearchServiceAsync(indexDir, idxSettings);
+            }
 
             // 全局热键：Ctrl + Alt + Space
             GlobalHotkey ghk = new GlobalHotkey(win);

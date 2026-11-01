@@ -341,7 +341,7 @@ class GhostResultFilterTest {
                     new org.apache.lucene.search.IndexSearcher(r);
             return s.search(new org.apache.lucene.search.TermQuery(
                     new org.apache.lucene.index.Term("path", want)), 1)
-                    .totalHits.value > 0;
+                    .totalHits.value() > 0;
         }
     }
 
